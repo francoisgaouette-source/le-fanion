@@ -18,7 +18,8 @@ self.addEventListener('fetch', e => {
   if (/firebaseio|identitytoolkit|securetoken/.test(u.hostname)) return;
   // La page : réseau d'abord (dernière version), sinon la copie gardée
   if (r.mode === 'navigate') {
-    e.respondWith(fetch(r).then(res => { const cp = res.clone(); caches.open(V).then(c => c.put('./', cp)); return res; }).catch(() => caches.match('./')));
+    // « no-cache » : on redemande toujours la page au serveur, sans se fier à la copie de 10 minutes du navigateur
+    e.respondWith(fetch(r.url, { cache: 'no-cache', credentials: 'same-origin' }).then(res => res.redirected ? fetch(r) : res).then(res => { const cp = res.clone(); caches.open(V).then(c => c.put('./', cp)); return res; }).catch(() => caches.match('./')));
     return;
   }
   const same = u.origin === self.location.origin;
