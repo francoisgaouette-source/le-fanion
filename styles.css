@@ -841,3 +841,12 @@ textarea { font-family: inherit; line-height: 1.4; resize: vertical; }
 .av-ok { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; line-height: 1.4; margin: 6px 0 4px; }
 .av-ok input { width: 20px; height: 20px; flex: none; margin-top: 1px; accent-color: var(--green); }
 .hist-seg { margin: 0 0 12px; } .hist-seg button { text-align: center; min-height: 44px; }
+/* Léo, le caddie */
+.cad-ico svg, .cad-av svg { width: 100%; height: 100%; display: block; }
+.caddie-tile .cad-ico { background: #DDEBE1; overflow: hidden; width: 44px; height: 44px; }
+.cad-id { display: flex; align-items: center; gap: 12px; margin: 0 0 6px; }
+.cad-id h3 { margin: 0; } .cad-id .note { margin: 0; }
+.cad-av { width: 56px; height: 56px; border-radius: 50%; overflow: hidden; flex: none; background: #DDEBE1; }
+.cad-visite { margin: 4px 0 0; }
+body.avec-leo #view { padding-bottom: 96px; }
+body:has(#sheetWrap:not([hidden])) .cd-lanceur { display: none; }
