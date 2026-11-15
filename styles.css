@@ -840,3 +840,4 @@ textarea { font-family: inherit; line-height: 1.4; resize: vertical; }
 .av-pick button.on { color: #e3a90b; }
 .av-ok { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; line-height: 1.4; margin: 6px 0 4px; }
 .av-ok input { width: 20px; height: 20px; flex: none; margin-top: 1px; accent-color: var(--green); }
+.hist-seg { margin: 0 0 12px; } .hist-seg button { text-align: center; min-height: 44px; }
