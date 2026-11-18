@@ -908,7 +908,7 @@
   function neufTotals(game) { const t = [0, 0, 0]; for (let h = 1; h <= 18; h++) { const r = neufPoints(game, h); if (r) r.pts.forEach((v, i) => { t[i] += v; }); } return t; }
 
   // ---------- Autres jeux : Best Ball, Wolf, Sixes, Skins (et le 9 points) ----------
-  const FORMATS = { pelland: 'La game à Pelland', neuf: 'Le 9 points', bestball: 'Best Ball', nassau: 'Nassau', wolf: 'Wolf', sixes: 'Sixes', skins: 'Skins', perso: 'Jeu maison' };
+  const FORMATS = { pelland: 'La game à Pelland', neuf: 'Le 9 points', bestball: 'Best Ball', nassau: 'Nassau', vegas: 'Vegas', wolf: 'Wolf', sixes: 'Sixes', skins: 'Skins', perso: 'Jeu maison' };
   function formatOf(g) { return g.format || (g.players.length === 3 ? 'neuf' : 'pelland'); }
   function netOf(g, h, i) { const s = getScore(g, h, i); return s == null ? null : s - strokesOnHole(g.players[i].strokes, g.course.holes[h - 1].si); }
   function holeNets(g, h) { const n = g.players.map((_, i) => netOf(g, h, i)); return n.some(v => v == null) ? null : n; }
@@ -928,6 +928,20 @@
         if (b[0] === b[1]) { out[h] = { pts, win: [], desc: `Égalité au meilleur net (${b[0]}) : trou partagé.`, teams: T }; continue; }
         const w = b[0] < b[1] ? 0 : 1; T[w].forEach(i => { pts[i] = 1; }); T[1 - w].forEach(i => { pts[i] = -1; });
         out[h] = { pts, win: T[w], desc: `${T[w].map(nm).join(' et ')} gagnent le trou (meilleur net ${b[w]} contre ${b[1 - w]}).`, teams: T }; continue;
+      }
+      if (f === 'vegas') {
+        // Vegas : les deux nets de l'équipe forment un nombre, le plus bas d'abord (4 et 5 → 45), maximum double boguey net.
+        // Un oiselet (au brut) d'une équipe renverse le nombre de l'autre (45 → 54). L'écart entre les deux nombres = les points.
+        const T = getTeams(g), par = i => holeInfo(g, h, i).par, gross = i => getScore(g, h, i);
+        const bird = T.map(t => t.some(i => gross(i) < par(i)));
+        const cap = i => Math.max(1, Math.min(n[i], par(i) + 2));   // maximum : double boguey net, pour garder des nombres à deux chiffres
+        const num = (t, flip) => { const v = t.map(cap).sort((x, y) => x - y); if (flip) v.reverse(); return Number(v.join('')); };
+        const flip = [bird[1] && !bird[0], bird[0] && !bird[1]], v = [num(T[0], flip[0]), num(T[1], flip[1])], pts = P.map(() => 0);
+        const tn = k => T[k].map(nm).join(' et '), why = flip[0] || flip[1] ? ` ; oiselet : le nombre de ${tn(flip[0] ? 0 : 1)} est renversé` : '';
+        if (v[0] === v[1]) { out[h] = { pts, win: [], desc: `${tn(0)} ${v[0]}, ${tn(1)} ${v[1]} : égalité, pas de points${why}.`, teams: T, vegas: v }; continue; }
+        const w = v[0] < v[1] ? 0 : 1, d = Math.abs(v[0] - v[1]);
+        T[w].forEach(i => { pts[i] = d; }); T[1 - w].forEach(i => { pts[i] = -d; });
+        out[h] = { pts, win: T[w], desc: `${tn(0)} ${v[0]}, ${tn(1)} ${v[1]} : ${tn(w)} gagnent ${d} point${d > 1 ? 's' : ''}${why}.`, teams: T, vegas: v }; continue;
       }
       if (f === 'wolf') {
         const e = (g.events || {})[h] || {}, d = e.wolf, wf = wolfOf(g, h), pts = P.map(() => 0);

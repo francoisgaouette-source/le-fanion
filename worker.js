@@ -156,6 +156,7 @@ LES JEUX (tout au net, avec handicap ; montants par joueur)
 - Skins : le seul meilleur net du trou gagne le skin ; égalité, reporté au suivant ; chaque autre joueur paie le montant par skin.
 - Wolf : le loup tourne à chaque trou ; avec partenaire ±1 par joueur ; seul ±2 par adversaire ; seul à l'aveugle ±3.
 - Best Ball : meilleur net de chaque équipe ; écart de trous gagnés × montant.
+- Vegas (4 joueurs, équipes de deux) : les deux scores nets de l'équipe forment un nombre, le plus bas d'abord (4 et 5 = 45) ; un oiselet au brut renverse le nombre de l'autre équipe (45 devient 54), sauf si les deux équipes en font un ; maximum double boguey net par joueur ; l'écart entre les nombres = les points du trou ; gain = écart de points × montant par point (souvent 0,25 $).
 - Sixes : équipes qui changent tous les 6 trous ; chaque tranche vaut la mise.
 - 9 points (3 joueurs) : 5-3-1 par trou ; égalités 4-4-1, 5-2-2, 3-3-3 ; différence de points × montant avec chaque joueur.
 - Jeux maison : dans Les jeux, « Ajouter un jeu ».
