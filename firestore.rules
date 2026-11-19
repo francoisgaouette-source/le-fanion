@@ -102,6 +102,11 @@ service cloud.firestore {
                 && exists(/databases/$(database)/documents/players/$(request.resource.data.lastDel))
                 && !existsAfter(/databases/$(database)/documents/players/$(request.resource.data.lastDel))
                 && get(/databases/$(database)/documents/players/$(request.resource.data.lastDel)).data.get('groupId', 'pelland') == id.split('_groupe_')[1]))
+        // archiver ou supprimer le groupe : le propriétaire seulement
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['archived', 'deleted'])
+            || (resource.data.get('owner', '') != '' && lien().playerId == resource.data.owner))
+        // un groupe supprimé ne revient pas
+        && !(resource.data.get('deleted', 0) != 0 && request.resource.data.get('deleted', 0) == 0)
         // propriétaire et organisateur : seul le propriétaire les change (ou un membre réclame un groupe sans propriétaire)
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['owner', 'organizers'])
             || resource.data.get('owner', '') == ''

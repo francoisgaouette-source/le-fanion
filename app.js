@@ -90,8 +90,14 @@
     },
     async myGroupList() {
       const pl = await this.myPlayers(), gs = await this.listGroups();
-      return pl.map(p => { const g = gs.find(x => x.id === (p.groupId || 'pelland')) || { id: p.groupId, name: p.groupId }; return { gid: g.id, name: g.name, playerId: p.id, playerName: p.name, owner: g.owner === p.id }; })
-        .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+      // Groupes supprimés par leur propriétaire : retirés de la liste ; groupes archivés : à part
+      return pl.map(p => { const g = gs.find(x => x.id === (p.groupId || 'pelland')) || { id: p.groupId, name: p.groupId }; return { gid: g.id, name: g.name, playerId: p.id, playerName: p.name, owner: g.owner === p.id, archived: !!g.archived, deleted: !!g.deleted }; })
+        .filter(x => !x.deleted).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    },
+    // Archiver, rétablir ou supprimer le groupe actif (propriétaire seulement ; vérifié par les règles)
+    async setGroupState(flags) {
+      if (this.mode === 'firebase') { await this.db.collection('players').doc('_groupe_' + this.gid).set(flags, { merge: true }); return; }
+      const all = ls.get('pelland.groups', {}); all[this.gid] = { ...(all[this.gid] || { id: this.gid }), ...flags }; ls.set('pelland.groups', all);
     },
     // Rend ce joueur (et son groupe) actif pour ce compte
     async linkTo(player) {
@@ -755,6 +761,7 @@
     const lastDate = info && info.id === last && info.createdAt ? new Date(info.createdAt).toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' }) : null;
     return `
       ${Store.needLogin ? '' : groupInfo(true)}
+      ${curGroup().archived ? `<div class="warn archived-band">Ce groupe est archivé.${meId() && meId() === ownerId() ? ' <button class="linkbtn" data-go="compte" type="button">Le rétablir dans Mon compte</button>' : ' Son propriétaire peut le rétablir.'}</div>` : ''}
       <div class="hero"><h1><span class="hero-k">Groupe :</span> ${esc(groupName())}${canOrganize() ? ' <button class="hero-edit" id="renameGroup" type="button" aria-label="Modifier le nom du groupe">Modifier</button>' : ''}</h1><p>${APP} · le golf entre amis${(S.myPlayers || []).length > 1 ? ` · <button class="linkbtn" id="switchGroup" type="button">Changer de groupe (${S.myPlayers.length})</button>` : ''}</p></div>
       <h3 class="home-h">Les étapes</h3>
       ${lockTiles(`<div class="tiles steps">
@@ -889,8 +896,8 @@
   });
 
   // ---------------- Mon compte : le compte de la personne et tous les groupes dont elle fait partie ----------------
-  function groupRows(l, cur) {
-    return `<div class="acct-groups">${l.map((x, i) => `<div class="acct-g ${x.gid === cur ? 'cur' : ''}"><div><b><span class="g-k">Groupe :</span> ${esc(x.name)}</b><small>${esc(x.playerName)}${x.owner ? ' · propriétaire' : ''}</small></div>${x.gid === cur ? '<span class="acct-cur">Groupe actuel</span>' : `<button class="btn small" data-gopen="${i}" type="button">Ouvrir</button>`}</div>`).join('') || '<p class="note">Aucun groupe pour l’instant.</p>'}</div>`;
+  function groupRows(l, cur, base) {
+    return `<div class="acct-groups">${l.map((x, k) => [x, base ? base.indexOf(x) : k]).map(([x, i]) => `<div class="acct-g ${x.gid === cur ? 'cur' : ''}"><div><b><span class="g-k">Groupe :</span> ${esc(x.name)}</b><small>${esc(x.playerName)}${x.owner ? ' · propriétaire' : ''}</small></div>${x.gid === cur ? '<span class="acct-cur">Groupe actuel</span>' : `<button class="btn small" data-gopen="${i}" type="button">Ouvrir</button>`}</div>`).join('') || '<p class="note">Aucun groupe pour l’instant.</p>'}</div>`;
   }
   function vCompte() {
     $('#barTitle').textContent = 'Mon compte';
@@ -901,13 +908,56 @@
     return `<section class="card"><h2>${esc(mine ? mine.playerName : ls.get('pelland.me', '') || '')}</h2>
         ${S.fromLogin ? '<p class="note"><b>Bienvenue !</b> Choisissez votre groupe.</p>' : ''}
         <p class="note">${cell ? 'Cellulaire confirmé : ' + esc(fmtPhone(cell)) : 'Compte créé avant les comptes avec mot de passe : déconnectez-vous puis touchez « Créer mon compte » pour le mettre à jour.'}</p></section>
-      <h3 class="acct-h">Mes groupes (${S.acctGroups.length})</h3>
-      ${groupRows(S.acctGroups, S.fromLogin ? null : Store.gid).replace(S.fromLogin ? /Ouvrir/g : /^$/, 'Entrer')}
+      <h3 class="acct-h">Mes groupes (${S.acctGroups.filter(x => !x.archived).length})</h3>
+      ${groupRows(S.acctGroups.filter(x => !x.archived), S.fromLogin ? null : Store.gid, S.acctGroups).replace(S.fromLogin ? /Ouvrir/g : /^$/, 'Entrer')}
+      ${S.acctGroups.some(x => x.archived) ? `<h3 class="acct-h">Groupes archivés (${S.acctGroups.filter(x => x.archived).length})</h3>
+        ${groupRows(S.acctGroups.filter(x => x.archived), S.fromLogin ? null : Store.gid, S.acctGroups)}<p class="note">Un groupe archivé garde ses joueurs, ses parties et ses résultats. Son propriétaire peut le rétablir.</p>` : ''}
+      ${manageGroupHtml()}
       <p class="note">Ce sont les groupes où votre cellulaire est inscrit. Pour en rejoindre un autre, demandez à son organisateur de vous ajouter dans Joueurs.</p>
       <h3 class="acct-h">Notifications</h3>
       <div class="acct-g"><div><b>${Push.perm() === 'granted' && ls.get('pelland.push', 0) ? 'Activées sur ce téléphone' : Push.perm() === 'denied' ? 'Bloquées' : 'Désactivées'}</b><small>${Push.perm() === 'denied' ? 'Permettez-les dans les réglages du navigateur ou du téléphone.' : Push.needsInstall() ? 'Sur iPhone : ajoutez d’abord l’app à l’écran d’accueil.' : 'Nouvelles dates, rappels, parties et résultats.'}</small></div>
         ${Push.perm() === 'granted' && ls.get('pelland.push', 0) ? '<button class="btn ghost small" data-pushoff type="button">Désactiver</button>' : Push.perm() === 'denied' ? '' : Push.needsInstall() ? '<button class="btn small" data-onbact="ecran" type="button">Comment</button>' : '<button class="btn small" data-pushon type="button">Activer</button>'}</div>
       <div class="row acct-actions"><button class="btn ghost small" data-viral type="button">Créer un groupe</button><button class="btn ghost small" data-avis type="button">Donner mon avis</button><button class="btn ghost small" id="chgPw" type="button">Changer mon mot de passe</button><button class="btn ghost small" id="logout2" type="button">Se déconnecter</button></div>`;
+  }
+  // Gérer le groupe actif : archiver / rétablir / supprimer (propriétaire seulement)
+  function manageGroupHtml() {
+    if (S.fromLogin) return '';
+    const me = (S.acctGroups || []).find(x => x.gid === Store.gid);
+    if (!me || !me.owner) return '';
+    return `<h3 class="acct-h">Gérer « ${esc(me.name)} »</h3>
+      <section class="card manage-g">
+        ${me.archived
+          ? `<p class="note">Ce groupe est archivé. Rétablissez-le pour recommencer à organiser des parties.</p><button class="btn small" data-grpstate="unarchive" type="button">Rétablir le groupe</button>`
+          : `<p class="note"><b>Archiver :</b> le groupe passe dans « Groupes archivés », pour vous et pour tous les joueurs. Rien n’est perdu ; vous pouvez le rétablir.</p><button class="btn ghost small" data-grpstate="archive" type="button">Archiver le groupe</button>`}
+        <p class="note" style="margin-top:14px"><b>Supprimer :</b> le groupe disparaît pour vous et pour tous les joueurs, avec ses parties, ses dates et ses compétitions. Impossible de revenir en arrière.</p>
+        <button class="btn ghost small danger-txt" data-grpstate="delete" type="button">Supprimer le groupe</button>
+      </section>`;
+  }
+  async function setGroupState(kind) {
+    const me = (S.acctGroups || []).find(x => x.gid === Store.gid); if (!me) return;
+    const done = async (flags, msg) => {
+      try { await Store.setGroupState(flags); } catch (e) { toast('Impossible : ' + (/permission/i.test(e.message) ? 'seul le propriétaire peut le faire (règles Firebase à jour ?).' : e.message)); return false; }
+      S.groups = await Store.listGroups().catch(() => S.groups); S.acctGroups = null; toast(msg); return true;
+    };
+    if (kind === 'archive') { if (await done({ archived: Date.now() }, `« ${me.name} » est archivé.`)) render(); return; }
+    if (kind === 'unarchive') { if (await done({ archived: 0 }, `« ${me.name} » est rétabli.`)) render(); return; }
+    openSheet(`<h3>Supprimer « ${esc(me.name)} » ?</h3>
+      <p>Le groupe disparaîtra pour vous et pour ses ${(S.players || []).length} joueurs, avec ses parties, ses dates offertes et ses compétitions.</p>
+      <p class="warn">C’est définitif. Pour seulement le mettre de côté, choisissez plutôt « Archiver ».</p>
+      <label>Pour confirmer, écrivez le nom du groupe<input id="delName" type="text" autocomplete="off" placeholder="${esc(me.name)}"></label>
+      <div class="sheet-actions"><button class="btn" id="delGo" type="button" style="background:var(--red)" disabled>Supprimer définitivement</button><button class="btn ghost" data-close type="button">Annuler</button></div>`, sh => {
+      const inp = sh.querySelector('#delName'), go2 = sh.querySelector('#delGo');
+      inp.oninput = () => { go2.disabled = L.norm(inp.value) !== L.norm(me.name); };
+      sh.querySelector('[data-close]').onclick = closeSheet;
+      go2.onclick = async () => {
+        go2.disabled = true;
+        if (!(await done({ deleted: Date.now() }, `« ${me.name} » est supprimé.`))) { go2.disabled = false; return; }
+        closeSheet();
+        const rest = (await Store.myGroupList().catch(() => [])).filter(x => x.gid !== me.gid);
+        if (rest.length) openGroup(rest.find(x => !x.archived) || rest[0]);
+        else { S.acctGroups = []; go('compte'); setTimeout(newGroupSheet, 400); }
+      };
+    });
   }
   async function openGroup(x) {
     try { await Store.switchGroup(x); ls.set('pelland.lastGame', null); location.href = location.pathname; } catch (e) { toast(e.message); }
@@ -915,6 +965,7 @@
   function bindCompte(v) {
       commonNav(v);
       v.querySelectorAll('[data-gopen]').forEach(b => b.onclick = () => { b.disabled = true; b.textContent = '…'; openGroup(S.acctGroups[+b.dataset.gopen]); });
+      v.querySelectorAll('[data-grpstate]').forEach(b => b.onclick = () => setGroupState(b.dataset.grpstate));
       const lo = v.querySelector('#logout2'); if (lo) lo.onclick = () => Store.logout();
       const cp = v.querySelector('#chgPw'); if (cp) cp.onclick = () => openSheet(`<h3>Changer mon mot de passe</h3>
           <label>Nouveau mot de passe<input id="np1" type="password" autocomplete="new-password" placeholder="6 caractères ou plus"></label>
@@ -3548,6 +3599,7 @@
     const code = (params.get('partie') || params.get('code') || '').toUpperCase();
     const offreId = params.get('offre');
     if (params.get('compte')) { history.replaceState(null, '', location.pathname); go('compte', { fromLogin: true }); return; }
+    if (curGroup().deleted) { toast('Ce groupe a été supprimé par son propriétaire. Choisissez un autre groupe.'); go('compte', { fromLogin: true }); return; }
     if (offreId) go('offre', { offreId });
     else if (code) openGame(code);
     else if (params.has('ecoute') || params.has('pelland')) {
