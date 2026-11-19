@@ -996,7 +996,28 @@
       if (who.length > 1) { nc = units; parts.push(`skin reporté (${units})`); } else { pts[who[0]] += units * num(c.skin); parts.push(`skin à ${nm(who[0])} : +${units * num(c.skin)}`); } }
     return { pts, win: [], desc: parts.length ? parts.join(' ; ') + '.' : 'Pas de points.', carry: nc };
   }
-  function altTotals(g) { const r = altHoles(g), t = g.players.map(() => 0); for (let h = 1; h <= 18; h++) if (r[h] && r[h].pts) r[h].pts.forEach((v, i) => { t[i] += v; }); return t; }
+  function altTotals(g) { const r = altHoles(g), t = g.players.map(() => 0), st = formatOf(g) === 'match' ? matchStatus(g) : null;
+    for (let h = 1; h <= 18; h++) { if (st && st.decidedAt && h > st.decidedAt) break; if (r[h] && r[h].pts) r[h].pts.forEach((v, i) => { t[i] += v; }); } return t; }
+  // Match play : un seul enjeu, pour la partie. Le match s'arrête quand l'avance dépasse les trous qui restent (« gagne 3 et 2 »).
+  function matchStatus(g) {
+    const r = altHoles(g), [a, b] = holeRange(g), lead = g.players.map(() => 0);
+    let played = 0, decidedAt = 0, last = 0;
+    for (let h = a; h <= b; h++) {
+      if (!r[h] || !r[h].pts) break;          // trous joués dans l'ordre
+      r[h].pts.forEach((v, i) => { lead[i] += v; }); played++; last = h;
+      const d = Math.max(...lead), left = b - h;
+      if (d > left) { decidedAt = h; break; }
+    }
+    const d = Math.max(0, ...lead), left = b - (last || a - 1), w = d > 0 ? lead.indexOf(d) : -1;
+    const total = b - a + 1, done = !!decidedAt || played === total;
+    let text;
+    if (!played) text = 'Le match n’est pas commencé';
+    else if (decidedAt) text = left === 0 ? `gagne ${d} trou${d > 1 ? 's' : ''}` : `gagne ${d} et ${left}`;
+    else if (done) text = d === 0 ? 'Match nul' : `gagne ${d} trou${d > 1 ? 's' : ''}`;
+    else if (d === 0) text = `Égalité après ${played} trou${played > 1 ? 's' : ''}`;
+    else text = `${d} trou${d > 1 ? 's' : ''} d’avance${d === left ? ' (dormie)' : ''}, ${left} à jouer`;
+    return { lead, winner: w, up: d, left, played, decidedAt, done, text };
+  }
   // Gain de chaque joueur ($) selon le jeu
   function altGains(g, pp) {
     const f = formatOf(g), t = altTotals(g);
@@ -1007,6 +1028,7 @@
         for (let h = 1; h <= 18; h++) if (r[h] && sixesSeg(h, g) === seg) if (r[h] && r[h].pts) { any = true; r[h].pts.forEach((v, i) => { s[i] += v; }); }
         if (any) s.forEach((v, i) => { gn[i] += Math.sign(v) * pp; }); });
       return gn; }
+    if (f === 'match') { const st = matchStatus(g); return g.players.map((p, i) => !st.done || st.winner < 0 ? 0 : i === st.winner ? pp : -pp); }
     if (f === 'nassau') return nassauBets(g).reduce((gn, b) => gn.map((v, i) => v + Math.sign(b.pts[i]) * pp), g.players.map(() => 0));
     return t.map(x => x * pp);
   }
@@ -1019,6 +1041,6 @@
       return { name, from: x, to: y, pts, played, done: played === y - x + 1 }; }).filter(s => s.played);
   }
 
-  const api = { PINEGROVE, teePar, holePar, courseHandicap, allocateStrokes, strokesOnHole, buildPlayers, TEAMS, teamFromText, makeTeams, orderTeams, getTeams, teamName, netScore, holeMultiplier, holePoints, teamPoints, describeHolePoints, skinTeam, holeTotal, describeSkin, cabaneTeam, cabanes, birdiesByTeam, skinLost, skinPointTeam, calcText, par3Results, describePar3, holeInfo, getScore, totals, norm, matchPlayer, afterWake, parse, answer, apply, parseSetup, resolveName, nextPrompt, trailingTeam, pressTeamOf, initials, leadChanges, totalText, holeNetText, parseCardText, neufPoints, neufTotals, FORMATS, formatOf, altHoles, altTotals, altGains, nassauBets, sixesTeams, wolfOf, holeRange };
+  const api = { PINEGROVE, teePar, holePar, courseHandicap, allocateStrokes, strokesOnHole, buildPlayers, TEAMS, teamFromText, makeTeams, orderTeams, getTeams, teamName, netScore, holeMultiplier, holePoints, teamPoints, describeHolePoints, skinTeam, holeTotal, describeSkin, cabaneTeam, cabanes, birdiesByTeam, skinLost, skinPointTeam, calcText, par3Results, describePar3, holeInfo, getScore, totals, norm, matchPlayer, afterWake, parse, answer, apply, parseSetup, resolveName, nextPrompt, trailingTeam, pressTeamOf, initials, leadChanges, totalText, holeNetText, parseCardText, neufPoints, neufTotals, FORMATS, formatOf, altHoles, altTotals, altGains, matchStatus, nassauBets, sixesTeams, wolfOf, holeRange };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.PellandLogic = api;
 })(this);

@@ -1130,8 +1130,8 @@
       money: ['Chacun gagne ou paie la différence de points avec chaque autre joueur, × le montant par point.'] },
     { f: 'bestball', who: '4 joueurs, en équipes de deux', rules: ['Le meilleur net de chaque équipe compte.', 'L’équipe la plus basse gagne le trou ; égalité : trou partagé.'],
       money: ['Écart de trous gagnés × le montant par trou, par joueur.'] },
-    { f: 'match', who: '2 joueurs, un contre un', rules: ['Au net, avec les coups de handicap de chacun.', 'Le plus bas score du trou le gagne ; égalité : trou partagé.'],
-      money: ['Écart de trous gagnés × le montant par trou.'] },
+    { f: 'match', who: '2 joueurs, un contre un', rules: ['Au net, avec les coups de handicap de chacun.', 'Le plus bas score du trou le gagne ; égalité : trou partagé.', 'On compte l’avance en trous (« 2 d’avance »). Dès que l’avance dépasse le nombre de trous qui restent, le match est fini : « gagne 3 et 2 » veut dire 3 trous d’avance avec 2 trous à jouer.', 'Égalité après le dernier trou : match nul.'],
+      money: ['Un seul enjeu, pour la partie : le gagnant du match empoche le montant ; match nul, personne ne paie.'] },
     { f: 'vegas', who: '4 joueurs, en équipes de deux', rules: ['Sur chaque trou, les deux scores nets de l’équipe forment un nombre, le plus bas d’abord : 4 et 5 donnent 45.', 'Un oiselet (au brut) renverse le nombre de l’autre équipe : son 45 devient 54. Oiselet des deux côtés : rien ne change.', 'Maximum par joueur : double boguey net, pour garder des nombres à deux chiffres.', 'L’écart entre les deux nombres donne les points du trou à l’équipe la plus basse.'],
       money: ['Écart de points × le montant par point, par joueur. Les points montent vite : on joue souvent à 0,10 $ ou 0,25 $ le point.'] },
     { f: 'nassau', who: '4 joueurs, en équipes de deux', rules: ['Trois paris en Best Ball : l’aller (trous 1 à 9), le retour (10 à 18) et le total des 18 trous.', 'Le meilleur net de chaque équipe gagne le trou ; l’équipe qui gagne le plus de trous gagne le pari.', 'Égalité dans un pari : personne ne gagne.', 'Sur 9 trous : un seul pari.'],
@@ -1393,7 +1393,10 @@
   const fmtLabel = key => key && key.startsWith('perso:') ? ((jeuOf(key) || {}).name || 'Jeu maison') : L.FORMATS[key];
   const gameName = g => L.formatOf(g) === 'perso' ? ((g.custom || {}).name || 'Jeu maison') : L.FORMATS[L.formatOf(g)];
   const filledIdx = d => d.players.map((p, i) => i).filter(i => String(d.players[i].name || '').trim());
-  function syncCount(d) { const n = filledIdx(d).length; d.count = n === 2 ? 2 : n === 3 ? 3 : 4; return d.count; }
+  function syncCount(d) { const n = filledIdx(d).length; d.count = n === 2 ? 2 : n === 3 ? 3 : 4;
+    // À 2 joueurs, le jeu par défaut devient le match play, avec un enjeu pour la partie (10 $)
+    if (d.count === 2 && !gamesFor(2).includes(d.format)) { d.format = 'match'; if (!d.perPoint || d.perPoint === '1') d.perPoint = '10'; }
+    return d.count; }
   // Partie à équipes de deux (formation des équipes à choisir) : seulement à 4 joueurs
   const teamGame = (key, n) => n === 4 && (key === 'pelland' || key === 'bestball' || key === 'nassau' || key === 'vegas' || ((jeuOf(key) || {}).mode === 'equipes'));
   function missingList(d) {
@@ -1472,7 +1475,7 @@
       </section>
       <section class="card">
         <div class="step">Argent ${info(d.format === 'pelland' ? 'argent' : 'jeu-' + d.format)}</div>
-        ${d.format !== 'pelland' ? `<div class="row" style="flex-wrap:nowrap"><label style="flex:1">${({ neuf: 'Par point', bestball: 'Par trou gagné', match: 'Par trou gagné', nassau: 'Par pari', vegas: 'Par point', wolf: 'Par point', sixes: 'Par tranche gagnée', skins: 'Par skin' })[d.format] || 'Par point'}<span class="money-in"><input id="ppt" type="text" inputmode="decimal" placeholder="1" value="${esc(fmtIn(d.perPoint))}"><i>$</i></span></label><span style="flex:1"></span></div>
+        ${d.format !== 'pelland' ? `<div class="row" style="flex-wrap:nowrap"><label style="flex:1">${({ neuf: 'Par point', bestball: 'Par trou gagné', match: 'Pour la partie', nassau: 'Par pari', vegas: 'Par point', wolf: 'Par point', sixes: 'Par tranche gagnée', skins: 'Par skin' })[d.format] || 'Par point'}<span class="money-in"><input id="ppt" type="text" inputmode="decimal" placeholder="1" value="${esc(fmtIn(d.perPoint))}"><i>$</i></span></label><span style="flex:1"></span></div>
         <p class="note">${esc(ruleText(fakeG(d.format)))} ${esc(gainRule({ ...fakeG(d.format), perPoint: d.perPoint }))}.</p>` : `<div class="row" style="flex-wrap:nowrap">
           <label style="flex:1">La game commence à<span class="money-in"><input id="stake" type="text" inputmode="decimal" placeholder="0" value="${esc(fmtIn(d.stake))}"><i>$</i></span></label>
           <label style="flex:1">À chaque revirement<span class="money-in"><input id="lcv" type="text" inputmode="decimal" placeholder="0" value="${esc(fmtIn(d.leadChangeValue))}"><i>$</i></span></label>
@@ -2374,6 +2377,7 @@
       v.querySelectorAll('[data-game]').forEach(b => b.onclick = () => { const was = d.format; d.format = b.dataset.game; const jj = jeuOf(d.format); if (jj && jj.pp) d.perPoint = String(jj.pp);
         // Vegas : les points montent vite, on propose 0,25 $ le point (sauf si un montant a déjà été choisi)
         if (d.format === 'vegas' && was !== 'vegas' && (d.perPoint === '1' || !d.perPoint)) d.perPoint = '0.25'; else if (was === 'vegas' && d.format !== 'vegas' && d.perPoint === '0.25') d.perPoint = '1';
+        if (d.format === 'match' && was !== 'match' && (d.perPoint === '1' || !d.perPoint)) d.perPoint = '10'; else if (was === 'match' && d.format !== 'match' && d.perPoint === '10') d.perPoint = '1';
         render(); });
       v.querySelectorAll('[data-holes]').forEach(b => b.onclick = () => { d.holes = b.dataset.holes; render(); });
       v.querySelectorAll('[data-count]').forEach(b => b.onclick = () => {
@@ -2432,7 +2436,7 @@
         if (ev && ev.target.closest && ev.target.closest('[data-info]')) return;
         const g = S.game, f = L.formatOf(g), c = g.custom || {};
         const inp = (id, label, val, ph) => `<label style="flex:1">${label}<span class="money-in"><input id="${id}" type="text" inputmode="decimal" placeholder="${ph}" value="${esc(val == null || val === '' ? '' : fmtIn(val))}"><i>$</i></span></label>`;
-        const ppLabel = f === 'pelland' ? 'Par point net' : (f === 'perso' ? 'Par point' : ({ neuf: 'Par point', bestball: 'Par trou gagné', match: 'Par trou gagné', nassau: 'Par pari', vegas: 'Par point', wolf: 'Par point', sixes: 'Par tranche gagnée', skins: 'Par skin' })[f] || 'Par point');
+        const ppLabel = f === 'pelland' ? 'Par point net' : (f === 'perso' ? 'Par point' : ({ neuf: 'Par point', bestball: 'Par trou gagné', match: 'Pour la partie', nassau: 'Par pari', vegas: 'Par point', wolf: 'Par point', sixes: 'Par tranche gagnée', skins: 'Par skin' })[f] || 'Par point');
         const fields = f === 'pelland'
           ? `<div class="row" style="flex-wrap:nowrap">${inp('emStake', 'La game commence à', g.stake, '0')}${inp('emLcv', 'À chaque revirement', g.leadChangeValue, '0')}</div><div class="row" style="flex-wrap:nowrap">${inp('emPp', ppLabel, g.perPoint, '1')}${inp('emP3', 'Chaque normale 3', g.par3Value == null ? 5 : g.par3Value, '5')}</div>`
           : `<div class="row" style="flex-wrap:nowrap">${inp('emPp', ppLabel, g.perPoint, '1')}${f === 'perso' && c.mode === 'equipes' ? inp('emCs', 'Mise à l’équipe qui mène', c.stake, '0') : '<span style="flex:1"></span>'}</div>`;
@@ -2739,7 +2743,7 @@
     if (L.formatOf(g) === 'perso') return persoLines(g.custom).join(' ');
     return ({ neuf: 'Le 9 points : 5 points au meilleur net, 3 au 2e, 1 au 3e ; égalités partagées.',
       bestball: 'Best Ball : le meilleur net de chaque équipe ; le trou gagné vaut 1 point.',
-      match: 'Match play : un contre un, au net ; le plus bas score du trou le gagne (1 point), égalité : trou partagé.',
+      match: 'Match play : un contre un, au net ; le plus bas score gagne le trou. Le match finit dès que l’avance dépasse les trous qui restent (« gagne 3 et 2 »). Un seul enjeu, pour la partie.',
       vegas: 'Vegas : les deux nets de l’équipe forment un nombre, le plus bas d’abord (4 et 5 = 45) ; un oiselet renverse le nombre de l’autre équipe ; l’écart donne les points.',
       nassau: 'Nassau : trois paris en Best Ball, l’aller, le retour et le total ; l’équipe qui gagne le plus de trous gagne le pari.',
       sixes: 'Sixes : les équipes changent à chaque tiers de la partie (6 trous sur 18, 3 sur 9) ; meilleur net de l’équipe, 1 point par trou ; l’équipe qui gagne le plus de trous gagne la tranche.',
@@ -2749,7 +2753,7 @@
   function gainRule(g) {
     const pp = fmt$(neufPP(g));
     if (L.formatOf(g) === 'perso') { const c = g.custom || {}; return c.mode === 'equipes' ? `Gain par joueur = écart de points × ${pp}${+c.stake ? ` + ${fmt$(+c.stake)} à l’équipe qui mène` : ''}` : `Gain = différence de points avec chaque autre joueur × ${pp}`; }
-    return ({ neuf: `Gain = différence de points avec chaque autre joueur × ${pp}`, bestball: `Gain = écart de trous gagnés × ${pp} par joueur`, match: `Gain = écart de trous gagnés × ${pp}`, vegas: `Gain = écart de points × ${pp} par joueur`, nassau: `Gain = ${pp} par pari gagné (perdu : −${pp}), par joueur` + nassauText(g),
+    return ({ neuf: `Gain = différence de points avec chaque autre joueur × ${pp}`, bestball: `Gain = écart de trous gagnés × ${pp} par joueur`, match: `Gain = ${pp} pour le gagnant du match (match nul : rien)`, vegas: `Gain = écart de points × ${pp} par joueur`, nassau: `Gain = ${pp} par pari gagné (perdu : −${pp}), par joueur` + nassauText(g),
       sixes: `Gain = ${pp} par tranche gagnée (perdue : −${pp})`, wolf: `Gain = points × ${pp}`, skins: `Gain = skins gagnés × ${pp} payé par chaque autre joueur` })[L.formatOf(g)] || '';
   }
   // État des paris du Nassau : « L’aller : Rouges +2 · Le retour : égal »
@@ -2764,6 +2768,7 @@
     if (!r) return '';
     if (f === 'neuf' || (f === 'perso' && (g.custom || {}).mode !== 'equipes')) return g.players.map((p, i) => `${ini[i]} ${fmtPts(r.pts[i])}`).join(' · ');
     if (!r.pts) return 'Loup : décision ?';
+    if (f === 'match') { const st = L.matchStatus(g); if (st.decidedAt && r.hole > st.decidedAt) return 'Match déjà fini'; }
     if (f === 'vegas' && r.vegas) return `${r.vegas[0]} – ${r.vegas[1]} · ` + (r.win.length ? `${r.win.map(i => ini[i]).join('+')} +${Math.abs(r.pts[r.win[0]])}` : 'Égalité');
     if (f === 'skins') return r.win.length ? `Skin ${ini[r.win[0]]}${r.units > 1 ? ' ×' + r.units : ''}` : `Report (${r.carry})`;
     const pre = f === 'wolf' && r.wolf ? `Loup ${ini[L.wolfOf(g, r.hole || 1)]}${r.wolf.partner == null ? (r.wolf.blind ? ' seul aveugle' : ' seul') : ''} · ` : '';
@@ -2788,9 +2793,9 @@
     const ls0 = S.lastSaved && S.lastSaved.gid === g.id ? S.lastSaved : null;
     const h = ls0 && g.players.every((p, pi) => L.getScore(g, ls0.hole, pi) != null) ? ls0.hole : lastDoneHole(g);
     if (!h) return '';
-    let t = ls0 && ls0.hole === h ? ls0.text : '';
+    let t = ls0 && ls0.hole === h && L.formatOf(g) !== 'match' ? ls0.text : '';
     if (!t) {
-      if (isAlt(g)) { const r = L.altHoles(g)[h]; t = r ? `Trou ${h} · ${r.desc}` : ''; }
+      if (isAlt(g)) { const r = L.altHoles(g)[h]; t = r ? `Trou ${h} · ${r.desc}` : ''; if (L.formatOf(g) === 'match') { const st = L.matchStatus(g); t += ' · ' + (st.winner >= 0 ? g.players[st.winner].name.split(' ')[0] + ' ' : '') + st.text; } }
       else { const nt = L.holeNetText(g, h); t = [nt ? `Trou ${h} · ${nt}` : '', L.totalText(g).replace(/\.$/, '')].filter(Boolean).join(' · '); }
     }
     t = t.replace(new RegExp('^Trou ' + h + ' · '), '');
@@ -2815,7 +2820,12 @@
     const ph = g.players.map((p, pi) => { const k = L.strokesOnHole(p.strokes, hi.si);
       return `<${owner ? `button type="button" data-allscores="${h}"` : 'div'} class="hp"><div class="nm">${esc(p.name)}${g.responsable === pi ? ' ★' : ''}${pi === wolfNow ? ' <span class="wolf-tag">Loup</span>' : ''}</div><div class="hp-idx">Index ${String(p.index).replace('.', ',')}${sixT && g.players.length > 2 ? ` · <span class="pair">${sixT[0].includes(pi) ? 'Équipe A' : 'Équipe B'}</span>` : ''}</div><div class="dots">${k ? dots(k) : ''}</div><div class="hp-strk">${strokeHoles(g, p)}</div><div class="hp-tot">${tots[pi].played ? `<span>Brut <b>${tots[pi].gross}</b> · Net <b>${tots[pi].net}</b></span><span class="hp-n">${tots[pi].played} trou${tots[pi].played > 1 ? 's' : ''}</span>` : 'Aucun trou joué'}</div><div class="hp-pts"><b>${(pts[pi] > 0 && f !== 'neuf' ? '+' : '') + fmtPts(pts[pi])}</b> ${ptsLabel(g)}</div></${owner ? 'button' : 'div'}>`; });
     const rank = g.players.map((p, i) => i).sort((a, b) => gn[b] - gn[a] || pts[b] - pts[a]);
-    const leader = `<div class="leader-box neuf"><span>Classement · ${esc(fname)} ${info('jeu-' + f)}</span>${rank.map((i, r) => `<div class="nf-r"><b>${r + 1}. ${esc(g.players[i].name)}</b><small>${(pts[i] > 0 && f !== 'neuf' ? '+' : '') + fmtPts(pts[i])} ${ptsLabel(g)}</small><em class="${gn[i] > 0 ? 'pos' : gn[i] < 0 ? 'neg' : ''}">${gn[i] > 0 ? '+' : gn[i] < 0 ? '−' : ''}${fmt$(Math.abs(gn[i]))}</em></div>`).join('')}<div class="lb-detail"><span>${esc(gainRule(g))}</span></div></div>`;
+    const mst = f === 'match' ? L.matchStatus(g) : null;
+    const leader = mst ? `<div class="leader-box neuf match-box"><span>Match play ${info('jeu-' + f)}</span>
+        <div class="mp-status ${mst.decidedAt || mst.done ? 'fini' : ''}"><b>${mst.winner >= 0 && (mst.decidedAt || mst.done) ? esc(g.players[mst.winner].name) + ' ' : mst.winner >= 0 ? esc(g.players[mst.winner].name.split(' ')[0]) + ' : ' : ''}${esc(mst.text)}</b>
+        ${(mst.decidedAt || mst.done) && mst.winner >= 0 ? `<small>Empoche ${fmt$(money(g.perPoint))}</small>` : (mst.decidedAt || mst.done) ? '<small>Personne ne paie.</small>' : `<small>Enjeu de la partie : ${fmt$(money(g.perPoint))}</small>`}</div>
+        ${mst.decidedAt && mst.decidedAt < (g.lastHole || 18) && g.status !== 'terminée' && owner ? '<button class="btn small" data-finish type="button">Le match est fini : terminer la partie</button>' : ''}</div>`
+      : `<div class="leader-box neuf"><span>Classement · ${esc(fname)} ${info('jeu-' + f)}</span>${rank.map((i, r) => `<div class="nf-r"><b>${r + 1}. ${esc(g.players[i].name)}</b><small>${(pts[i] > 0 && f !== 'neuf' ? '+' : '') + fmtPts(pts[i])} ${ptsLabel(g)}</small><em class="${gn[i] > 0 ? 'pos' : gn[i] < 0 ? 'neg' : ''}">${gn[i] > 0 ? '+' : gn[i] < 0 ? '−' : ''}${fmt$(Math.abs(gn[i]))}</em></div>`).join('')}<div class="lb-detail"><span>${esc(gainRule(g))}</span></div></div>`;
     const row = hole => { const ih = L.holeInfo(g, hole, 0), r = AH[hole] ? { ...AH[hole], hole } : null;
       const cells = g.players.map((p, pi) => { const s = L.getScore(g, hole, pi), k = L.strokesOnHole(p.strokes, ih.si), par = L.holeInfo(g, hole, pi).par;
         const cls = s == null ? '' : (s - k < par ? 'birdie' : s - k > par ? 'bogey' : '');
