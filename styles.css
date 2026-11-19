@@ -852,3 +852,10 @@ body.avec-leo #view { padding-bottom: 96px; }
 body:has(#sheetWrap:not([hidden])) .cd-lanceur { display: none; }
 .danger-txt { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, transparent); margin-top: 10px; width: 100%; }
 .retire-row { margin-top: 10px; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* Score enregistré : en haut de la carte du trou */
+.saved-band { all: unset; box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; width: 100%; margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--green) 30%, transparent); border: 1px solid color-mix(in srgb, var(--green) 70%, transparent); color: #fff; }
+.saved-band .sb-ok { width: 26px; height: 26px; border-radius: 50%; background: var(--green); color: var(--green-ink, #fff); display: grid; place-items: center; font-weight: 800; }
+.saved-band b { display: block; font-family: var(--display); font-size: 18px; letter-spacing: .01em; }
+.saved-band small { display: block; font-size: 14.5px; line-height: 1.35; opacity: .9; }
+.saved-band .sb-go { font-size: 22px; opacity: .7; }
+.saved-band:focus-visible { outline: 3px solid var(--flag); outline-offset: 2px; }

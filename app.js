@@ -1580,6 +1580,7 @@
     return `
       ${presenceHtml(g)}
       <section class="hole-card" aria-live="polite">
+        ${savedBand(g)}
         <div class="hole-top">
           <div class="hole-no">${h}</div>
           <div class="hole-meta">Normale <b>${hi.par}</b> · Handicap <b>${hi.si}</b>${meta.map(m => ` · <b>${m}</b>`).join('')}</div>
@@ -2502,7 +2503,7 @@
       const r = L.apply(S.game, actions); next = r.game; say = r.say;
     }
     S.game = next;
-    // message court à l'écran
+    // message court : affiché en haut de la carte du trou, sur le dernier trou enregistré (pas en bulle par-dessus)
     const sc = actions.find(a => a.type === 'scores' || a.type === 'skin');
     if (sc && !undo && isAlt(next)) {
       const r = L.altHoles(next)[sc.hole];
@@ -2517,8 +2518,10 @@
     }
     const pr = isAlt(next) ? null : L.nextPrompt(next);
     S.pending = pr;
+    if (sc && !undo) S.lastSaved = { gid: next.id, hole: sc.hole, text: say };
     render();
-    setReply(say); if (speak) Voice.say(say);
+    if (!(sc && !undo)) setReply(say);
+    if (speak) Voice.say(say);
     try { await Store.saveGame(next); } catch (e) { toast('Non enregistré : ' + e.message); }
   }
 
@@ -2723,6 +2726,25 @@
     return [`${groupName()} – ${gameName(g)} – ${g.course.name.replace(/^Club de golf /i, '')}, ${date}`, done ? 'Résultat final :' : last ? `Après ${last} trou${last > 1 ? 's' : ''} :` : 'La partie commence.',
       ...(last ? rank.map((i, r) => `${r + 1}. ${g.players[i].name} : ${fmtPts(t[i])} ${ptsLabel(g)} (${gn[i] >= 0 ? '+' : '−'}${fmt$(Math.abs(gn[i]))})`) : g.players.map(p => p.name)), inviteLink(g)].join('\n');
   }
+  // Bandeau « Score enregistré » : toujours en haut de la carte, pour le dernier trou terminé (tous les scores entrés)
+  function lastDoneHole(g) {
+    let last = 0; const [a, b] = [g.firstHole || 1, g.lastHole || 18];
+    for (let x = a; x <= b; x++) if (g.players.every((p, pi) => L.getScore(g, x, pi) != null)) last = x;
+    return last;
+  }
+  function savedBand(g) {
+    if (g.status === 'terminée') return '';
+    const ls0 = S.lastSaved && S.lastSaved.gid === g.id ? S.lastSaved : null;
+    const h = ls0 && g.players.every((p, pi) => L.getScore(g, ls0.hole, pi) != null) ? ls0.hole : lastDoneHole(g);
+    if (!h) return '';
+    let t = ls0 && ls0.hole === h ? ls0.text : '';
+    if (!t) {
+      if (isAlt(g)) { const r = L.altHoles(g)[h]; t = r ? `Trou ${h} · ${r.desc}` : ''; }
+      else { const nt = L.holeNetText(g, h); t = [nt ? `Trou ${h} · ${nt}` : '', L.totalText(g).replace(/\.$/, '')].filter(Boolean).join(' · '); }
+    }
+    t = t.replace(new RegExp('^Trou ' + h + ' · '), '');
+    return `<button type="button" class="saved-band" data-detail="${h}"><span class="sb-ok" aria-hidden="true">✓</span><span><b>Score enregistré · trou ${h}</b>${t ? `<small>${esc(t)}</small>` : ''}</span><span class="sb-go" aria-hidden="true">›</span></button>`;
+  }
   function holeDetailNeuf(g, h) {
     const ih = L.holeInfo(g, h, 0), r = L.altHoles(g)[h], f = L.formatOf(g);
     const rows = g.players.map((p, i) => { const s = L.getScore(g, h, i), k = L.strokesOnHole(p.strokes, ih.si);
@@ -2753,6 +2775,7 @@
       return `<tr class="sum"><td colspan="2">${label}</td><td>${par}</td>${g.players.map((p, pi) => { let s = 0, any = false; for (let x = from; x <= to; x++) { const v = L.getScore(g, x, pi); if (v != null) { s += v; any = true; } } return `<td>${any ? s : ''}</td>`; }).join('')}</tr>`; };
     return `${presenceHtml(g)}
       <section class="hole-card" aria-live="polite">
+        ${savedBand(g)}
         <div class="hole-top"><div class="hole-no">${h}</div><div class="hole-meta">Normale <b>${hi.par}</b> · Handicap <b>${hi.si}</b> · <b>${esc(fname)}</b>${f === 'wolf' ? ` · Loup : <b>${esc(g.players[wolfNow].name.split(' ')[0])}</b>` : ''}${f === 'sixes' ? ` · <b>${sixT[0].map(i => esc(g.players[i].name.split(' ')[0])).join(' + ')}</b> contre <b>${sixT[1].map(i => esc(g.players[i].name.split(' ')[0])).join(' + ')}</b>` : ''}</div>
           <div class="hole-nav"><button data-nav="-1" aria-label="Trou précédent">‹</button><button data-nav="1" aria-label="Trou suivant">›</button></div></div>
         ${respActions(g, owner, false)}
