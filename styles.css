@@ -860,3 +860,6 @@ body:has(#sheetWrap:not([hidden])) .cd-lanceur { display: none; }
 .saved-band .sb-go { font-size: 22px; opacity: .7; }
 .saved-band:focus-visible { outline: 3px solid var(--flag); outline-offset: 2px; }
 .archived-band { margin: 0 0 12px; }
+/* Le « i » reste petit à l'œil, mais la zone à toucher fait 44 px (doigt sur iPhone) */
+.info { position: relative; z-index: 1; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.info::after { content: ''; position: absolute; inset: -11px; border-radius: 50%; }
