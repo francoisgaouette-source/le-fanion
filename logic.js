@@ -77,7 +77,7 @@
     const t = teams.map(x => x.slice().sort((a, b) => key(a) - key(b) || a - b));
     return Math.min(...t[0].map(key)) <= Math.min(...t[1].map(key)) ? t : [t[1], t[0]];
   }
-  function getTeams(game) { return game.teams || makeTeams(game.players); }
+  function getTeams(game) { return game.teams || ((game.players || []).length === 2 ? [[0], [1]] : makeTeams(game.players)); }
   function teamName(game, t) { return getTeams(game)[t].map(i => game.players[i].name).join(' et '); }
 
   // ---------- Points de la game ----------
@@ -908,7 +908,7 @@
   function neufTotals(game) { const t = [0, 0, 0]; for (let h = 1; h <= 18; h++) { const r = neufPoints(game, h); if (r) r.pts.forEach((v, i) => { t[i] += v; }); } return t; }
 
   // ---------- Autres jeux : Best Ball, Wolf, Sixes, Skins (et le 9 points) ----------
-  const FORMATS = { pelland: 'La game à Pelland', neuf: 'Le 9 points', bestball: 'Best Ball', nassau: 'Nassau', vegas: 'Vegas', wolf: 'Wolf', sixes: 'Sixes', skins: 'Skins', perso: 'Jeu maison' };
+  const FORMATS = { pelland: 'La game à Pelland', neuf: 'Le 9 points', bestball: 'Best Ball', match: 'Match play', nassau: 'Nassau', vegas: 'Vegas', wolf: 'Wolf', sixes: 'Sixes', skins: 'Skins', perso: 'Jeu maison' };
   function formatOf(g) { return g.format || (g.players.length === 3 ? 'neuf' : 'pelland'); }
   function netOf(g, h, i) { const s = getScore(g, h, i); return s == null ? null : s - strokesOnHole(g.players[i].strokes, g.course.holes[h - 1].si); }
   function holeNets(g, h) { const n = g.players.map((_, i) => netOf(g, h, i)); return n.some(v => v == null) ? null : n; }
@@ -923,11 +923,11 @@
     for (let h = h0; h <= h1; h++) {
       const n = holeNets(g, h); if (!n) { out[h] = null; continue; }
       if (f === 'neuf') { const r = neufPoints(g, h); out[h] = { pts: r.pts, win: [], desc: P.map((p, i) => `${nm(i)} ${r.pts[i]}`).join(', ') }; continue; }
-      if (f === 'bestball' || f === 'nassau' || f === 'sixes') {
+      if (f === 'bestball' || f === 'match' || f === 'nassau' || f === 'sixes') {
         const T = f !== 'sixes' ? getTeams(g) : sixesTeams(h, g), b = T.map(t => Math.min(...t.map(i => n[i]))), pts = P.map(() => 0);
-        if (b[0] === b[1]) { out[h] = { pts, win: [], desc: `Égalité au meilleur net (${b[0]}) : trou partagé.`, teams: T }; continue; }
+        if (b[0] === b[1]) { out[h] = { pts, win: [], desc: T[0].length === 1 ? `Égalité (net ${b[0]}) : trou partagé.` : `Égalité au meilleur net (${b[0]}) : trou partagé.`, teams: T }; continue; }
         const w = b[0] < b[1] ? 0 : 1; T[w].forEach(i => { pts[i] = 1; }); T[1 - w].forEach(i => { pts[i] = -1; });
-        out[h] = { pts, win: T[w], desc: `${T[w].map(nm).join(' et ')} gagnent le trou (meilleur net ${b[w]} contre ${b[1 - w]}).`, teams: T }; continue;
+        out[h] = { pts, win: T[w], desc: T[w].length === 1 ? `${nm(T[w][0])} gagne le trou (net ${b[w]} contre ${b[1 - w]}).` : `${T[w].map(nm).join(' et ')} gagnent le trou (meilleur net ${b[w]} contre ${b[1 - w]}).`, teams: T }; continue;
       }
       if (f === 'vegas') {
         // Vegas : les deux nets de l'équipe forment un nombre, le plus bas d'abord (4 et 5 → 45), maximum double boguey net.

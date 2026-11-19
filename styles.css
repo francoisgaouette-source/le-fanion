@@ -850,3 +850,5 @@ textarea { font-family: inherit; line-height: 1.4; resize: vertical; }
 .cad-visite { margin: 4px 0 0; }
 body.avec-leo #view { padding-bottom: 96px; }
 body:has(#sheetWrap:not([hidden])) .cd-lanceur { display: none; }
+.danger-txt { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, transparent); margin-top: 10px; width: 100%; }
+.retire-row { margin-top: 10px; align-items: center; gap: 8px; flex-wrap: wrap; }
