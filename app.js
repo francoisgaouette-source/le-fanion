@@ -1417,6 +1417,18 @@
     const ps = L.buildPlayers(c, filledIdx(d).map(i => d.players[i]).map(p => ({ name: p.name.trim(), index: parseFloat(String(p.index).replace(',', '.')), tee: p.tee })), d.mode);
     return { c, ready: true, ps };
   }
+  // Conseil de handicap selon le jeu choisi (étape Handicap de Nouvelle partie)
+  const pourJeu = f => { const n = fmtLabel(f) || ''; return 'Pour ' + (/^(La|Le|Les) /.test(n) ? n[0].toLowerCase() + n.slice(1) : 'le ' + n); };
+  function hcpAdvice(d) {
+    const f = d.format, n = d.count;
+    if (f === 'match') return 'Pour le match play : en bas handicap, le meilleur joue à 0 et l’autre reçoit la différence de coups. C’est la façon habituelle.';
+    if (f === 'nassau' && n === 2) return 'Pour le Nassau à deux : en bas handicap, le meilleur joue à 0 et l’autre reçoit la différence.';
+    if (f === 'neuf') return 'Pour le 9 points : en bas handicap, le meilleur des trois joue à 0 et les deux autres reçoivent la différence.';
+    if (f === 'skins') return 'Pour les skins : chacun joue contre tous ; le bas handicap garde les écarts de coups entre les joueurs.';
+    if (f === 'wolf' || f === 'sixes') return `${pourJeu(f)} : les équipes changent en cours de partie ; le bas handicap garde les mêmes écarts de coups.`;
+    if (teamGame(f, n)) return `${pourJeu(f)} : les coups se calculent par joueur, puis l’équipe compte ses scores nets.`;
+    return 'Les coups de chacun se calculent à partir de son index et de son tertre.';
+  }
   function vSetup() {
     $('#barTitle').textContent = 'Nouvelle partie';
     const d = S.draft || (S.draft = newDraft());
@@ -1424,6 +1436,7 @@
     syncCount(d);
     const games = gamesFor(d.count); if (!games.includes(d.format)) d.format = games[0];
     const teamsUsed = teamGame(d.format, d.count);
+    let stepN = 5; const stepNo = () => ++stepN;   // étapes 6, 7, 8… numérotées selon le jeu choisi
     const od = d.offre ? offreDates().find(x => x.key === d.offre) : null;
     const fromOffre = od ? S.courses.find(x => x.name === od.course) : null;
     if (fromOffre) d.courseId = fromOffre.id;
@@ -1451,8 +1464,16 @@
             <label class="resp"><input type="radio" name="resp" value="${i}" ${d.responsable === i ? 'checked' : ''}> Responsable de la partie</label>
           </div>`).join('')}
       </section>
+      <section class="card">
+        <div class="step">${stepNo()} · Jeu ${info('jeu-' + d.format)}</div>
+        <div class="seg holes-seg">${[['18', '18 trous', '1-18'], ['front', 'Aller', '1-9'], ['back', 'Retour', '10-18']].map(([k, t, r]) => `<button type="button" data-holes="${k}" aria-pressed="${(d.holes || '18') === k}"><b>${t}</b><small>${r}</small></button>`).join('')}</div>
+        <div class="games">${games.map(x => `<button type="button" data-game="${x}" aria-pressed="${d.format === x}">${esc(fmtLabel(x))}</button>`).join('')}</div>
+        ${d.format === 'wolf' ? `<p class="note">Le loup tourne dans l’ordre des joueurs : joueur 1 au trou 1, joueur 2 au trou 2, etc.</p>` : ''}
+        ${d.format === 'sixes' ? `<p class="note">Équipes : joueurs 1+2 contre 3+4 (trous 1 à 6), 1+3 contre 2+4 (7 à 12), 1+4 contre 2+3 (13 à 18) ; sur 9 trous, on change aux 3 trous.</p>` : ''}
+      </section>
       ${!teamsUsed ? '' : `<section class="card">
-        <div class="step">6 · Équipes ${info('equipes')}</div>
+        <div class="step">${stepNo()} · Équipes ${info('equipes')}</div>
+        <p class="note step-for">${esc(pourJeu(d.format))} : deux équipes de deux, pour toute la partie.</p>
         <div class="seg">
           <button type="button" data-tmode="auto" aria-pressed="${d.teamMode === 'auto'}"><b>Meilleur + Pire</b><small>Les deux du milieu ensemble</small></button>
           <button type="button" data-tmode="manual" aria-pressed="${d.teamMode === 'manual'}"><b>Je choisis</b><small>Qui joue avec qui</small></button>
@@ -1460,21 +1481,15 @@
         ${d.teamMode === 'manual' ? `<label>Partenaire de ${esc(d.players[0].name || 'joueur 1')}<select id="partner">${[1, 2, 3].map(i => `<option value="${i}" ${d.teams && d.teams[0].includes(i) ? 'selected' : ''}>${esc(d.players[i].name || 'Joueur ' + (i + 1))}</option>`).join('')}</select></label>` : ''}
       </section>`}
       <section class="card">
-        <div class="step">${teamsUsed ? '7' : '6'} · Handicap ${info('handicap')}</div>
+        <div class="step">${stepNo()} · Handicap ${info('handicap')}</div>
+        <p class="note step-for">${esc(hcpAdvice(d))}</p>
         <div class="seg">
           <button type="button" data-mode="bas" aria-pressed="${d.mode === 'bas'}"><b>Bas handicap</b><small>Le plus bas joue à 0, les autres reçoivent la différence</small></button>
           <button type="button" data-mode="full" aria-pressed="${d.mode === 'full'}"><b>Full handicap</b><small>Chacun reçoit son handicap de parcours</small></button>
         </div>
       </section>
       <section class="card">
-        <div class="step">Jeu ${info('jeu-' + d.format)}</div>
-        <div class="seg holes-seg">${[['18', '18 trous', '1-18'], ['front', 'Aller', '1-9'], ['back', 'Retour', '10-18']].map(([k, t, r]) => `<button type="button" data-holes="${k}" aria-pressed="${(d.holes || '18') === k}"><b>${t}</b><small>${r}</small></button>`).join('')}</div>
-        <div class="games">${games.map(x => `<button type="button" data-game="${x}" aria-pressed="${d.format === x}">${esc(fmtLabel(x))}</button>`).join('')}</div>
-        ${d.format === 'wolf' ? `<p class="note">Le loup tourne dans l’ordre des joueurs : joueur 1 au trou 1, joueur 2 au trou 2, etc.</p>` : ''}
-        ${d.format === 'sixes' ? `<p class="note">Équipes : joueurs 1+2 contre 3+4 (trous 1 à 6), 1+3 contre 2+4 (7 à 12), 1+4 contre 2+3 (13 à 18) ; sur 9 trous, on change aux 3 trous.</p>` : ''}
-      </section>
-      <section class="card">
-        <div class="step">Argent ${info(d.format === 'pelland' ? 'argent' : 'jeu-' + d.format)}</div>
+        <div class="step">${stepNo()} · Argent ${info(d.format === 'pelland' ? 'argent' : 'jeu-' + d.format)}</div>
         ${d.format !== 'pelland' ? `<div class="row" style="flex-wrap:nowrap"><label style="flex:1">${({ neuf: 'Par point', bestball: 'Par trou gagné', match: 'Pour la partie', nassau: 'Par pari', vegas: 'Par point', wolf: 'Par point', sixes: 'Par tranche gagnée', skins: 'Par skin' })[d.format] || 'Par point'}<span class="money-in"><input id="ppt" type="text" inputmode="decimal" placeholder="1" value="${esc(fmtIn(d.perPoint))}"><i>$</i></span></label><span style="flex:1"></span></div>
         <p class="note">${esc(ruleText(fakeG(d.format)))} ${esc(gainRule({ ...fakeG(d.format), perPoint: d.perPoint }))}.</p>` : `<div class="row" style="flex-wrap:nowrap">
           <label style="flex:1">La game commence à<span class="money-in"><input id="stake" type="text" inputmode="decimal" placeholder="0" value="${esc(fmtIn(d.stake))}"><i>$</i></span></label>
@@ -1486,7 +1501,7 @@
         </div>`}
       </section>
       <section class="card">
-        <div class="step">${teamsUsed ? '8 · Coups et équipes' : '7 · Coups'}</div>
+        <div class="step">${stepNo()} · ${teamsUsed ? 'Coups et équipes' : 'Coups'}</div>
         <div id="pv" class="preview">${previewHtml(d)}</div>
         <p class="note" id="missingNote">${missingList(d).length ? 'Il manque ' + esc(missingList(d).join(', ')) + '.' : ''}</p>
         <button class="btn" id="create" type="button" ${missingList(d).length ? 'disabled' : ''}>Créer la carte de pointage</button>
@@ -1536,7 +1551,7 @@
     if (!pv || !pv.ready) return `<p class="note">Entrez au moins deux prénoms et leur index pour voir les coups${d.count === 4 ? ' et les équipes' : ''}.</p>`;
     return `<table><thead><tr><th>Joueur</th><th>Tertre</th><th style="text-align:right">Index</th><th style="text-align:right">Hcp</th><th style="text-align:right">Coups</th></tr></thead><tbody>
       ${pv.ps.map(p => `<tr><td>${esc(p.name)}</td><td>${esc(p.tee)}</td><td class="n">${String(p.index).replace('.', ',')}</td><td class="n">${p.courseHandicap}</td><td class="n"><b>${p.strokes}</b></td></tr>`).join('')}
-      </tbody></table>${!teamGame(d.format, d.count) ? '' : d.teamMode ? teamsHtml(pv.ps, draftTeams(d, pv.ps)) : '<p class="note">Choisissez la formation des équipes à l\'étape 6.</p>'}<p class="note">${d.mode === 'full' ? '<b>Coups</b> : chaque joueur reçoit son handicap de parcours (Hcp).' : '<b>Coups</b> = Hcp du joueur − Hcp le plus bas du groupe. Le meilleur joue à 0.'}${coupsCalc(pv.ps, d.mode)} Les coups se placent d’abord sur les trous les plus difficiles : 7 coups, 1 par trou, pour des trous de difficulté 1 à 7. Au-delà de 18 coups, on recommence : un 2<sup>e</sup> coup sur les trous les plus difficiles.</p>`;
+      </tbody></table>${!teamGame(d.format, d.count) ? '' : d.teamMode ? teamsHtml(pv.ps, draftTeams(d, pv.ps)) : '<p class="note">Choisissez la formation des équipes plus haut, à l\'étape Équipes.</p>'}<p class="note">${d.mode === 'full' ? '<b>Coups</b> : chaque joueur reçoit son handicap de parcours (Hcp).' : '<b>Coups</b> = Hcp du joueur − Hcp le plus bas du groupe. Le meilleur joue à 0.'}${coupsCalc(pv.ps, d.mode)} Les coups se placent d’abord sur les trous les plus difficiles : 7 coups, 1 par trou, pour des trous de difficulté 1 à 7. Au-delà de 18 coups, on recommence : un 2<sup>e</sup> coup sur les trous les plus difficiles.</p>`;
   }
 
   // « Claude : 12 − 7 = 5 coups (trous de difficulté 1 à 5) »
@@ -2395,7 +2410,7 @@
         const pv = draftPreview(d);
         if (!pv || !pv.ready) { const m = 'Il manque ' + missingList(d).slice(0, 2).join(' et ') + '.'; toast(m); setReply(m); Voice.say(m); return; }
         syncCount(d); const fmtG = gamesFor(d.count).includes(d.format) ? d.format : gamesFor(d.count)[0], jeu = jeuOf(fmtG), neuf = !teamGame(fmtG, d.count), rIdx = filledIdx(d).indexOf(d.responsable);
-        if (!neuf && !d.teamMode) { toast('Choisissez la formation des équipes (étape 7).'); return; }
+        if (!neuf && !d.teamMode) { toast('Choisissez la formation des équipes (étape Équipes).'); return; }
         const names = pv.ps.map(p => L.norm(p.name));
         if (new Set(names).size < names.length) return toast('Le même joueur est choisi deux fois.');
         ls.set('pelland.lastPlayers', d.players);
