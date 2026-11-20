@@ -2033,15 +2033,75 @@
     const r = await fetch(TERRAINS_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify(body) });
     const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || 'Erreur ' + r.status); return d;
   }
+  // Région du joueur d'après sa position : point de repère le plus proche (villes principales de chaque région)
+  const REPERES = {
+    'Montréal': [[45.50, -73.57], [45.45, -73.75], [45.60, -73.56], [45.46, -73.84], [45.56, -73.66]],
+    'Laval': [[45.57, -73.72], [45.61, -73.80], [45.60, -73.65], [45.54, -73.79]],
+    'Montérégie': [[45.53, -73.45], [45.45, -73.47], [45.31, -73.26], [45.63, -72.95], [45.25, -74.13], [45.40, -74.03], [45.38, -73.56], [45.40, -72.73], [46.04, -73.11]],
+    'Lanaudière': [[46.02, -73.44], [45.71, -73.49], [45.70, -73.64], [46.40, -73.95], [45.84, -73.42]],
+    'Laurentides': [[45.78, -74.00], [46.12, -74.60], [45.67, -73.88], [46.55, -75.50], [45.92, -74.17], [45.55, -74.33], [45.64, -73.84]],
+    'Cantons-de-l’Est': [[45.40, -71.89], [45.27, -72.15], [45.40, -72.00], [45.10, -72.30], [45.58, -70.88]],
+    'Centre-du-Québec': [[45.88, -72.48], [46.06, -71.96], [46.22, -72.62], [45.95, -72.20]],
+    'Mauricie': [[46.35, -72.55], [46.55, -72.75], [47.43, -72.78], [46.60, -73.00]],
+    'Québec (Capitale-Nationale)': [[46.81, -71.21], [46.87, -71.35], [46.75, -71.60], [46.95, -71.30], [46.70, -71.90]],
+    'Charlevoix': [[47.65, -70.15], [47.44, -70.50], [47.50, -70.30]],
+    'Chaudière-Appalaches': [[46.80, -71.18], [46.70, -71.25], [46.12, -70.67], [46.22, -70.78], [46.98, -70.55], [45.90, -70.40], [46.45, -71.00]],
+    'Outaouais': [[45.48, -75.70], [45.43, -75.75], [45.60, -75.40], [45.85, -76.00], [46.38, -75.97]],
+    'Abitibi-Témiscamingue': [[48.24, -79.02], [48.10, -77.78], [48.57, -78.12], [47.31, -79.43]],
+    'Saguenay–Lac-Saint-Jean': [[48.43, -71.07], [48.42, -71.25], [48.55, -72.23], [48.87, -72.23], [48.53, -71.65]],
+    'Bas-Saint-Laurent': [[48.45, -68.52], [47.83, -69.53], [48.23, -69.02], [47.38, -68.33], [48.85, -67.53]],
+    'Gaspésie': [[48.83, -64.48], [49.12, -66.49], [48.11, -66.13], [48.03, -65.00], [47.38, -61.86]],
+    'Côte-Nord': [[49.22, -68.15], [50.22, -66.38], [48.14, -69.72], [50.28, -63.60]],
+  };
+  function regionDe(lat, lng) {
+    let best = null, d0 = Infinity;
+    for (const [r, pts] of Object.entries(REPERES)) for (const [a, b] of pts) {
+      const d = Math.hypot(lat - a, (lng - b) * Math.cos(lat * Math.PI / 180));
+      if (d < d0) { d0 = d; best = r; }
+    }
+    return d0 < 1.6 ? best : null;   // environ 175 km du repère le plus proche ; plus loin : hors Québec
+  }
+  const REGION_K = 'fanion.region';
+  function positionJoueur() {
+    return new Promise(ok => {
+      if (!navigator.geolocation) return ok({ err: 'non' });
+      navigator.geolocation.getCurrentPosition(p => ok({ lat: p.coords.latitude, lng: p.coords.longitude }), e => ok({ err: e.code === 1 ? 'refus' : 'echec' }), { enableHighAccuracy: false, timeout: 10000, maximumAge: 600e3 });
+    });
+  }
   function ajoutTerrainSheet() {
-    openSheet(`<h3>Ajouter un terrain</h3>
-      <p class="note">Choisissez la région : Léo cherche sur le web tous les clubs de golf de la région et prépare la carte de pointage du terrain choisi. Vous la vérifiez, puis l’approuvez ou la refusez avant qu’elle entre dans la banque.</p>
-      <div class="region-grid">${REGIONS_QC.map(r => `<button class="chip-btn" data-region="${esc(r)}" type="button">${esc(r)}</button>`).join('')}</div>
-      <div class="sheet-actions"><button class="btn ghost" data-main type="button">Autre : photo de la carte ou à la main</button><button class="btn ghost" data-close type="button">Annuler</button></div>`, sh => {
+    const memo = ls.get(REGION_K, null);   // { region, auto } : dernière région détectée ou choisie
+    const html = (etat) => {
+      const r = etat.region;
+      const tete = etat.cherche ? `<div class="region-moi"><div class="spin small"></div><span>Léo cherche votre région d’après votre position…</span></div>`
+        : r ? `<div class="region-moi"><span class="note">${etat.auto ? '📍 Votre région, d’après votre position' : etat.horsQc ? 'Votre position semble hors du Québec. Dernière région utilisée' : 'Dernière région utilisée'}</span>
+            <button class="btn" data-region="${esc(r)}" type="button">Chercher les clubs · ${esc(r)}</button></div>`
+        : `<div class="region-moi"><span class="note">${etat.horsQc ? 'Votre position semble hors du Québec : choisissez une région.' : etat.refus ? 'Position non disponible : choisissez une région.' : 'Choisissez une région.'}</span>
+            ${etat.refus || etat.echec ? '<button class="btn ghost small" data-relocal type="button">📍 Utiliser ma position</button>' : ''}</div>`;
+      return `<h3>Ajouter un terrain</h3>
+        <p class="note">Léo cherche sur le web tous les clubs de golf de la région et prépare la carte de pointage du terrain choisi. Vous la vérifiez, puis l’approuvez ou la refusez avant qu’elle entre dans la banque.</p>
+        ${tete}
+        <h4 class="region-autres">${r || etat.cherche ? 'Autres régions' : 'Régions du Québec'}</h4>
+        <div class="region-grid">${REGIONS_QC.filter(x => x !== r).map(x => `<button class="chip-btn" data-region="${esc(x)}" type="button">${esc(x)}</button>`).join('')}</div>
+        <div class="sheet-actions"><button class="btn ghost" data-main type="button">Autre : photo de la carte ou à la main</button><button class="btn ghost" data-close type="button">Annuler</button></div>`;
+    };
+    let etat = { region: memo && memo.region, auto: !!(memo && memo.auto), cherche: true };
+    const lier = sh => {
       sh.querySelector('[data-close]').onclick = closeSheet;
       sh.querySelector('[data-main]').onclick = () => { closeSheet(); go('course', { editCourse: null }); };
-      sh.querySelectorAll('[data-region]').forEach(b => b.onclick = () => { closeSheet(); chercherClubs(b.dataset.region); });
-    });
+      sh.querySelectorAll('[data-region]').forEach(b => b.onclick = () => { const x = b.dataset.region; ls.set(REGION_K, { region: x, auto: x === etat.detectee }); closeSheet(); chercherClubs(x); });
+      const rl = sh.querySelector('[data-relocal]'); if (rl) rl.onclick = localiser;
+    };
+    const maj = () => { const sh = $('#sheet'); if ($('#sheetWrap').hidden || !sh.querySelector('.region-grid')) return; sh.innerHTML = html(etat); lier(sh); };
+    async function localiser() {
+      etat = { ...etat, cherche: true }; maj();
+      const p = await positionJoueur();
+      const det = p.err ? null : regionDe(p.lat, p.lng);
+      if (det) etat = { region: det, auto: true, detectee: det };
+      else etat = { region: memo && memo.region, auto: false, horsQc: !p.err, refus: p.err === 'refus', echec: p.err && p.err !== 'refus' };
+      maj();
+    }
+    openSheet(html(etat), lier);
+    localiser();
   }
   async function chercherClubs(region, frais) {
     Object.assign(W, { region, clubs: [], sources: [], charge: false, err: '', prep: null });
