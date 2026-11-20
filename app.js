@@ -2014,10 +2014,12 @@
   }
   function vCourses() {
     $('#barTitle').textContent = 'Terrains';
-    return `<div class="list">${S.courses.map(c => `<button class="item" data-edit="${esc(c.id)}"><b>${esc(c.name)}</b><span>${c.sim ? 'Simulateur · ' : ''}${c.catalog ? 'Catalogue Québec · ' : ''}Normale ${L.teePar(c, c.tees[0])} · ${c.tees.length} tertres${c.city ? ' · ' + esc(c.city) : ''}</span></button>`).join('')}</div>
+    return `<div class="list">${S.courses.map(c => `<div class="course-row"><button class="item" data-edit="${esc(c.id)}"><b>${esc(c.name)}</b><span>${c.sim ? 'Simulateur · ' : ''}${c.catalog ? 'Catalogue Québec · ' : ''}${c.source === 'web' ? 'Trouvé sur le web · ' : ''}Normale ${L.teePar(c, c.tees[0])} · ${c.tees.length} tertres${c.city ? ' · ' + esc(c.city) : ''}</span></button>
+        ${S.confirmDelCourse === c.id ? `<div class="row del-confirm"><span class="note">Effacer « ${esc(c.name)} » ?</span><button class="btn small" data-delcourse-ok="${esc(c.id)}" type="button" style="background:var(--red)">Effacer</button><button class="btn ghost small" data-delcourse-no type="button">Annuler</button></div>`
+          : `<button class="btn ghost small danger-txt course-del" data-delcourse="${esc(c.id)}" type="button" aria-label="Effacer ${esc(c.name)}">Effacer</button>`}</div>`).join('')}</div>
       <button class="btn" data-addcourse type="button">Ajouter un terrain</button>
-      <p class="note">Ceux marqués « Catalogue Québec » viennent de cartes de pointage publiques : vérifiez les normales, handicaps et tertres avec la carte du club, et corrigez au besoin (la correction est gardée). Pour retirer un terrain de la banque, ouvrez-le.</p>
-      ${(Store.retired || []).length ? `<section class="card"><h3>Terrains retirés</h3><p class="note">Ils n’apparaissent plus dans la banque ni dans Nouvelle partie. Les parties déjà jouées gardent leur terrain.</p>
+      <p class="note">Ceux marqués « Catalogue Québec » viennent de cartes de pointage publiques : vérifiez les normales, handicaps et tertres avec la carte du club, et corrigez au besoin (la correction est gardée). « Effacer » enlève le terrain de la banque de votre groupe ; les parties déjà jouées le gardent, et vous pouvez le remettre plus bas.</p>
+      ${(Store.retired || []).length ? `<section class="card"><h3>Terrains effacés</h3><p class="note">Ils n’apparaissent plus dans la banque ni dans Nouvelle partie. Les parties déjà jouées gardent leur terrain.</p>
         <div class="list">${Store.retired.map(c => `<div class="item"><b>${esc(c.name)}</b><button class="btn ghost small" data-unretire="${esc(c.id)}" type="button">Remettre</button></div>`).join('')}</div></section>` : ''}`;
   }
   // ---------------- Terrains trouvés sur le web : région → clubs → carte préparée → révision et approbation ----------------
@@ -2117,8 +2119,8 @@
       ${w ? `<div class="row web-actions"><button class="btn" id="saveCourse" type="button">Approuver et ajouter à la banque</button><button class="btn ghost danger-txt" id="refuseCourse" type="button">Refuser</button></div>`
         : `<button class="btn" id="saveCourse" type="button">Enregistrer le terrain</button>`}
       ${c.id && S.courses.some(x => x.id === c.id) ? (S.confirmRetire === c.id
-        ? `<div class="row retire-row"><span class="note">Retirer « ${esc(c.name)} » de la banque du groupe ?</span><button class="btn small" id="retireOk" type="button" style="background:var(--red)">Retirer</button><button class="btn ghost small" id="retireNo" type="button">Annuler</button></div>`
-        : `<button class="btn ghost danger-txt" id="retireCourse" type="button">Retirer ce terrain de la banque</button>`) : ''}`;
+        ? `<div class="row retire-row"><span class="note">Effacer « ${esc(c.name)} » de la banque du groupe ?</span><button class="btn small" id="retireOk" type="button" style="background:var(--red)">Effacer</button><button class="btn ghost small" id="retireNo" type="button">Annuler</button></div>`
+        : `<button class="btn ghost danger-txt" id="retireCourse" type="button">Effacer ce terrain</button>`) : ''}`;
   }
 
   // ---------------- Lecture de la carte (photo ou PDF) ----------------
@@ -2469,6 +2471,13 @@
     courses(v) {
       commonNav(v);
       const ac = v.querySelector('[data-addcourse]'); if (ac) ac.onclick = ajoutTerrainSheet;
+      v.querySelectorAll('[data-delcourse]').forEach(b => b.onclick = () => { S.confirmDelCourse = b.dataset.delcourse; render(); });
+      v.querySelectorAll('[data-delcourse-no]').forEach(b => b.onclick = () => { S.confirmDelCourse = null; render(); });
+      v.querySelectorAll('[data-delcourse-ok]').forEach(b => b.onclick = async () => {
+        b.disabled = true; const c = S.courses.find(x => x.id === b.dataset.delcourseOk);
+        try { await Store.setCourseRetired(b.dataset.delcourseOk, true); S.courses = await Store.listCourses(); S.confirmDelCourse = null; toast(`« ${c ? c.name : 'Terrain'} » est effacé.`); render(); }
+        catch (e) { b.disabled = false; toast('Impossible : ' + e.message); }
+      });
       v.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => go('course', { editCourse: JSON.parse(JSON.stringify(S.courses.find(c => c.id === b.dataset.edit))), confirmRetire: null }));
       v.querySelectorAll('[data-unretire]').forEach(b => b.onclick = async () => {
         b.disabled = true;
@@ -2514,7 +2523,7 @@
       const rn = $('#retireNo'); if (rn) rn.onclick = () => { S.confirmRetire = null; render(); };
       const ro = $('#retireOk'); if (ro) ro.onclick = async () => {
         ro.disabled = true;
-        try { await Store.setCourseRetired(c.id, true); S.courses = await Store.listCourses(); S.confirmRetire = null; S.editCourse = null; toast(`« ${c.name} » est retiré de la banque.`); go('courses'); }
+        try { await Store.setCourseRetired(c.id, true); S.courses = await Store.listCourses(); S.confirmRetire = null; S.editCourse = null; toast(`« ${c.name} » est effacé de la banque.`); go('courses'); }
         catch (e) { ro.disabled = false; toast('Retrait impossible : ' + e.message); }
       };
       const rf = $('#refuseCourse'); if (rf) rf.onclick = () => { toast('Carte refusée : rien n’a été ajouté.'); S.editCourse = null; go(W.region ? 'clubs' : 'courses'); };
