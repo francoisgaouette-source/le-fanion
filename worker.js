@@ -166,6 +166,8 @@ Les règles détaillées sont sur fanion.ai/regles/.`;
 
 // Console HoldingAI : reçoit les questions posées au Caddie (le jeton Firebase du membre y est revérifié)
 const JOURNAL_CADDIE = 'https://gandliltstmtfsmsjaew.supabase.co/functions/v1/journal-caddie';
+// Boucle de retour (idées, réponses de l'équipe, nouveautés, sondage) : notée dans la console HoldingAI, jeton Firebase revérifié là-bas
+const RETOUR_FANION = 'https://gandliltstmtfsmsjaew.supabase.co/functions/v1/retour-fanion';
 const RATE = new Map();
 function tooMany(uid) {
   const now = Date.now(), r = (RATE.get(uid) || []).filter(t => now - t < 3600e3);
@@ -217,6 +219,16 @@ export default {
       if (tooMany('push:' + uid)) return json({ error: 'Trop de notifications d’un coup.' }, 429, origin);
       let data; try { data = await req.json(); } catch (e) { return json({ error: 'requête invalide' }, 400, origin); }
       try { return json(await pushGroup(env, tk, uid, data), 200, origin); } catch (e) { return json({ error: e.message }, 403, origin); }
+    }
+    if (url.pathname === '/api/retour' && req.method === 'POST') {
+      const tk = (req.headers.get('Authorization') || '').replace(/^Bearer /, '');
+      let who; try { who = await verifyToken(tk); } catch (e) { return json({ error: 'Connexion requise.' }, 401, origin); }
+      if (tooMany('retour:' + (who.user_id || who.sub))) return json({ error: 'Beaucoup d’envois d’un coup : réessayez plus tard.' }, 429, origin);
+      const body = (await req.text()).slice(0, 8000);
+      const r = await fetch(RETOUR_FANION, { method: 'POST', headers: { Authorization: 'Bearer ' + tk, 'Content-Type': 'application/json' }, body }).catch(() => null);
+      if (!r) return json({ error: 'Service indisponible.' }, 502, origin);
+      const d = await r.json().catch(() => ({}));
+      return json(r.ok ? d : { error: d.erreur || 'Erreur ' + r.status }, r.ok ? 200 : r.status, origin);
     }
     if (url.pathname === '/api/caddie/status') return json({ ready: !!env.ANTHROPIC_API_KEY }, 200, origin);
     if (url.pathname === '/api/caddie' && req.method === 'POST') {
