@@ -241,5 +241,10 @@ service cloud.firestore {
       allow read: if admin() || dansGroupe(resource.data.groupe);
       allow update, delete: if admin();
     }
+    // Photos de la carte de pointage d'un terrain approuvé (pour vérifier)
+    match /cartesTerrains/{courseId} {
+      allow read: if membre();
+      allow write: if admin();
+    }
   }
 }

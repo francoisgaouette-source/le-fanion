@@ -158,7 +158,7 @@ LES JEUX (tout au net, avec handicap ; montants par joueur)
 - Best Ball : meilleur net de chaque équipe ; écart de trous gagnés × montant.
 - Match play (2 joueurs, un contre un) : au net, le plus bas score gagne le trou ; on compte l'avance en trous ; le match finit dès que l'avance dépasse les trous qui restent (« gagne 3 et 2 » = 3 trous d'avance, 2 à jouer) ; égalité au bout : match nul. Un seul enjeu, pour la partie (10 $ proposé) : le gagnant l'empoche, match nul personne ne paie. À 2 joueurs, on peut aussi jouer le Nassau (un contre un) ou les skins. À 3 joueurs : le 9 points ou les skins. Dans Nouvelle partie, on laisse simplement les cases des joueurs 3 et 4 vides.
 - Banque de terrains : dans Terrains, chaque terrain a un bouton « Effacer » (aussi dans le terrain ouvert : « Effacer ce terrain ») ; il disparaît pour ce groupe seulement, les parties jouées le gardent, et on peut le remettre plus bas dans la liste (« Remettre »).
-- Ajouter un terrain : dans Terrains, « Ajouter un terrain » propose la région du joueur d'après sa position, au Québec comme ailleurs dans le monde (on peut choisir une autre région ou taper un lieu) ; Léo cherche sur le web les clubs de la région, puis prépare la carte de pointage du parcours choisi (normales, handicaps, tertres, évaluation, slope, avec les sources). On la compare avec la carte officielle du club, on corrige au besoin, puis « Envoyer pour approbation » ou « Refuser ». Chaque nouveau terrain (web, photo ou à la main) est vérifié et approuvé par l'équipe Fanion avant d'entrer dans la banque commune ; en attendant, il apparaît dans Terrains sous « En attente d'approbation ». On peut aussi photographier la carte ou tout entrer à la main.
+- Ajouter un terrain : dans Terrains, « Ajouter un terrain » propose la région du joueur d'après sa position, au Québec comme ailleurs dans le monde (on peut choisir une autre région ou taper un lieu) ; Léo cherche sur le web les clubs de la région, puis prépare la carte de pointage du parcours choisi (normales, handicaps, tertres, évaluation, slope, avec les sources et l'image ou le PDF de la carte du club joint pour vérifier ; les photos de carte prises par le joueur sont aussi jointes). On la compare avec la carte officielle du club, on corrige au besoin, puis « Envoyer pour approbation » ou « Refuser ». Chaque nouveau terrain (web, photo ou à la main) est vérifié et approuvé par l'équipe Fanion avant d'entrer dans la banque commune ; en attendant, il apparaît dans Terrains sous « En attente d'approbation ». On peut aussi photographier la carte ou tout entrer à la main.
 - Vegas (4 joueurs, équipes de deux) : les deux scores nets de l'équipe forment un nombre, le plus bas d'abord (4 et 5 = 45) ; un oiselet au brut renverse le nombre de l'autre équipe (45 devient 54), sauf si les deux équipes en font un ; maximum double boguey net par joueur ; l'écart entre les nombres = les points du trou ; gain = écart de points × montant par point (souvent 0,25 $).
 - Sixes : équipes qui changent tous les 6 trous ; chaque tranche vaut la mise.
 - 9 points (3 joueurs) : 5-3-1 par trou ; égalités 4-4-1, 5-2-2, 3-3-3 ; différence de points × montant avec chaque joueur.
@@ -236,6 +236,21 @@ Réponds par : {"clubs":[{"nom":"Club de golf …","ville":"…","parcours":[{"n
   })).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
   return { region, clubs, sources: urls.slice(0, 8) };
 }
+async function typeCarte(u) {
+  try {
+    const r = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FanionBot/1.0; +https://fanion.ai)', Accept: 'image/*,application/pdf' }, redirect: 'follow', cf: { cacheTtl: 86400 } });
+    const t = (r.headers.get('content-type') || '').toLowerCase(); try { r.body && r.body.cancel(); } catch (e) { }
+    if (!r.ok) return null;
+    return /^image\/(jpeg|png|webp|gif)/.test(t) ? 'image' : /application\/pdf/.test(t) ? 'pdf' : null;
+  } catch (e) { return null; }
+}
+// Adresse signée pour afficher la carte source dans l'app (beaucoup de sites bloquent l'affichage direct depuis un autre site)
+async function signe(env, u) {
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode('carte:' + (env.ANTHROPIC_API_KEY || '')), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const s = new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(u)));
+  return btoa(String.fromCharCode(...s.slice(0, 18))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+async function carteVue(env, u) { return 'https://fanion.ai/api/terrains/carte?u=' + encodeURIComponent(u) + '&s=' + await signe(env, u); }
 async function carteClub(env, { nom, ville, parcours, region }) {
   const auQc = !region || REGIONS_QC.includes(region), lieu = auQc ? 'Québec' : region;
   const qui = `${nom}${parcours ? ' – parcours « ' + parcours + ' »' : ''}${ville ? ' (' + ville + ', ' + lieu + ')' : ' (' + lieu + ')'}`;
@@ -243,7 +258,8 @@ async function carteClub(env, { nom, ville, parcours, region }) {
     model: env.TERRAINS_MODEL_CARTE || 'claude-sonnet-5-5', system: TERRAINS_SYS, search: 6, fetchMax: 5, maxTokens: 3000, auQc,
     prompt: `Trouve la carte de pointage officielle de : ${qui}. Cherche le site du club et les sites de cartes de pointage (golfingrecord.com, bluegolf, golfpass, 18birdies, golflink, ${auQc ? 'Golf Québec' : 'la fédération de golf du pays'}…) et ouvre les pages pour lire les chiffres.
 Il faut : la normale (par) et le handicap (stroke index, 1 = trou le plus difficile) de chaque trou, et pour chaque tertre son nom (couleur), son évaluation (course rating) et son slope, pour les hommes de préférence.
-Réponds par : {"name":"…","city":"…","holes":[{"par":4,"si":7}, … 18 trous dans l’ordre],"tees":[{"name":"Bleu","rating":71.2,"slope":128}],"confiance":"haute|moyenne|basse","notes":"ce qui manque ou semble douteux"}`
+Très important pour la vérification : donne l’adresse exacte du fichier de la carte de pointage elle-même (image .jpg/.png/.webp ou PDF) telle que vue dans les pages ouvertes — souvent sur le site du club (« carte de pointage », « scorecard ») — dans "carte_fichier", et l’adresse de la page web qui montre la carte dans "carte_page". N’invente jamais une adresse : null si tu ne l’as pas vue.
+Réponds par : {"name":"…","city":"…","holes":[{"par":4,"si":7}, … 18 trous dans l’ordre],"tees":[{"name":"Bleu","rating":71.2,"slope":128}],"carte_fichier":"https://…","carte_page":"https://…","confiance":"haute|moyenne|basse","notes":"ce qui manque ou semble douteux"}`
   });
   const n = v => (v === null || v === undefined || v === '' || isNaN(Number(v)) ? null : Number(v));
   const holes = (Array.isArray(data.holes) ? data.holes : []).slice(0, 18).map(h => ({ par: n(h && h.par), si: n(h && h.si) }));
@@ -255,7 +271,14 @@ Réponds par : {"name":"…","city":"…","holes":[{"par":4,"si":7}, … 18 trou
   const si = holes.map(h => h.si);
   if (si.some(x => x === null) || new Set(si).size !== 18 || si.some(x => x < 1 || x > 18)) alertes.push('Les handicaps des trous ne vont pas de 1 à 18 sans doublon.');
   if (!tees.length || tees.some(t => !t.rating || !t.slope || t.slope < 55 || t.slope > 155 || t.rating < 50 || t.rating > 80)) alertes.push('Vérifiez l’évaluation et le slope des tertres.');
-  return { name: String(data.name || nom).slice(0, 90), city: String(data.city || ville || '').slice(0, 60), holes, tees, confiance: ['haute', 'moyenne', 'basse'].includes(data.confiance) ? data.confiance : 'basse', notes: String(data.notes || '').slice(0, 600), alertes, sources: urls.slice(0, 6) };
+  // La carte de pointage source, jointe pour la vérification : on confirme que l'adresse donne bien une image ou un PDF
+  const http = u => (typeof u === 'string' && /^https?:\/\/[^\s]+$/i.test(u) && u.length < 600 ? u : null);
+  let carte = null;
+  const f = http(data.carte_fichier);
+  if (f) { const t = await typeCarte(f); if (t) carte = { url: f, type: t }; }
+  const page = http(data.carte_page) || (carte ? null : urls[0] || null);
+  if (!carte) alertes.push('Carte de pointage du club introuvable en image : ouvrez la page source pour vérifier.');
+  return { name: String(data.name || nom).slice(0, 90), city: String(data.city || ville || '').slice(0, 60), holes, tees, carte, cartePage: page, confiance: ['haute', 'moyenne', 'basse'].includes(data.confiance) ? data.confiance : 'basse', notes: String(data.notes || '').slice(0, 600), alertes, sources: urls.slice(0, 6) };
 }
 
 export default {
@@ -289,6 +312,20 @@ export default {
       const d = await r.json().catch(() => ({}));
       return json(r.ok ? d : { error: d.erreur || 'Erreur ' + r.status }, r.ok ? 200 : r.status, origin);
     }
+    // Carte de pointage source, servie depuis fanion.ai : seulement une adresse signée par ce serveur, et seulement une image ou un PDF
+    if (url.pathname === '/api/terrains/carte' && req.method === 'GET') {
+      const u = url.searchParams.get('u') || '', s = url.searchParams.get('s') || '';
+      if (!/^https?:\/\//i.test(u) || !s || s !== await signe(env, u)) return new Response('Lien invalide', { status: 403 });
+      const cache = caches.default, ck = new Request('https://fanion.ai/__carte/' + encodeURIComponent(u).slice(0, 900));
+      const hit = await cache.match(ck); if (hit) return hit;
+      let r; try { r = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FanionBot/1.0; +https://fanion.ai)', Accept: 'image/*,application/pdf' }, redirect: 'follow' }); } catch (e) { return new Response('Carte introuvable', { status: 502 }); }
+      const t = (r.headers.get('content-type') || '').toLowerCase(), n = Number(r.headers.get('content-length') || 0);
+      if (!r.ok || !/^(image\/(jpeg|png|webp|gif)|application\/pdf)/.test(t) || n > 15e6) return new Response('Carte introuvable', { status: 404 });
+      const buf = await r.arrayBuffer(); if (buf.byteLength > 15e6) return new Response('Trop gros', { status: 413 });
+      const res = new Response(buf, { headers: { 'Content-Type': t.split(';')[0], 'Cache-Control': 'public, max-age=604800', 'Content-Disposition': 'inline', 'X-Content-Type-Options': 'nosniff', 'Access-Control-Allow-Origin': '*' } });
+      if (ctx) ctx.waitUntil(cache.put(ck, res.clone()));
+      return res;
+    }
     if (url.pathname === '/api/terrains' && req.method === 'POST') {
       if (!env.ANTHROPIC_API_KEY) return json({ error: 'La recherche de terrains n’est pas encore configurée.' }, 503, origin);
       const tk = (req.headers.get('Authorization') || '').replace(/^Bearer /, '');
@@ -306,6 +343,7 @@ export default {
       if (tooMany('terrains:' + (who.user_id || who.sub))) return json({ error: 'Beaucoup de recherches d’un coup : réessayez dans quelques minutes.' }, 429, origin);
       try {
         const out = data.action === 'region' ? await clubsRegion(env, data.region) : await carteClub(env, { nom: String(data.nom).slice(0, 90), ville: String(data.ville || '').slice(0, 60), parcours: String(data.parcours || '').slice(0, 60), region: data.region });
+        if (out.carte) out.carte.vue = await carteVue(env, out.carte.url);
         if (ctx) ctx.waitUntil(cache.put(ck, new Response(JSON.stringify(out), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=1209600' } })));
         return json(out, 200, origin);
       } catch (e) { return json({ error: 'Recherche impossible pour l’instant (' + e.message + ').' }, 502, origin); }

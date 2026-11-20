@@ -221,11 +221,19 @@
       const [mine, todo] = await Promise.all([map(this.db.collection('terrainsProposes').where('groupe', '==', this.gid)), admin ? map(this.db.collection('terrainsProposes').where('statut', '==', 'propose')) : []]);
       return { mine, todo };
     },
-    async decideProposal(id, ok, course) {
+    async decideProposal(id, ok, course, photos) {
       const ch = { statut: ok ? 'approuve' : 'refuse', decideLe: Date.now(), decideUid: this.uid || '' };
-      if (ok) { const c = await this.saveCourse(course); ch.courseId = c.id; }
+      if (ok) {
+        const c = await this.saveCourse(photos && photos.length ? { ...course, photosCarte: photos.length } : course); ch.courseId = c.id;
+        // Photos de la carte gardées à part (lues seulement quand on ouvre le terrain)
+        if (photos && photos.length) { if (this.mode === 'firebase') await this.db.collection('cartesTerrains').doc(c.id).set({ photos, cree: Date.now() }); else ls.set('pelland.carte.' + c.id, photos); }
+      }
       if (this.mode === 'firebase') { await this.db.collection('terrainsProposes').doc(id).update(ch); return; }
       ls.set('pelland.terrainsProposes', ls.get('pelland.terrainsProposes', []).map(p => p.id === id ? { ...p, ...ch } : p));
+    },
+    async cartePhotos(courseId) {
+      if (this.mode !== 'firebase') return ls.get('pelland.carte.' + courseId, []);
+      try { const d = await this.db.collection('cartesTerrains').doc(courseId).get(); return d.exists ? (d.data().photos || []) : []; } catch (e) { return []; }
     },
     async saveCourse(c) {
       c = JSON.parse(JSON.stringify(c));
@@ -2169,7 +2177,7 @@
       const tees = (d.tees || []).map(t => ({ name: t.name, rating: t.rating == null ? '' : String(t.rating).replace('.', ','), slope: t.slope == null ? '' : String(t.slope) }));
       W.prep = null;
       go('course', { editCourse: { name: nom, city: d.city || club.ville || '', holes, tees: tees.length ? tees : [{ name: 'Blanc', rating: '', slope: '' }],
-        web: { region: W.region, sources: d.sources || [], alertes: d.alertes || [], notes: d.notes || '', confiance: d.confiance || 'basse' } } });
+        web: { region: W.region, sources: d.sources || [], alertes: d.alertes || [], notes: d.notes || '', confiance: d.confiance || 'basse', carte: d.carte || null, cartePage: d.cartePage || null } } });
     } catch (e) { W.prep = null; W.err = 'Carte introuvable pour « ' + club.nom + ' » : ' + e.message; render(); }
   }
   function vClubs() {
@@ -2185,6 +2193,29 @@
       <div class="row"><button class="btn ghost small" data-reclubs type="button">Relancer la recherche</button><button class="btn ghost small" data-autreregion type="button">Autre région</button><button class="btn ghost small" data-main type="button">Entrer à la main</button></div>
       ${W.sources.length ? `<p class="note">Sources : ${W.sources.slice(0, 5).map(u => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u.replace(/^https?:\/\/(www\.)?/, '').split('/')[0])}</a>`).join(' · ')}</p>` : ''}`;
   }
+  // Photos de la carte jointes à la proposition (réduites pour tenir dans la fiche : 3 au plus, ~700 Ko en tout)
+  async function photosPourVerif(urls) {
+    const out = []; let total = 0;
+    for (const u of urls.slice(0, 3)) {
+      try {
+        const img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = u; });
+        const k = Math.min(1, 1500 / Math.max(img.naturalWidth, img.naturalHeight)), cv = document.createElement('canvas');
+        cv.width = Math.round(img.naturalWidth * k); cv.height = Math.round(img.naturalHeight * k); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        let d = cv.toDataURL('image/jpeg', .62); if (d.length > 330e3) d = cv.toDataURL('image/jpeg', .45);
+        if (total + d.length > 700e3) break; total += d.length; out.push(d);
+      } catch (e) { }
+    }
+    return out;
+  }
+  // Carte de pointage source jointe au terrain, pour vérifier chaque valeur
+  function carteSourceHtml(carte, page) {
+    if (!carte && !page) return '';
+    const dom = u => esc(String(u).replace(/^https?:\/\/(www\.)?/, '').split('/')[0]);
+    return `<div class="carte-source"><b>Carte de pointage du club</b>
+      ${carte && carte.type === 'image' ? `<button type="button" class="carte-img" data-cartesrc="${esc(carte.vue || carte.url)}"><img src="${esc(carte.vue || carte.url)}" alt="Carte de pointage" loading="lazy" onerror="this.closest('.carte-img').classList.add('ko')"><span>Touchez pour agrandir</span></button>` : ''}
+      ${carte && carte.type === 'pdf' ? `<a class="btn ghost small" href="${esc(carte.vue || carte.url)}" target="_blank" rel="noopener">📄 Ouvrir la carte (PDF)</a>` : ''}
+      <span class="note">${carte ? `Fichier : <a href="${esc(carte.url)}" target="_blank" rel="noopener">${dom(carte.url)}</a>` : 'Pas de fichier de carte trouvé.'}${page ? ` · <a href="${esc(page)}" target="_blank" rel="noopener">page source</a>` : ''}</span></div>`;
+  }
   function vCourse() {
     const c = S.editCourse || (S.editCourse = { name: '', city: '', holes: Array.from({ length: 18 }, () => ({ par: 4, si: '' })), tees: [{ name: 'Blanc', rating: '', slope: '' }] });
     $('#barTitle').textContent = c.proposition ? 'Terrain à approuver' : c.web ? 'Carte à réviser' : c.id ? 'Modifier le terrain' : 'Nouveau terrain';
@@ -2194,6 +2225,7 @@
     const webBand = w ? `<section class="card web-band conf-${esc(w.confiance)}">
         <h2>Carte préparée par Léo · à réviser</h2>
         <p>Trouvée sur le web (fiabilité ${w.confiance === 'haute' ? 'élevée' : w.confiance === 'moyenne' ? 'moyenne' : 'faible'}). Comparez chaque normale, handicap, évaluation et slope avec la carte officielle du club, corrigez au besoin, puis approuvez ou refusez.</p>
+        ${carteSourceHtml(w.carte, w.cartePage)}
         ${w.alertes.length ? `<ul class="web-alertes">${w.alertes.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
         ${w.notes ? `<p class="note">${esc(w.notes)}</p>` : ''}
         ${w.sources.length ? `<p class="note">Sources : ${w.sources.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u.replace(/^https?:\/\/(www\.)?/, '').split('/')[0])}</a>`).join(' · ')}</p>` : ''}
@@ -2201,6 +2233,7 @@
     return `${propBand}${webBand}
       <section class="card card-upload">
         <h2>Carte de pointage</h2>
+        ${!w && c.carteSource ? carteSourceHtml(c.carteSource.url ? c.carteSource : null, c.carteSource.page) : ''}
         <p class="note">Prenez la carte en photo (recto et verso) ou choisissez un PDF. L’app lit les normales, les handicaps et les tertres et remplit le formulaire : vérifiez ensuite avec la photo.</p>
         <label class="btn upload-btn" for="cardFile">Téléverser la carte</label>
         <input id="cardFile" type="file" accept="image/*,application/pdf" multiple hidden>
@@ -2589,6 +2622,7 @@
         const { web, ...co } = JSON.parse(JSON.stringify(p.course)); delete co.id;
         const fmt = x => x == null || x === '' || isNaN(x) ? '' : String(x).replace('.', ',');
         go('course', { editCourse: { ...co, holes: co.holes.map(h => ({ par: h.par, si: h.si })), tees: co.tees.map(t => ({ ...t, rating: fmt(t.rating), slope: fmt(t.slope) })), ...(web ? { web: { alertes: [], notes: '', sources: [], ...web } } : {}), proposition: { id: p.id, par: p.proposePar, groupeNom: p.groupeNom } } });
+        if (p.photos && p.photos.length) { S.cardImgs = p.photos.slice(); S.cardStatus = 'Photos de la carte envoyées avec la proposition : comparez chaque valeur.'; render(); }
       });
       v.querySelectorAll('[data-delcourse]').forEach(b => b.onclick = () => { S.confirmDelCourse = b.dataset.delcourse; render(); });
       v.querySelectorAll('[data-delcourse-no]').forEach(b => b.onclick = () => { S.confirmDelCourse = null; render(); });
@@ -2597,7 +2631,11 @@
         try { await Store.setCourseRetired(b.dataset.delcourseOk, true); S.courses = await Store.listCourses(); S.confirmDelCourse = null; toast(`« ${c ? c.name : 'Terrain'} » est effacé.`); render(); }
         catch (e) { b.disabled = false; toast('Impossible : ' + e.message); }
       });
-      v.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => go('course', { editCourse: JSON.parse(JSON.stringify(S.courses.find(c => c.id === b.dataset.edit))), confirmRetire: null }));
+      v.querySelectorAll('[data-edit]').forEach(b => b.onclick = async () => {
+        const co = S.courses.find(c => c.id === b.dataset.edit);
+        go('course', { editCourse: JSON.parse(JSON.stringify(co)), confirmRetire: null });
+        if (co.photosCarte) { const ph = await Store.cartePhotos(co.id); if (ph.length && S.view === 'course' && S.editCourse && S.editCourse.id === co.id && !(S.cardImgs || []).length) { S.cardImgs = ph; S.cardStatus = 'Photos de la carte jointes à ce terrain.'; render(); } }
+      });
       v.querySelectorAll('[data-unretire]').forEach(b => b.onclick = async () => {
         b.disabled = true;
         try { await Store.setCourseRetired(b.dataset.unretire, false); S.courses = await Store.listCourses(); toast('Terrain remis dans la banque.'); render(); }
@@ -2635,6 +2673,7 @@
           render();
         } catch (err) { status('Lecture impossible : ' + (err && err.message || err) + '. Entrez les valeurs à la main en regardant la photo.'); render(); }
       };
+      v.querySelectorAll('[data-cartesrc]').forEach(b => b.onclick = () => openSheet(`<div class="card-view"><img src="${esc(b.dataset.cartesrc)}" alt="Carte de pointage"></div><div class="sheet-actions"><a class="btn ghost" href="${esc(b.dataset.cartesrc)}" target="_blank" rel="noopener">Ouvrir en plein écran</a><button class="btn" data-close type="button">Fermer</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; }));
       v.querySelectorAll('[data-viewcard]').forEach(b => b.onclick = () => openSheet(`<div class="card-view"><img src="${S.cardImgs[+b.dataset.viewcard]}" alt="Carte"></div><div class="sheet-actions"><button class="btn" data-close type="button">Fermer</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; }));
       $('#addTee').onclick = () => { sync(); c.tees.push({ name: '', rating: '', slope: '' }); render(); };
       v.querySelectorAll('[data-deltee]').forEach(b => b.onclick = () => { sync(); if (c.tees.length > 1) c.tees.splice(+b.dataset.deltee, 1); render(); });
@@ -2658,7 +2697,7 @@
         sync();
         const num = x => parseFloat(String(x).replace(',', '.'));
         const { web, proposition, ...base } = c;
-        const out = { ...base, catalog: false, name: c.name.trim(), ...(web ? { source: 'web', region: web.region || '', sources: web.sources.slice(0, 6), approuvePar: Store.uid || '', approuveLe: Date.now() } : {}), holes: c.holes.map(h => ({ par: parseInt(h.par, 10), si: parseInt(h.si, 10) })),
+        const out = { ...base, catalog: false, name: c.name.trim(), ...(web ? { source: 'web', region: web.region || '', sources: web.sources.slice(0, 6), approuvePar: Store.uid || '', approuveLe: Date.now(), ...(web.carte || web.cartePage ? { carteSource: { ...(web.carte || {}), page: web.cartePage || null } } : {}) } : {}), holes: c.holes.map(h => ({ par: parseInt(h.par, 10), si: parseInt(h.si, 10) })),
           tees: c.tees.filter(t => String(t.name).trim()).map(t => ({ ...t, name: String(t.name).trim(), rating: num(t.rating), slope: parseInt(t.slope, 10) })) };
         const sis = out.holes.map(h => h.si).sort((a, b) => a - b).join(',');
         if (!out.name) return toast('Donnez un nom au terrain.');
@@ -2666,13 +2705,14 @@
         if (sis !== Array.from({ length: 18 }, (_, i) => i + 1).join(',')) return toast('Les handicaps doivent utiliser 1 à 18, une fois chacun.');
         if (!out.tees.length || out.tees.some(t => !(t.rating > 50 && t.rating < 90) || !(t.slope >= 55 && t.slope <= 155))) return toast('Vérifiez l\'évaluation (ex. 70,7) et le slope (55 à 155) des tertres.');
         if (proposition) {
-          try { await Store.decideProposal(proposition.id, true, out); P.todo = P.todo.filter(p => p.id !== proposition.id); S.courses = await Store.listCourses(); toast('Terrain approuvé : il est dans la banque.'); go('courses', { editCourse: null }); chargerPropositions(); }
+          try { await Store.decideProposal(proposition.id, true, out, (P.todo.find(x => x.id === proposition.id) || {}).photos); P.todo = P.todo.filter(p => p.id !== proposition.id); S.courses = await Store.listCourses(); toast('Terrain approuvé : il est dans la banque.'); go('courses', { editCourse: null }); chargerPropositions(); }
           catch (e) { toast('Approbation impossible : ' + e.message); }
           return;
         }
         if (!c.id && !P.admin) {
           const g = curGroup(), moi = (S.players.find(p => p.id === meId()) || {}).name || ls.get('pelland.me', '') || '';
-          try { const p = await Store.proposeCourse({ ...out, ...(web ? { web } : {}) }, { proposePar: moi, groupeNom: g.name || '' }); P.mine.push(p); toast('Envoyé pour approbation. Merci !'); go(S.draft ? 'setup' : 'courses', { editCourse: null }); }
+          const photos = await photosPourVerif(S.cardImgs || []);
+          try { const p = await Store.proposeCourse({ ...out, ...(web ? { web } : {}) }, { proposePar: moi, groupeNom: g.name || '', ...(photos.length ? { photos } : {}) }); P.mine.push(p); toast('Envoyé pour approbation. Merci !'); go(S.draft ? 'setup' : 'courses', { editCourse: null }); }
           catch (e) { toast('Envoi impossible : ' + e.message); }
           return;
         }
