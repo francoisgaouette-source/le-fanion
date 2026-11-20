@@ -942,3 +942,7 @@ body:has(#sheetWrap:not([hidden])) .cd-lanceur { display: none; }
 .prop-actions .btn { width: auto; margin: 0; flex: 1 1 auto; font-size: 16px; padding: 0 12px; }
 .prop-actions .btn.ghost.danger-txt { width: auto; margin: 0; flex: 0 0 auto; }
 .terr-etape .vide { font-style: italic; }
+.pl-st.maj { background: color-mix(in srgb, var(--green) 15%, transparent); color: var(--green); }
+.maj-resume { display: block; font-size: 13px; color: var(--muted); margin-top: 2px; }
+.maj-liste { margin: 8px 0 0; padding-left: 18px; font-weight: 600; }
+.verif-card h3 { margin-top: 0; }

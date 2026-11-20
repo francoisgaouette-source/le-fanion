@@ -228,7 +228,7 @@
     async decideProposal(id, ok, course, photos) {
       const ch = { statut: ok ? 'approuve' : 'refuse', decideLe: Date.now(), decideUid: this.uid || '' };
       if (ok) {
-        const c = await this.saveCourse(photos && photos.length ? { ...course, photosCarte: photos.length } : course); ch.courseId = c.id;
+        const c = await this.saveCourse({ ...course, verifieLe: Date.now(), ...(photos && photos.length ? { photosCarte: photos.length } : {}) }); ch.courseId = c.id;
         // Photos de la carte gardées à part (lues seulement quand on ouvre le terrain)
         if (photos && photos.length) { if (this.mode === 'firebase') await this.db.collection('cartesTerrains').doc(c.id).set({ photos, cree: Date.now() }); else ls.set('pelland.carte.' + c.id, photos); }
       }
@@ -2061,7 +2061,7 @@
       const actions = !attente ? '' : S.confirmDelProp === p.id
         ? `<div class="row del-confirm"><span class="note">${P.admin ? 'Effacer cette proposition ? Le terrain n’entrera pas dans la banque.' : 'Retirer votre proposition ?'}</span><button class="btn small" data-delprop-ok="${esc(p.id)}" type="button" style="background:var(--red)">Effacer</button><button class="btn ghost small" data-delprop-no type="button">Annuler</button></div>`
         : `<div class="row prop-actions">${P.admin ? `<button class="btn small" data-prop="${esc(p.id)}" type="button">Vérifier et approuver</button>` : ''}<button class="btn ghost small danger-txt" data-delprop="${esc(p.id)}" type="button">Effacer</button></div>`;
-      return `<div class="prop-row">${P.admin && attente ? `<button class="item" data-prop="${esc(p.id)}" type="button">` : '<div class="item">'}<b>${esc(p.course.name)}</b><span>${etat} · ${infos}</span>${P.admin && attente ? '</button>' : '</div>'}${actions}</div>`;
+      return `<div class="prop-row">${P.admin && attente ? `<button class="item" data-prop="${esc(p.id)}" type="button">` : '<div class="item">'}<b>${esc(p.course.name)}</b><span>${etat}${p.type === 'maj' ? ' <span class="pl-st maj">Mise à jour</span>' : ''} · ${infos}</span>${p.type === 'maj' && (p.changes || []).length ? `<span class="maj-resume">${esc(p.changes.slice(0, 3).join(' · '))}${p.changes.length > 3 ? ` · et ${p.changes.length - 3} autre${p.changes.length > 4 ? 's' : ''}` : ''}</span>` : ''}${P.admin && attente ? '</button>' : '</div>'}${actions}</div>`;
     };
     const nAtt = aApprouver.filter(p => p.statut === 'propose').length;
     return `<section class="card terr-etape"><h3><span class="terr-n">1</span> Terrain à ajouter</h3>
@@ -2135,9 +2135,55 @@
     return { region: `environs de ${lat.toFixed(2)}, ${lng.toFixed(2)}`, ville: '' };
   }
   const P = { admin: false, mine: [], todo: [], charge: false };
+  // ---- Léo garde les cartes à jour : il revérifie chaque terrain sur le web environ une fois par saison
+  const VERIF_JOURS = 300, VERIF_PAR_JOUR = 2;
+  const derniereVerif = c => Number(c.verifieLe || c.approuveLe || 0);
+  const fmtN = x => String(x).replace('.', ',');
+  function comparerCarte(c, d) {
+    const h = d.holes || [], pars = h.map(x => x && x.par), sis = h.map(x => x && x.si);
+    const valide = h.length === 18 && pars.every(p => p >= 3 && p <= 6) && [...sis].sort((a, b) => a - b).join(',') === Array.from({ length: 18 }, (_, i) => i + 1).join(',');
+    if (!valide) return { valide: false };
+    const changes = [];
+    c.holes.forEach((o, i) => {
+      if (Number(o.par) !== pars[i]) changes.push(`Trou ${i + 1} : normale ${o.par} → ${pars[i]}`);
+      if (Number(o.si) !== sis[i]) changes.push(`Trou ${i + 1} : handicap ${o.si} → ${sis[i]}`);
+    });
+    const tees = c.tees.map(t => ({ ...t }));
+    (d.tees || []).filter(t => t.rating > 50 && t.rating < 90 && t.slope >= 55 && t.slope <= 155).forEach(t => {
+      const o = tees.find(x => String(x.name).toLowerCase() === String(t.name).toLowerCase());
+      if (!o) { tees.push({ name: t.name, rating: t.rating, slope: t.slope }); changes.push(`Nouveau tertre ${t.name} : ${fmtN(t.rating)} / ${t.slope}`); }
+      else if (Math.abs(Number(o.rating) - t.rating) > 0.05 || Number(o.slope) !== t.slope) { changes.push(`Tertre ${o.name} : ${fmtN(o.rating)} / ${o.slope} → ${fmtN(t.rating)} / ${t.slope}`); o.rating = t.rating; o.slope = t.slope; }
+    });
+    return { valide: true, changes, course: { ...c, holes: pars.map((p, i) => ({ par: p, si: sis[i] })), tees } };
+  }
+  async function verifierCarte(c, auto) {
+    const d = await terrainsApi({ action: 'carte', nom: c.name, ville: c.city || '', region: c.region || '', frais: true });
+    const r = comparerCarte(c, d);
+    const carteSource = d.carte || d.cartePage ? { ...(d.carte || {}), page: d.cartePage || null } : c.carteSource;
+    if (!r.valide) return { etat: 'incertain' };
+    if (!r.changes.length) { await Store.saveCourse({ ...c, verifieLe: Date.now(), ...(carteSource ? { carteSource } : {}) }); return { etat: 'ajour' }; }
+    if ([...P.todo, ...P.mine].some(p => p.statut === 'propose' && p.courseId === c.id)) return { etat: 'deja', changes: r.changes };
+    const g = curGroup(), moi = (S.players.find(p => p.id === meId()) || {}).name || ls.get('pelland.me', '') || '';
+    const web = { region: c.region || '', sources: d.sources || [], alertes: [], notes: d.notes || '', confiance: d.confiance || 'basse', carte: d.carte || null, cartePage: d.cartePage || null };
+    const p = await Store.proposeCourse({ ...r.course, web }, { type: 'maj', courseId: c.id, changes: r.changes.slice(0, 40), proposePar: auto ? 'Léo (vérification automatique)' : moi, groupeNom: g.name || '' });
+    P.mine.push(p); if (P.admin) P.todo.push(p);
+    return { etat: 'change', changes: r.changes };
+  }
+  // Pour l'équipe Fanion : deux terrains par jour, les moins récemment vérifiés d'abord (sans retarder l'app)
+  async function verifAuto() {
+    if (!P.admin || Store.mode !== 'firebase') return;
+    const k = 'fanion.verif.jour', jour = new Date().toISOString().slice(0, 10);
+    if (ls.get(k, '') === jour) return; ls.set(k, jour);
+    const dus = S.courses.filter(c => !c.sim && Date.now() - derniereVerif(c) > VERIF_JOURS * 864e5 && ![...P.todo, ...P.mine].some(p => p.statut === 'propose' && p.courseId === c.id))
+      .sort((a, b) => derniereVerif(a) - derniereVerif(b)).slice(0, VERIF_PAR_JOUR);
+    let n = 0;
+    for (const c of dus) { try { const r = await verifierCarte(c, true); if (r.etat === 'change') n++; } catch (e) { if (/configurée|Connexion/.test(e.message)) return; } }
+    if (n) { S.courses = await Store.listCourses(); if (['home', 'courses'].includes(S.view) && !document.querySelector('#sheetWrap:not([hidden]), .cd-fond')) render(); }
+  }
   async function chargerPropositions() {
     if (Store.needLogin) return;
     try { P.admin = await Store.isAdmin(); Object.assign(P, await Store.listProposals(P.admin), { charge: true }); } catch (e) { return; }
+    setTimeout(verifAuto, 4000);
     if ((S.view === 'home' && P.todo.length) || S.view === 'courses') { if (!document.querySelector('#sheetWrap:not([hidden]), #welcome, .cd-fond')) render(); }
   }
   function ajoutTerrainSheet() {
@@ -2236,10 +2282,11 @@
   }
   function vCourse() {
     const c = S.editCourse || (S.editCourse = { name: '', city: '', holes: Array.from({ length: 18 }, () => ({ par: 4, si: '' })), tees: [{ name: 'Blanc', rating: '', slope: '' }] });
-    $('#barTitle').textContent = c.proposition ? 'Terrain à approuver' : c.web ? 'Carte à réviser' : c.id ? 'Modifier le terrain' : 'Nouveau terrain';
+    $('#barTitle').textContent = c.proposition ? (c.proposition.maj ? 'Mise à jour à approuver' : 'Terrain à approuver') : c.web ? 'Carte à réviser' : c.id ? 'Modifier le terrain' : 'Nouveau terrain';
     const imgs = S.cardImgs || [];
     const w = c.web, prop = c.proposition, admin = P.admin;
-    const propBand = prop ? `<section class="card web-band"><h2>Proposé pour la banque</h2><p>Par ${esc(prop.par || 'un joueur')}${prop.groupeNom ? ' (' + esc(prop.groupeNom) + ')' : ''}. Vérifiez la carte, corrigez au besoin, puis approuvez ou refusez.</p></section>` : '';
+    const propBand = prop ? `<section class="card web-band"><h2>${prop.maj ? 'La carte a changé' : 'Proposé pour la banque'}</h2><p>${prop.maj ? 'Léo a revérifié ce terrain sur le web et trouvé des différences avec la banque' : 'Par ' + esc(prop.par || 'un joueur') + (prop.groupeNom ? ' (' + esc(prop.groupeNom) + ')' : '')}. Vérifiez avec la carte du club, corrigez au besoin, puis approuvez ou effacez.</p>
+      ${prop.changes && prop.changes.length ? `<ul class="maj-liste">${prop.changes.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</section>` : '';
     const webBand = w ? `<section class="card web-band conf-${esc(w.confiance)}">
         <h2>Carte préparée par Léo · à réviser</h2>
         <p>Trouvée sur le web (fiabilité ${w.confiance === 'haute' ? 'élevée' : w.confiance === 'moyenne' ? 'moyenne' : 'faible'}). Comparez chaque normale, handicap, évaluation et slope avec la carte officielle du club, corrigez au besoin, puis approuvez ou refusez.</p>
@@ -2282,7 +2329,9 @@
           <p class="note">L’équipe Fanion vérifie chaque nouveau terrain avant de l’ajouter à la banque. Vous le verrez dans Terrains dès qu’il est approuvé.</p>`
         : !c.id && !admin ? `<button class="btn" id="saveCourse" type="button">Envoyer pour approbation</button><p class="note">L’équipe Fanion vérifie chaque nouveau terrain avant de l’ajouter à la banque.</p>`
         : `<button class="btn" id="saveCourse" type="button">Enregistrer le terrain</button>`}
-      ${c.id && S.courses.some(x => x.id === c.id) ? (S.confirmRetire === c.id
+      ${!prop && c.id && S.courses.some(x => x.id === c.id) ? `<section class="card verif-card"><h3>Carte à jour ?</h3><p class="note">${derniereVerif(c) ? 'Dernière vérification : ' + new Date(derniereVerif(c)).toLocaleDateString('fr-CA', { day: 'numeric', month: 'long', year: 'numeric' }) + '.' : 'Jamais vérifiée sur le web.'} Léo revérifie chaque terrain environ une fois par saison ; si la carte du club a changé, la mise à jour passe par l’approbation.</p>
+        <button class="btn ghost small" id="verifCarte" type="button">🔄 Vérifier maintenant</button><div id="verifEtat" class="note"></div></section>` : ''}
+      ${!prop && c.id && S.courses.some(x => x.id === c.id) ? (S.confirmRetire === c.id
         ? `<div class="row retire-row"><span class="note">Effacer « ${esc(c.name)} » de la banque du groupe ?</span><button class="btn small" id="retireOk" type="button" style="background:var(--red)">Effacer</button><button class="btn ghost small" id="retireNo" type="button">Annuler</button></div>`
         : `<button class="btn ghost danger-txt" id="retireCourse" type="button">Effacer ce terrain</button>`) : ''}`;
   }
@@ -2647,9 +2696,9 @@
       });
       v.querySelectorAll('[data-prop]').forEach(b => b.onclick = () => {
         const p = P.todo.find(x => x.id === b.dataset.prop); if (!p) return;
-        const { web, ...co } = JSON.parse(JSON.stringify(p.course)); delete co.id;
+        const { web, ...co } = JSON.parse(JSON.stringify(p.course)); if (p.type !== 'maj') delete co.id;
         const fmt = x => x == null || x === '' || isNaN(x) ? '' : String(x).replace('.', ',');
-        go('course', { editCourse: { ...co, holes: co.holes.map(h => ({ par: h.par, si: h.si })), tees: co.tees.map(t => ({ ...t, rating: fmt(t.rating), slope: fmt(t.slope) })), ...(web ? { web: { alertes: [], notes: '', sources: [], ...web } } : {}), proposition: { id: p.id, par: p.proposePar, groupeNom: p.groupeNom } } });
+        go('course', { editCourse: { ...co, holes: co.holes.map(h => ({ par: h.par, si: h.si })), tees: co.tees.map(t => ({ ...t, rating: fmt(t.rating), slope: fmt(t.slope) })), ...(web ? { web: { alertes: [], notes: '', sources: [], ...web } } : {}), proposition: { id: p.id, par: p.proposePar, groupeNom: p.groupeNom, maj: p.type === 'maj', changes: p.changes || [] } } });
         if (p.photos && p.photos.length) { S.cardImgs = p.photos.slice(); S.cardStatus = 'Photos de la carte envoyées avec la proposition : comparez chaque valeur.'; render(); }
       });
       v.querySelectorAll('[data-delcourse]').forEach(b => b.onclick = () => { S.confirmDelCourse = b.dataset.delcourse; render(); });
@@ -2711,6 +2760,16 @@
         ro.disabled = true;
         try { await Store.setCourseRetired(c.id, true); S.courses = await Store.listCourses(); S.confirmRetire = null; S.editCourse = null; toast(`« ${c.name} » est effacé de la banque.`); go('courses'); }
         catch (e) { ro.disabled = false; toast('Retrait impossible : ' + e.message); }
+      };
+      const vc = $('#verifCarte'); if (vc) vc.onclick = async () => {
+        vc.disabled = true; const et = $('#verifEtat'); et.textContent = 'Léo compare avec la carte du club sur le web… (jusqu’à une minute)';
+        try {
+          const r = await verifierCarte(S.courses.find(x => x.id === c.id) || c, false);
+          et.textContent = r.etat === 'ajour' ? '✓ La carte est à jour.' : r.etat === 'incertain' ? 'Léo n’a pas trouvé de carte complète et fiable : rien n’a changé.' : r.etat === 'deja' ? 'Une mise à jour attend déjà l’approbation.'
+            : `La carte a changé (${r.changes.length} différence${r.changes.length > 1 ? 's' : ''}) : la mise à jour ${P.admin ? 'est dans « Terrains à approuver »' : 'est envoyée pour approbation'}.`;
+          if (r.etat === 'ajour') S.courses = await Store.listCourses();
+        } catch (e) { et.textContent = 'Vérification impossible : ' + e.message; }
+        vc.disabled = false;
       };
       const rf = $('#refuseCourse'); if (rf) rf.onclick = async () => {
         if (c.proposition) {
