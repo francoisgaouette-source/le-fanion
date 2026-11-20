@@ -2068,19 +2068,30 @@
       navigator.geolocation.getCurrentPosition(p => ok({ lat: p.coords.latitude, lng: p.coords.longitude }), e => ok({ err: e.code === 1 ? 'refus' : 'echec' }), { enableHighAccuracy: false, timeout: 10000, maximumAge: 600e3 });
     });
   }
+  // Hors Québec : nom de la région d'après la position (service gratuit prévu pour les navigateurs, puis OpenStreetMap)
+  async function lieuDe(lat, lng) {
+    const net = (u, ms = 6000) => Promise.race([fetch(u).then(r => r.ok ? r.json() : null), new Promise(ok => setTimeout(() => ok(null), ms))]).catch(() => null);
+    const a = await net(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=fr`);
+    if (a && (a.principalSubdivision || a.countryName)) return { region: [String(a.principalSubdivision || '').replace(/^(province|provincia|état|estado|state|région|region) (de |d’|d'|du |of )?/i, ''), a.countryName].filter(Boolean).join(', '), ville: a.city || a.locality || '' };
+    const b = await net(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=8&accept-language=fr&lat=${lat}&lon=${lng}`);
+    const ad = b && b.address;
+    if (ad && (ad.state || ad.country)) return { region: [ad.state || ad.county, ad.country].filter(Boolean).join(', '), ville: ad.city || ad.town || ad.village || '' };
+    return { region: `environs de ${lat.toFixed(2)}, ${lng.toFixed(2)}`, ville: '' };
+  }
   function ajoutTerrainSheet() {
     const memo = ls.get(REGION_K, null);   // { region, auto } : dernière région détectée ou choisie
     const html = (etat) => {
       const r = etat.region;
       const tete = etat.cherche ? `<div class="region-moi"><div class="spin small"></div><span>Léo cherche votre région d’après votre position…</span></div>`
-        : r ? `<div class="region-moi"><span class="note">${etat.auto ? '📍 Votre région, d’après votre position' : etat.horsQc ? 'Votre position semble hors du Québec. Dernière région utilisée' : 'Dernière région utilisée'}</span>
+        : r ? `<div class="region-moi"><span class="note">${etat.auto ? (etat.ville ? `📍 Vous êtes près de ${esc(etat.ville)}` : '📍 Votre région, d’après votre position') : 'Dernière région utilisée'}</span>
             <button class="btn" data-region="${esc(r)}" type="button">Chercher les clubs · ${esc(r)}</button></div>`
-        : `<div class="region-moi"><span class="note">${etat.horsQc ? 'Votre position semble hors du Québec : choisissez une région.' : etat.refus ? 'Position non disponible : choisissez une région.' : 'Choisissez une région.'}</span>
+        : `<div class="region-moi"><span class="note">${etat.refus ? 'Position non disponible : choisissez une région ou tapez un lieu.' : 'Choisissez une région ou tapez un lieu.'}</span>
             ${etat.refus || etat.echec ? '<button class="btn ghost small" data-relocal type="button">📍 Utiliser ma position</button>' : ''}</div>`;
       return `<h3>Ajouter un terrain</h3>
         <p class="note">Léo cherche sur le web tous les clubs de golf de la région et prépare la carte de pointage du terrain choisi. Vous la vérifiez, puis l’approuvez ou la refusez avant qu’elle entre dans la banque.</p>
         ${tete}
-        <h4 class="region-autres">${r || etat.cherche ? 'Autres régions' : 'Régions du Québec'}</h4>
+        <form class="region-libre" data-libre><input id="regionLibre" type="text" maxlength="80" placeholder="Autre lieu (ville, pays)" autocomplete="off"><button class="btn small" type="submit">Chercher</button></form>
+        <h4 class="region-autres">${r && REGIONS_QC.includes(r) ? 'Autres régions du Québec' : 'Régions du Québec'}</h4>
         <div class="region-grid">${REGIONS_QC.filter(x => x !== r).map(x => `<button class="chip-btn" data-region="${esc(x)}" type="button">${esc(x)}</button>`).join('')}</div>
         <div class="sheet-actions"><button class="btn ghost" data-main type="button">Autre : photo de la carte ou à la main</button><button class="btn ghost" data-close type="button">Annuler</button></div>`;
     };
@@ -2090,14 +2101,16 @@
       sh.querySelector('[data-main]').onclick = () => { closeSheet(); go('course', { editCourse: null }); };
       sh.querySelectorAll('[data-region]').forEach(b => b.onclick = () => { const x = b.dataset.region; ls.set(REGION_K, { region: x, auto: x === etat.detectee }); closeSheet(); chercherClubs(x); });
       const rl = sh.querySelector('[data-relocal]'); if (rl) rl.onclick = localiser;
+      sh.querySelector('[data-libre]').onsubmit = e => { e.preventDefault(); const x = sh.querySelector('#regionLibre').value.replace(/\s+/g, ' ').trim(); if (x.length < 2) return; ls.set(REGION_K, { region: x, auto: false }); closeSheet(); chercherClubs(x); };
     };
-    const maj = () => { const sh = $('#sheet'); if ($('#sheetWrap').hidden || !sh.querySelector('.region-grid')) return; sh.innerHTML = html(etat); lier(sh); };
+    const maj = () => { const sh = $('#sheet'); if ($('#sheetWrap').hidden || !sh.querySelector('.region-grid')) return; const lib = sh.querySelector('#regionLibre'), val = lib ? lib.value : '', foc = lib && document.activeElement === lib; sh.innerHTML = html(etat); lier(sh); const nl = sh.querySelector('#regionLibre'); if (nl) { nl.value = val; if (foc) nl.focus(); } };
     async function localiser() {
       etat = { ...etat, cherche: true }; maj();
       const p = await positionJoueur();
-      const det = p.err ? null : regionDe(p.lat, p.lng);
-      if (det) etat = { region: det, auto: true, detectee: det };
-      else etat = { region: memo && memo.region, auto: false, horsQc: !p.err, refus: p.err === 'refus', echec: p.err && p.err !== 'refus' };
+      let det = p.err ? null : regionDe(p.lat, p.lng), ville = '';
+      if (!p.err && !det) { const l = await lieuDe(p.lat, p.lng); det = l.region; ville = l.ville; }
+      if (det) etat = { region: det, auto: true, detectee: det, ville };
+      else etat = { region: memo && memo.region, auto: false, refus: p.err === 'refus', echec: p.err && p.err !== 'refus' };
       maj();
     }
     openSheet(html(etat), lier);
@@ -2113,7 +2126,7 @@
   async function preparerCarte(club, parcours) {
     W.prep = club.nom + (parcours ? ' · ' + parcours : ''); W.err = ''; render();
     try {
-      const d = await terrainsApi({ action: 'carte', nom: club.nom, ville: club.ville, parcours });
+      const d = await terrainsApi({ action: 'carte', nom: club.nom, ville: club.ville, parcours, region: W.region });
       const nom = d.name || (club.nom + (parcours && !normNom(club.nom).includes(normNom(parcours)) ? ' – ' + parcours : ''));
       const holes = (d.holes || []).slice(0, 18).map(h => ({ par: h.par == null ? '' : h.par, si: h.si == null ? '' : h.si }));
       while (holes.length < 18) holes.push({ par: '', si: '' });

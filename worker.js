@@ -158,7 +158,7 @@ LES JEUX (tout au net, avec handicap ; montants par joueur)
 - Best Ball : meilleur net de chaque équipe ; écart de trous gagnés × montant.
 - Match play (2 joueurs, un contre un) : au net, le plus bas score gagne le trou ; on compte l'avance en trous ; le match finit dès que l'avance dépasse les trous qui restent (« gagne 3 et 2 » = 3 trous d'avance, 2 à jouer) ; égalité au bout : match nul. Un seul enjeu, pour la partie (10 $ proposé) : le gagnant l'empoche, match nul personne ne paie. À 2 joueurs, on peut aussi jouer le Nassau (un contre un) ou les skins. À 3 joueurs : le 9 points ou les skins. Dans Nouvelle partie, on laisse simplement les cases des joueurs 3 et 4 vides.
 - Banque de terrains : dans Terrains, chaque terrain a un bouton « Effacer » (aussi dans le terrain ouvert : « Effacer ce terrain ») ; il disparaît pour ce groupe seulement, les parties jouées le gardent, et on peut le remettre plus bas dans la liste (« Remettre »).
-- Ajouter un terrain : dans Terrains, « Ajouter un terrain » propose la région du joueur d'après sa position (on peut en choisir une autre) ; Léo cherche sur le web les clubs de la région, puis prépare la carte de pointage du parcours choisi (normales, handicaps, tertres, évaluation, slope, avec les sources). On la compare avec la carte officielle du club, on corrige au besoin, puis « Approuver et ajouter à la banque » ou « Refuser ». On peut aussi photographier la carte ou tout entrer à la main.
+- Ajouter un terrain : dans Terrains, « Ajouter un terrain » propose la région du joueur d'après sa position, au Québec comme ailleurs dans le monde (on peut choisir une autre région ou taper un lieu) ; Léo cherche sur le web les clubs de la région, puis prépare la carte de pointage du parcours choisi (normales, handicaps, tertres, évaluation, slope, avec les sources). On la compare avec la carte officielle du club, on corrige au besoin, puis « Approuver et ajouter à la banque » ou « Refuser ». On peut aussi photographier la carte ou tout entrer à la main.
 - Vegas (4 joueurs, équipes de deux) : les deux scores nets de l'équipe forment un nombre, le plus bas d'abord (4 et 5 = 45) ; un oiselet au brut renverse le nombre de l'autre équipe (45 devient 54), sauf si les deux équipes en font un ; maximum double boguey net par joueur ; l'écart entre les nombres = les points du trou ; gain = écart de points × montant par point (souvent 0,25 $).
 - Sixes : équipes qui changent tous les 6 trous ; chaque tranche vaut la mise.
 - 9 points (3 joueurs) : 5-3-1 par trou ; égalités 4-4-1, 5-2-2, 3-3-3 ; différence de points × montant avec chaque joueur.
@@ -203,8 +203,8 @@ async function avisPublies() {
 
 // --- Terrains trouvés sur le web : clubs d'une région, puis carte de pointage préparée (à faire vérifier et approuver dans l'app) ---
 const REGIONS_QC = ['Abitibi-Témiscamingue', 'Bas-Saint-Laurent', 'Cantons-de-l’Est', 'Centre-du-Québec', 'Charlevoix', 'Chaudière-Appalaches', 'Côte-Nord', 'Gaspésie', 'Lanaudière', 'Laurentides', 'Laval', 'Mauricie', 'Montérégie', 'Montréal', 'Outaouais', 'Québec (Capitale-Nationale)', 'Saguenay–Lac-Saint-Jean'];
-async function claudeWeb(env, { model, system, prompt, search = 6, fetchMax = 0, maxTokens = 4000 }) {
-  const tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: search, user_location: { type: 'approximate', region: 'Quebec', country: 'CA', timezone: 'America/Toronto' } }];
+async function claudeWeb(env, { model, system, prompt, search = 6, fetchMax = 0, maxTokens = 4000, auQc = true }) {
+  const tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: search, ...(auQc ? { user_location: { type: 'approximate', region: 'Quebec', country: 'CA', timezone: 'America/Toronto' } } : {}) }];
   if (fetchMax) tools.push({ type: 'web_fetch_20250910', name: 'web_fetch', max_uses: fetchMax, max_content_tokens: 15000 });
   const messages = [{ role: 'user', content: prompt }];
   for (let tour = 0; tour < 4; tour++) {
@@ -224,9 +224,10 @@ async function claudeWeb(env, { model, system, prompt, search = 6, fetchMax = 0,
 }
 const TERRAINS_SYS = 'Tu es un recherchiste golf pour une app québécoise. Tu cherches sur le web et tu réponds UNIQUEMENT par un objet JSON valide, sans texte autour. Tu n’inventes jamais une donnée : ce que tu ne trouves pas reste null et tu le dis dans "notes".';
 async function clubsRegion(env, region) {
+  const auQc = REGIONS_QC.includes(region);
   const { data, urls } = await claudeWeb(env, {
-    model: env.TERRAINS_MODEL_LISTE || 'claude-haiku-5-5', system: TERRAINS_SYS, search: 6, maxTokens: 4000,
-    prompt: `Dresse la liste la plus complète possible des clubs et terrains de golf ouverts au public (publics et semi-privés, et les clubs privés en les indiquant) dans la région « ${region} » au Québec. Pour chaque club, donne ses parcours (un club peut en avoir plusieurs : « Le Champêtre », « Parcours bleu »…). Ignore les terrains d’exercice et de mini-golf.
+    model: env.TERRAINS_MODEL_LISTE || 'claude-haiku-5-5', system: TERRAINS_SYS, search: 6, maxTokens: 4000, auQc,
+    prompt: `Dresse la liste la plus complète possible des clubs et terrains de golf ouverts au public (publics et semi-privés, et les clubs privés en les indiquant) ${auQc ? `dans la région « ${region} » au Québec` : `dans la région « ${region} » (n’importe quel pays : cherche aussi dans la langue locale)`}. Pour chaque club, donne ses parcours (un club peut en avoir plusieurs : « Le Champêtre », « Parcours bleu »…). Ignore les terrains d’exercice et de mini-golf.
 Réponds par : {"clubs":[{"nom":"Club de golf …","ville":"…","parcours":[{"nom":"…","trous":18}],"prive":false}]}`
   });
   const clubs = (Array.isArray(data.clubs) ? data.clubs : []).filter(c => c && c.nom).slice(0, 80).map(c => ({
@@ -235,11 +236,12 @@ Réponds par : {"clubs":[{"nom":"Club de golf …","ville":"…","parcours":[{"n
   })).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
   return { region, clubs, sources: urls.slice(0, 8) };
 }
-async function carteClub(env, { nom, ville, parcours }) {
-  const qui = `${nom}${parcours ? ' – parcours « ' + parcours + ' »' : ''}${ville ? ' (' + ville + ', Québec)' : ' (Québec)'}`;
+async function carteClub(env, { nom, ville, parcours, region }) {
+  const auQc = !region || REGIONS_QC.includes(region), lieu = auQc ? 'Québec' : region;
+  const qui = `${nom}${parcours ? ' – parcours « ' + parcours + ' »' : ''}${ville ? ' (' + ville + ', ' + lieu + ')' : ' (' + lieu + ')'}`;
   const { data, urls } = await claudeWeb(env, {
-    model: env.TERRAINS_MODEL_CARTE || 'claude-sonnet-5-5', system: TERRAINS_SYS, search: 6, fetchMax: 5, maxTokens: 3000,
-    prompt: `Trouve la carte de pointage officielle de : ${qui}. Cherche le site du club et les sites de cartes de pointage (golfingrecord.com, bluegolf, golfpass, 18birdies, golflink, Golf Québec…) et ouvre les pages pour lire les chiffres.
+    model: env.TERRAINS_MODEL_CARTE || 'claude-sonnet-5-5', system: TERRAINS_SYS, search: 6, fetchMax: 5, maxTokens: 3000, auQc,
+    prompt: `Trouve la carte de pointage officielle de : ${qui}. Cherche le site du club et les sites de cartes de pointage (golfingrecord.com, bluegolf, golfpass, 18birdies, golflink, ${auQc ? 'Golf Québec' : 'la fédération de golf du pays'}…) et ouvre les pages pour lire les chiffres.
 Il faut : la normale (par) et le handicap (stroke index, 1 = trou le plus difficile) de chaque trou, et pour chaque tertre son nom (couleur), son évaluation (course rating) et son slope, pour les hommes de préférence.
 Réponds par : {"name":"…","city":"…","holes":[{"par":4,"si":7}, … 18 trous dans l’ordre],"tees":[{"name":"Bleu","rating":71.2,"slope":128}],"confiance":"haute|moyenne|basse","notes":"ce qui manque ou semble douteux"}`
   });
@@ -292,8 +294,10 @@ export default {
       const tk = (req.headers.get('Authorization') || '').replace(/^Bearer /, '');
       let who; try { who = await verifyToken(tk); } catch (e) { return json({ error: 'Connexion requise.' }, 401, origin); }
       let data; try { data = await req.json(); } catch (e) { return json({ error: 'requête invalide' }, 400, origin); }
-      const cle = data.action === 'region' ? 'region:' + String(data.region || '') : 'carte:' + [data.nom, data.parcours, data.ville].map(x => String(x || '').trim().toLowerCase()).join('|');
-      if (data.action === 'region' && !REGIONS_QC.includes(data.region)) return json({ error: 'Région inconnue.' }, 400, origin);
+      // Région : une des 17 régions du Québec, ou un lieu libre ailleurs (« Guanacaste, Costa Rica ») trouvé d'après la position du joueur ou tapé
+      data.region = String(data.region || '').replace(/[\u0000-\u001f<>{}]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+      const cle = data.action === 'region' ? 'region:' + data.region.toLowerCase() : 'carte:' + [data.nom, data.parcours, data.ville, data.region].map(x => String(x || '').trim().toLowerCase()).join('|');
+      if (data.action === 'region' && data.region.length < 2) return json({ error: 'Région manquante.' }, 400, origin);
       if (data.action === 'carte' && String(data.nom || '').trim().length < 3) return json({ error: 'Nom du club manquant.' }, 400, origin);
       if (!['region', 'carte'].includes(data.action)) return json({ error: 'Action inconnue.' }, 400, origin);
       // Mémoire de 14 jours : la même région ou la même carte ne relance pas la recherche
@@ -301,7 +305,7 @@ export default {
       if (!data.frais) { const hit = await cache.match(ck); if (hit) return json(await hit.json(), 200, origin); }
       if (tooMany('terrains:' + (who.user_id || who.sub))) return json({ error: 'Beaucoup de recherches d’un coup : réessayez dans quelques minutes.' }, 429, origin);
       try {
-        const out = data.action === 'region' ? await clubsRegion(env, data.region) : await carteClub(env, { nom: String(data.nom).slice(0, 90), ville: String(data.ville || '').slice(0, 60), parcours: String(data.parcours || '').slice(0, 60) });
+        const out = data.action === 'region' ? await clubsRegion(env, data.region) : await carteClub(env, { nom: String(data.nom).slice(0, 90), ville: String(data.ville || '').slice(0, 60), parcours: String(data.parcours || '').slice(0, 60), region: data.region });
         if (ctx) ctx.waitUntil(cache.put(ck, new Response(JSON.stringify(out), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=1209600' } })));
         return json(out, 200, origin);
       } catch (e) { return json({ error: 'Recherche impossible pour l’instant (' + e.message + ').' }, 502, origin); }
