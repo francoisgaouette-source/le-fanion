@@ -158,6 +158,7 @@ LES JEUX (tout au net, avec handicap ; montants par joueur)
 - Best Ball : meilleur net de chaque équipe ; écart de trous gagnés × montant.
 - Match play (2 joueurs, un contre un) : au net, le plus bas score gagne le trou ; on compte l'avance en trous ; le match finit dès que l'avance dépasse les trous qui restent (« gagne 3 et 2 » = 3 trous d'avance, 2 à jouer) ; égalité au bout : match nul. Un seul enjeu, pour la partie (10 $ proposé) : le gagnant l'empoche, match nul personne ne paie. À 2 joueurs, on peut aussi jouer le Nassau (un contre un) ou les skins. À 3 joueurs : le 9 points ou les skins. Dans Nouvelle partie, on laisse simplement les cases des joueurs 3 et 4 vides.
 - Banque de terrains : l'organisateur peut retirer un terrain (ouvrir le terrain, « Retirer ce terrain de la banque ») ; il disparaît pour ce groupe seulement et peut être remis plus bas dans la liste des terrains (« Remettre »).
+- Ajouter un terrain : dans Terrains, « Ajouter un terrain » demande la région du Québec ; Léo cherche sur le web les clubs de la région, puis prépare la carte de pointage du parcours choisi (normales, handicaps, tertres, évaluation, slope, avec les sources). On la compare avec la carte officielle du club, on corrige au besoin, puis « Approuver et ajouter à la banque » ou « Refuser ». On peut aussi photographier la carte ou tout entrer à la main.
 - Vegas (4 joueurs, équipes de deux) : les deux scores nets de l'équipe forment un nombre, le plus bas d'abord (4 et 5 = 45) ; un oiselet au brut renverse le nombre de l'autre équipe (45 devient 54), sauf si les deux équipes en font un ; maximum double boguey net par joueur ; l'écart entre les nombres = les points du trou ; gain = écart de points × montant par point (souvent 0,25 $).
 - Sixes : équipes qui changent tous les 6 trous ; chaque tranche vaut la mise.
 - 9 points (3 joueurs) : 5-3-1 par trou ; égalités 4-4-1, 5-2-2, 3-3-3 ; différence de points × montant avec chaque joueur.
@@ -199,6 +200,62 @@ async function avisPublies() {
     .sort((a, b) => b.at - a.at);
 }
 
+
+// --- Terrains trouvés sur le web : clubs d'une région, puis carte de pointage préparée (à faire vérifier et approuver dans l'app) ---
+const REGIONS_QC = ['Abitibi-Témiscamingue', 'Bas-Saint-Laurent', 'Cantons-de-l’Est', 'Centre-du-Québec', 'Charlevoix', 'Chaudière-Appalaches', 'Côte-Nord', 'Gaspésie', 'Lanaudière', 'Laurentides', 'Laval', 'Mauricie', 'Montérégie', 'Montréal', 'Outaouais', 'Québec (Capitale-Nationale)', 'Saguenay–Lac-Saint-Jean'];
+async function claudeWeb(env, { model, system, prompt, search = 6, fetchMax = 0, maxTokens = 4000 }) {
+  const tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: search, user_location: { type: 'approximate', region: 'Quebec', country: 'CA', timezone: 'America/Toronto' } }];
+  if (fetchMax) tools.push({ type: 'web_fetch_20250910', name: 'web_fetch', max_uses: fetchMax, max_content_tokens: 15000 });
+  const messages = [{ role: 'user', content: prompt }];
+  for (let tour = 0; tour < 4; tour++) {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', headers: { 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages, tools })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((d.error && d.error.message) || 'API ' + r.status);
+    if (d.stop_reason === 'pause_turn') { messages.push({ role: 'assistant', content: d.content }); continue; }
+    const text = (d.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
+    const urls = [...new Set((d.content || []).flatMap(c => c.type === 'web_search_tool_result' && Array.isArray(c.content) ? c.content.map(x => x.url) : c.type === 'web_fetch_tool_result' && c.content && c.content.url ? [c.content.url] : []).filter(Boolean))];
+    const m = text.match(/\{[\s\S]*\}/); if (!m) throw new Error('réponse illisible');
+    return { data: JSON.parse(m[0]), urls };
+  }
+  throw new Error('recherche trop longue');
+}
+const TERRAINS_SYS = 'Tu es un recherchiste golf pour une app québécoise. Tu cherches sur le web et tu réponds UNIQUEMENT par un objet JSON valide, sans texte autour. Tu n’inventes jamais une donnée : ce que tu ne trouves pas reste null et tu le dis dans "notes".';
+async function clubsRegion(env, region) {
+  const { data, urls } = await claudeWeb(env, {
+    model: env.TERRAINS_MODEL_LISTE || 'claude-haiku-5-5', system: TERRAINS_SYS, search: 6, maxTokens: 4000,
+    prompt: `Dresse la liste la plus complète possible des clubs et terrains de golf ouverts au public (publics et semi-privés, et les clubs privés en les indiquant) dans la région « ${region} » au Québec. Pour chaque club, donne ses parcours (un club peut en avoir plusieurs : « Le Champêtre », « Parcours bleu »…). Ignore les terrains d’exercice et de mini-golf.
+Réponds par : {"clubs":[{"nom":"Club de golf …","ville":"…","parcours":[{"nom":"…","trous":18}],"prive":false}]}`
+  });
+  const clubs = (Array.isArray(data.clubs) ? data.clubs : []).filter(c => c && c.nom).slice(0, 80).map(c => ({
+    nom: String(c.nom).slice(0, 90), ville: String(c.ville || '').slice(0, 60), prive: !!c.prive,
+    parcours: (Array.isArray(c.parcours) && c.parcours.length ? c.parcours : [{ nom: '', trous: 18 }]).slice(0, 6).map(p => ({ nom: String((p && p.nom) || '').slice(0, 60), trous: Number(p && p.trous) || 18 }))
+  })).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+  return { region, clubs, sources: urls.slice(0, 8) };
+}
+async function carteClub(env, { nom, ville, parcours }) {
+  const qui = `${nom}${parcours ? ' – parcours « ' + parcours + ' »' : ''}${ville ? ' (' + ville + ', Québec)' : ' (Québec)'}`;
+  const { data, urls } = await claudeWeb(env, {
+    model: env.TERRAINS_MODEL_CARTE || 'claude-sonnet-5-5', system: TERRAINS_SYS, search: 6, fetchMax: 5, maxTokens: 3000,
+    prompt: `Trouve la carte de pointage officielle de : ${qui}. Cherche le site du club et les sites de cartes de pointage (golfingrecord.com, bluegolf, golfpass, 18birdies, golflink, Golf Québec…) et ouvre les pages pour lire les chiffres.
+Il faut : la normale (par) et le handicap (stroke index, 1 = trou le plus difficile) de chaque trou, et pour chaque tertre son nom (couleur), son évaluation (course rating) et son slope, pour les hommes de préférence.
+Réponds par : {"name":"…","city":"…","holes":[{"par":4,"si":7}, … 18 trous dans l’ordre],"tees":[{"name":"Bleu","rating":71.2,"slope":128}],"confiance":"haute|moyenne|basse","notes":"ce qui manque ou semble douteux"}`
+  });
+  const n = v => (v === null || v === undefined || v === '' || isNaN(Number(v)) ? null : Number(v));
+  const holes = (Array.isArray(data.holes) ? data.holes : []).slice(0, 18).map(h => ({ par: n(h && h.par), si: n(h && h.si) }));
+  while (holes.length < 18) holes.push({ par: null, si: null });
+  const tees = (Array.isArray(data.tees) ? data.tees : []).filter(t => t && t.name).slice(0, 8).map(t => ({ name: String(t.name).slice(0, 30), rating: n(t.rating), slope: n(t.slope) }));
+  const alertes = [];
+  const pars = holes.map(h => h.par);
+  if (pars.some(p => p === null || p < 3 || p > 6)) alertes.push('Des normales manquent ou semblent fausses.');
+  const si = holes.map(h => h.si);
+  if (si.some(x => x === null) || new Set(si).size !== 18 || si.some(x => x < 1 || x > 18)) alertes.push('Les handicaps des trous ne vont pas de 1 à 18 sans doublon.');
+  if (!tees.length || tees.some(t => !t.rating || !t.slope || t.slope < 55 || t.slope > 155 || t.rating < 50 || t.rating > 80)) alertes.push('Vérifiez l’évaluation et le slope des tertres.');
+  return { name: String(data.name || nom).slice(0, 90), city: String(data.city || ville || '').slice(0, 60), holes, tees, confiance: ['haute', 'moyenne', 'basse'].includes(data.confiance) ? data.confiance : 'basse', notes: String(data.notes || '').slice(0, 600), alertes, sources: urls.slice(0, 6) };
+}
+
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url), origin = req.headers.get('Origin') || '';
@@ -229,6 +286,25 @@ export default {
       if (!r) return json({ error: 'Service indisponible.' }, 502, origin);
       const d = await r.json().catch(() => ({}));
       return json(r.ok ? d : { error: d.erreur || 'Erreur ' + r.status }, r.ok ? 200 : r.status, origin);
+    }
+    if (url.pathname === '/api/terrains' && req.method === 'POST') {
+      if (!env.ANTHROPIC_API_KEY) return json({ error: 'La recherche de terrains n’est pas encore configurée.' }, 503, origin);
+      const tk = (req.headers.get('Authorization') || '').replace(/^Bearer /, '');
+      let who; try { who = await verifyToken(tk); } catch (e) { return json({ error: 'Connexion requise.' }, 401, origin); }
+      let data; try { data = await req.json(); } catch (e) { return json({ error: 'requête invalide' }, 400, origin); }
+      const cle = data.action === 'region' ? 'region:' + String(data.region || '') : 'carte:' + [data.nom, data.parcours, data.ville].map(x => String(x || '').trim().toLowerCase()).join('|');
+      if (data.action === 'region' && !REGIONS_QC.includes(data.region)) return json({ error: 'Région inconnue.' }, 400, origin);
+      if (data.action === 'carte' && String(data.nom || '').trim().length < 3) return json({ error: 'Nom du club manquant.' }, 400, origin);
+      if (!['region', 'carte'].includes(data.action)) return json({ error: 'Action inconnue.' }, 400, origin);
+      // Mémoire de 14 jours : la même région ou la même carte ne relance pas la recherche
+      const cache = caches.default, ck = new Request('https://fanion.ai/__terrains/' + encodeURIComponent(cle.slice(0, 200)));
+      if (!data.frais) { const hit = await cache.match(ck); if (hit) return json(await hit.json(), 200, origin); }
+      if (tooMany('terrains:' + (who.user_id || who.sub))) return json({ error: 'Beaucoup de recherches d’un coup : réessayez dans quelques minutes.' }, 429, origin);
+      try {
+        const out = data.action === 'region' ? await clubsRegion(env, data.region) : await carteClub(env, { nom: String(data.nom).slice(0, 90), ville: String(data.ville || '').slice(0, 60), parcours: String(data.parcours || '').slice(0, 60) });
+        if (ctx) ctx.waitUntil(cache.put(ck, new Response(JSON.stringify(out), { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=1209600' } })));
+        return json(out, 200, origin);
+      } catch (e) { return json({ error: 'Recherche impossible pour l’instant (' + e.message + ').' }, 502, origin); }
     }
     if (url.pathname === '/api/caddie/status') return json({ ready: !!env.ANTHROPIC_API_KEY }, 200, origin);
     if (url.pathname === '/api/caddie' && req.method === 'POST') {

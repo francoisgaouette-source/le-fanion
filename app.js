@@ -640,7 +640,7 @@
     const showDock = false; // plus d'interface vocale
     document.body.classList.toggle('view-game', S.view === 'game');
     $('#dock').hidden = !showDock; document.body.classList.toggle('no-dock', !showDock);
-    const R = { home: vHome, jeux: vJeux, jeuEdit: vJeuEdit, quatuors: vQuatuors, offre: vOffre, setup: vSetup, game: vGame, join: vJoin, history: vHistory, live: vHistory, courses: vCourses, course: vCourse, players: vPlayers, login: vLogin, compte: vCompte, comps: vComps, compEdit: vCompEdit, comp: vComp }[S.view];
+    const R = { home: vHome, jeux: vJeux, jeuEdit: vJeuEdit, quatuors: vQuatuors, offre: vOffre, setup: vSetup, game: vGame, join: vJoin, history: vHistory, live: vHistory, courses: vCourses, course: vCourse, clubs: vClubs, players: vPlayers, login: vLogin, compte: vCompte, comps: vComps, compEdit: vCompEdit, comp: vComp }[S.view];
     v.innerHTML = R();
     bind[S.view] && bind[S.view](v);
     leoApres();
@@ -2015,16 +2015,78 @@
   function vCourses() {
     $('#barTitle').textContent = 'Terrains';
     return `<div class="list">${S.courses.map(c => `<button class="item" data-edit="${esc(c.id)}"><b>${esc(c.name)}</b><span>${c.sim ? 'Simulateur · ' : ''}${c.catalog ? 'Catalogue Québec · ' : ''}Normale ${L.teePar(c, c.tees[0])} · ${c.tees.length} tertres${c.city ? ' · ' + esc(c.city) : ''}</span></button>`).join('')}</div>
-      <button class="btn" data-go="course" data-new="1" type="button">Ajouter un terrain</button>
+      <button class="btn" data-addcourse type="button">Ajouter un terrain</button>
       <p class="note">Ceux marqués « Catalogue Québec » viennent de cartes de pointage publiques : vérifiez les normales, handicaps et tertres avec la carte du club, et corrigez au besoin (la correction est gardée). Pour retirer un terrain de la banque, ouvrez-le.</p>
       ${(Store.retired || []).length ? `<section class="card"><h3>Terrains retirés</h3><p class="note">Ils n’apparaissent plus dans la banque ni dans Nouvelle partie. Les parties déjà jouées gardent leur terrain.</p>
         <div class="list">${Store.retired.map(c => `<div class="item"><b>${esc(c.name)}</b><button class="btn ghost small" data-unretire="${esc(c.id)}" type="button">Remettre</button></div>`).join('')}</div></section>` : ''}`;
   }
+  // ---------------- Terrains trouvés sur le web : région → clubs → carte préparée → révision et approbation ----------------
+  const TERRAINS_API = 'https://fanion.ai/api/terrains';
+  const REGIONS_QC = ['Montréal', 'Laval', 'Laurentides', 'Lanaudière', 'Montérégie', 'Cantons-de-l’Est', 'Centre-du-Québec', 'Mauricie', 'Québec (Capitale-Nationale)', 'Charlevoix', 'Chaudière-Appalaches', 'Outaouais', 'Abitibi-Témiscamingue', 'Saguenay–Lac-Saint-Jean', 'Bas-Saint-Laurent', 'Gaspésie', 'Côte-Nord'];
+  const W = { region: null, clubs: [], sources: [], charge: false, err: '', prep: null };
+  const normNom = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/club de golf|golf club|club|golf|le |la |les |du |de |des |d’|d'/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+  async function terrainsApi(body) {
+    const u = Store.mode === 'firebase' && firebase.auth().currentUser; if (!u) throw new Error('Connexion requise.');
+    const tok = await u.getIdToken();
+    const r = await fetch(TERRAINS_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || 'Erreur ' + r.status); return d;
+  }
+  function ajoutTerrainSheet() {
+    openSheet(`<h3>Ajouter un terrain</h3>
+      <p class="note">Choisissez la région : Léo cherche sur le web tous les clubs de golf de la région et prépare la carte de pointage du terrain choisi. Vous la vérifiez, puis l’approuvez ou la refusez avant qu’elle entre dans la banque.</p>
+      <div class="region-grid">${REGIONS_QC.map(r => `<button class="chip-btn" data-region="${esc(r)}" type="button">${esc(r)}</button>`).join('')}</div>
+      <div class="sheet-actions"><button class="btn ghost" data-main type="button">Autre : photo de la carte ou à la main</button><button class="btn ghost" data-close type="button">Annuler</button></div>`, sh => {
+      sh.querySelector('[data-close]').onclick = closeSheet;
+      sh.querySelector('[data-main]').onclick = () => { closeSheet(); go('course', { editCourse: null }); };
+      sh.querySelectorAll('[data-region]').forEach(b => b.onclick = () => { closeSheet(); chercherClubs(b.dataset.region); });
+    });
+  }
+  async function chercherClubs(region, frais) {
+    Object.assign(W, { region, clubs: [], sources: [], charge: false, err: '', prep: null });
+    go('clubs');
+    try { const d = await terrainsApi({ action: 'region', region, frais: !!frais }); W.clubs = d.clubs || []; W.sources = d.sources || []; }
+    catch (e) { W.err = e.message; }
+    W.charge = true; if (S.view === 'clubs') render();
+  }
+  async function preparerCarte(club, parcours) {
+    W.prep = club.nom + (parcours ? ' · ' + parcours : ''); W.err = ''; render();
+    try {
+      const d = await terrainsApi({ action: 'carte', nom: club.nom, ville: club.ville, parcours });
+      const nom = d.name || (club.nom + (parcours && !normNom(club.nom).includes(normNom(parcours)) ? ' – ' + parcours : ''));
+      const holes = (d.holes || []).slice(0, 18).map(h => ({ par: h.par == null ? '' : h.par, si: h.si == null ? '' : h.si }));
+      while (holes.length < 18) holes.push({ par: '', si: '' });
+      const tees = (d.tees || []).map(t => ({ name: t.name, rating: t.rating == null ? '' : String(t.rating).replace('.', ','), slope: t.slope == null ? '' : String(t.slope) }));
+      W.prep = null;
+      go('course', { editCourse: { name: nom, city: d.city || club.ville || '', holes, tees: tees.length ? tees : [{ name: 'Blanc', rating: '', slope: '' }],
+        web: { region: W.region, sources: d.sources || [], alertes: d.alertes || [], notes: d.notes || '', confiance: d.confiance || 'basse' } } });
+    } catch (e) { W.prep = null; W.err = 'Carte introuvable pour « ' + club.nom + ' » : ' + e.message; render(); }
+  }
+  function vClubs() {
+    $('#barTitle').textContent = W.region || 'Clubs';
+    const enBanque = c => { const n = normNom(c.nom); return n && S.courses.some(x => { const m = normNom(x.name); return m && (m.includes(n) || n.includes(m)); }); };
+    if (!W.charge) return `<section class="card leo-cherche"><div class="spin"></div><p><b>Léo cherche les clubs de golf · ${esc(W.region)}</b></p><p class="note">Recherche sur le web, ça prend de 20 à 60 secondes.</p></section>`;
+    if (W.prep) return `<section class="card leo-cherche"><div class="spin"></div><p><b>Léo prépare la carte de pointage</b></p><p>${esc(W.prep)}</p><p class="note">Il lit le site du club et les sites de cartes de pointage : normales, handicaps, tertres, évaluation et slope. Comptez jusqu’à une minute.</p></section>`;
+    return `${W.err ? `<p class="note err-txt">${esc(W.err)}</p>` : ''}
+      ${W.clubs.length ? `<p class="note">${W.clubs.length} club${W.clubs.length > 1 ? 's' : ''} trouvé${W.clubs.length > 1 ? 's' : ''}. Touchez un parcours : Léo prépare sa carte, vous la vérifiez puis l’approuvez.</p>
+      <div class="list">${W.clubs.map((c, i) => { const deja = enBanque(c); const pcs = c.parcours && c.parcours.length > 1 ? c.parcours : null;
+        return `<div class="item club-item${deja ? ' deja' : ''}"><div><b>${esc(c.nom)}</b><span>${esc(c.ville || '')}${c.prive ? ' · privé' : ''}${deja ? ' · déjà dans la banque' : ''}</span></div>
+          <div class="club-pcs">${pcs ? pcs.map((p, j) => `<button class="btn ghost small" data-club="${i}" data-pc="${j}" type="button">${esc(p.nom || 'Parcours ' + (j + 1))}${p.trous && p.trous !== 18 ? ' (' + p.trous + ' t.)' : ''}</button>`).join('') : `<button class="btn ghost small" data-club="${i}" type="button">${deja ? 'Préparer quand même' : 'Préparer la carte'}</button>`}</div></div>`; }).join('')}</div>` : (W.err ? '' : '<p class="note">Aucun club trouvé pour cette région.</p>')}
+      <div class="row"><button class="btn ghost small" data-reclubs type="button">Relancer la recherche</button><button class="btn ghost small" data-autreregion type="button">Autre région</button><button class="btn ghost small" data-main type="button">Entrer à la main</button></div>
+      ${W.sources.length ? `<p class="note">Sources : ${W.sources.slice(0, 5).map(u => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u.replace(/^https?:\/\/(www\.)?/, '').split('/')[0])}</a>`).join(' · ')}</p>` : ''}`;
+  }
   function vCourse() {
     const c = S.editCourse || (S.editCourse = { name: '', city: '', holes: Array.from({ length: 18 }, () => ({ par: 4, si: '' })), tees: [{ name: 'Blanc', rating: '', slope: '' }] });
-    $('#barTitle').textContent = c.id ? 'Modifier le terrain' : 'Nouveau terrain';
+    $('#barTitle').textContent = c.web ? 'Carte à réviser' : c.id ? 'Modifier le terrain' : 'Nouveau terrain';
     const imgs = S.cardImgs || [];
-    return `
+    const w = c.web;
+    const webBand = w ? `<section class="card web-band conf-${esc(w.confiance)}">
+        <h2>Carte préparée par Léo · à réviser</h2>
+        <p>Trouvée sur le web (fiabilité ${w.confiance === 'haute' ? 'élevée' : w.confiance === 'moyenne' ? 'moyenne' : 'faible'}). Comparez chaque normale, handicap, évaluation et slope avec la carte officielle du club, corrigez au besoin, puis approuvez ou refusez.</p>
+        ${w.alertes.length ? `<ul class="web-alertes">${w.alertes.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
+        ${w.notes ? `<p class="note">${esc(w.notes)}</p>` : ''}
+        ${w.sources.length ? `<p class="note">Sources : ${w.sources.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u.replace(/^https?:\/\/(www\.)?/, '').split('/')[0])}</a>`).join(' · ')}</p>` : ''}
+      </section>` : '';
+    return `${webBand}
       <section class="card card-upload">
         <h2>Carte de pointage</h2>
         <p class="note">Prenez la carte en photo (recto et verso) ou choisissez un PDF. L’app lit les normales, les handicaps et les tertres et remplit le formulaire : vérifiez ensuite avec la photo.</p>
@@ -2052,7 +2114,8 @@
         <div class="holes-edit"><span class="lbl">Trou</span><span class="lbl">Normale</span><span class="lbl">Handicap</span>
         ${c.holes.map((h, i) => `<span class="hh">${i + 1}</span><input data-hole="${i}:par" type="text" inputmode="numeric" value="${esc(h.par)}"><input data-hole="${i}:si" type="text" inputmode="numeric" value="${esc(h.si)}">`).join('')}</div>
       </section>
-      <button class="btn" id="saveCourse" type="button">Enregistrer le terrain</button>
+      ${w ? `<div class="row web-actions"><button class="btn" id="saveCourse" type="button">Approuver et ajouter à la banque</button><button class="btn ghost danger-txt" id="refuseCourse" type="button">Refuser</button></div>`
+        : `<button class="btn" id="saveCourse" type="button">Enregistrer le terrain</button>`}
       ${c.id && S.courses.some(x => x.id === c.id) ? (S.confirmRetire === c.id
         ? `<div class="row retire-row"><span class="note">Retirer « ${esc(c.name)} » de la banque du groupe ?</span><button class="btn small" id="retireOk" type="button" style="background:var(--red)">Retirer</button><button class="btn ghost small" id="retireNo" type="button">Annuler</button></div>`
         : `<button class="btn ghost danger-txt" id="retireCourse" type="button">Retirer ce terrain de la banque</button>`) : ''}`;
@@ -2396,8 +2459,16 @@
         catch (e) { toast('Effacement impossible : ' + e.message); }
       });
     },
+    clubs(v) {
+      v.querySelectorAll('[data-club]').forEach(b => b.onclick = () => { const c = W.clubs[+b.dataset.club]; const p = b.dataset.pc != null && c.parcours ? c.parcours[+b.dataset.pc] : null; preparerCarte(c, p && p.nom || ''); });
+      const q = (s, f) => { const el = v.querySelector(s); if (el) el.onclick = f; };
+      q('[data-reclubs]', () => chercherClubs(W.region, true));
+      q('[data-autreregion]', ajoutTerrainSheet);
+      q('[data-main]', () => go('course', { editCourse: null }));
+    },
     courses(v) {
       commonNav(v);
+      const ac = v.querySelector('[data-addcourse]'); if (ac) ac.onclick = ajoutTerrainSheet;
       v.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => go('course', { editCourse: JSON.parse(JSON.stringify(S.courses.find(c => c.id === b.dataset.edit))), confirmRetire: null }));
       v.querySelectorAll('[data-unretire]').forEach(b => b.onclick = async () => {
         b.disabled = true;
@@ -2446,17 +2517,19 @@
         try { await Store.setCourseRetired(c.id, true); S.courses = await Store.listCourses(); S.confirmRetire = null; S.editCourse = null; toast(`« ${c.name} » est retiré de la banque.`); go('courses'); }
         catch (e) { ro.disabled = false; toast('Retrait impossible : ' + e.message); }
       };
+      const rf = $('#refuseCourse'); if (rf) rf.onclick = () => { toast('Carte refusée : rien n’a été ajouté.'); S.editCourse = null; go(W.region ? 'clubs' : 'courses'); };
       $('#saveCourse').onclick = async () => {
         sync();
         const num = x => parseFloat(String(x).replace(',', '.'));
-        const out = { ...c, catalog: false, name: c.name.trim(), holes: c.holes.map(h => ({ par: parseInt(h.par, 10), si: parseInt(h.si, 10) })),
+        const { web, ...base } = c;
+        const out = { ...base, catalog: false, name: c.name.trim(), ...(web ? { source: 'web', region: web.region || '', sources: web.sources.slice(0, 6), approuvePar: Store.uid || '', approuveLe: Date.now() } : {}), holes: c.holes.map(h => ({ par: parseInt(h.par, 10), si: parseInt(h.si, 10) })),
           tees: c.tees.filter(t => String(t.name).trim()).map(t => ({ ...t, name: String(t.name).trim(), rating: num(t.rating), slope: parseInt(t.slope, 10) })) };
         const sis = out.holes.map(h => h.si).sort((a, b) => a - b).join(',');
         if (!out.name) return toast('Donnez un nom au terrain.');
         if (out.holes.some(h => !(h.par >= 3 && h.par <= 6))) return toast('Chaque normale doit être entre 3 et 6.');
         if (sis !== Array.from({ length: 18 }, (_, i) => i + 1).join(',')) return toast('Les handicaps doivent utiliser 1 à 18, une fois chacun.');
         if (!out.tees.length || out.tees.some(t => !(t.rating > 50 && t.rating < 90) || !(t.slope >= 55 && t.slope <= 155))) return toast('Vérifiez l\'évaluation (ex. 70,7) et le slope (55 à 155) des tertres.');
-        try { await Store.saveCourse(out); S.courses = await Store.listCourses(); toast('Terrain enregistré.'); go(S.draft ? 'setup' : 'courses', { editCourse: null }); }
+        try { await Store.saveCourse(out); S.courses = await Store.listCourses(); toast(web ? 'Terrain approuvé et ajouté à la banque.' : 'Terrain enregistré.'); go(S.draft ? 'setup' : 'courses', { editCourse: null }); }
         catch (e) { toast('Enregistrement impossible : ' + e.message); }
       };
     },
@@ -3687,7 +3760,8 @@
   // Démarrage
   // =====================================================================
   $('#back').onclick = () => {
-    if (S.view === 'course') go(S.draft ? 'setup' : 'courses', { editCourse: null });
+    if (S.view === 'course') go(S.editCourse && S.editCourse.web ? 'clubs' : S.draft ? 'setup' : 'courses', { editCourse: null });
+    else if (S.view === 'clubs') go('courses');
     else if (S.view === 'comp') go('comps');
     else if (S.view === 'compEdit') { if (S.compDraft && S.compDraft.id) openComp(S.compDraft.id); else go('comps'); }
     else go('home');
