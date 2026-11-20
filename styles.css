@@ -926,3 +926,5 @@ body:has(#sheetWrap:not([hidden])) .cd-lanceur { display: none; }
 .region-libre { display: flex; gap: 8px; margin-top: 10px; }
 .region-libre input { flex: 1; min-width: 0; margin: 0; }
 .region-libre .btn { flex: 0 0 auto; }
+.approve-band { display: block; width: 100%; text-align: left; font: inherit; font-weight: 700; cursor: pointer; }
+.approve-card { border-left: 4px solid var(--flag, #c33); }

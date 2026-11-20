@@ -205,6 +205,28 @@
       const cur = await this.retiredCourses(), next = out ? [...new Set([...cur, id])] : cur.filter(x => x !== id);
       if (this.mode === 'firebase') await this.setGdata('terrainsRetires', next); else ls.set('pelland.terrainsRetires.' + this.gid, next);
     },
+    // ---- Nouveaux terrains : proposés par les joueurs, approuvés par l'équipe Fanion (admins/{uid}) avant d'entrer dans la banque commune
+    async isAdmin() {
+      if (this.mode !== 'firebase') return !!ls.get('pelland.admin', false);
+      try { const u = firebase.auth().currentUser; if (!u) return false; return (await this.db.collection('admins').doc(u.uid).get()).exists; } catch (e) { return false; }
+    },
+    async proposeCourse(course, meta) {
+      const p = { course: JSON.parse(JSON.stringify(course)), statut: 'propose', groupe: this.gid, cree: Date.now(), ...meta, proposeUid: this.uid || '' };
+      if (this.mode === 'firebase') { const r = await this.db.collection('terrainsProposes').add(p); return { ...p, id: r.id }; }
+      const l = ls.get('pelland.terrainsProposes', []); p.id = 'p' + Date.now(); l.push(p); ls.set('pelland.terrainsProposes', l); return p;
+    },
+    async listProposals(admin) {
+      if (this.mode !== 'firebase') { const l = ls.get('pelland.terrainsProposes', []); return { mine: l.filter(p => p.groupe === this.gid), todo: admin ? l.filter(p => p.statut === 'propose') : [] }; }
+      const map = q => q.get().then(s => s.docs.map(d => ({ ...d.data(), id: d.id }))).catch(() => []);
+      const [mine, todo] = await Promise.all([map(this.db.collection('terrainsProposes').where('groupe', '==', this.gid)), admin ? map(this.db.collection('terrainsProposes').where('statut', '==', 'propose')) : []]);
+      return { mine, todo };
+    },
+    async decideProposal(id, ok, course) {
+      const ch = { statut: ok ? 'approuve' : 'refuse', decideLe: Date.now(), decideUid: this.uid || '' };
+      if (ok) { const c = await this.saveCourse(course); ch.courseId = c.id; }
+      if (this.mode === 'firebase') { await this.db.collection('terrainsProposes').doc(id).update(ch); return; }
+      ls.set('pelland.terrainsProposes', ls.get('pelland.terrainsProposes', []).map(p => p.id === id ? { ...p, ...ch } : p));
+    },
     async saveCourse(c) {
       c = JSON.parse(JSON.stringify(c));
       if (!c.id) c.id = slug(c.name) + '-' + Math.random().toString(36).slice(2, 6);
@@ -762,6 +784,7 @@
     return `
       ${Store.needLogin ? '' : groupInfo(true)}
       ${retourCarte()}
+      ${P.admin && P.todo.length ? `<button class="warn approve-band" data-go="courses" type="button">🏌️ ${P.todo.length} terrain${P.todo.length > 1 ? 's' : ''} à approuver pour la banque · Voir</button>` : ''}
       ${curGroup().archived ? `<div class="warn archived-band">Ce groupe est archivé.${meId() && meId() === ownerId() ? ' <button class="linkbtn" data-go="compte" type="button">Le rétablir dans Mon compte</button>' : ' Son propriétaire peut le rétablir.'}</div>` : ''}
       <div class="hero"><h1><span class="hero-k">Groupe :</span> ${esc(groupName())}${canOrganize() ? ' <button class="hero-edit" id="renameGroup" type="button" aria-label="Modifier le nom du groupe">Modifier</button>' : ''}</h1><p>${APP} · le golf entre amis${(S.myPlayers || []).length > 1 ? ` · <button class="linkbtn" id="switchGroup" type="button">Changer de groupe (${S.myPlayers.length})</button>` : ''}</p></div>
       <h3 class="home-h">Les étapes</h3>
@@ -2014,7 +2037,14 @@
   }
   function vCourses() {
     $('#barTitle').textContent = 'Terrains';
-    return `<div class="list">${S.courses.map(c => `<div class="course-row"><button class="item" data-edit="${esc(c.id)}"><b>${esc(c.name)}</b><span>${c.sim ? 'Simulateur · ' : ''}${c.catalog ? 'Catalogue Québec · ' : ''}${c.source === 'web' ? 'Trouvé sur le web · ' : ''}Normale ${L.teePar(c, c.tees[0])} · ${c.tees.length} tertres${c.city ? ' · ' + esc(c.city) : ''}</span></button>
+    const ilya = t => { const j = Math.round((Date.now() - t) / 864e5); return j < 1 ? 'aujourd’hui' : j === 1 ? 'hier' : `il y a ${j} jours`; };
+    const attente = P.mine.filter(p => p.statut === 'propose' || (p.statut === 'refuse' && Date.now() - (p.decideLe || 0) < 30 * 864e5)).sort((a, b) => b.cree - a.cree);
+    const todo = [...P.todo].sort((a, b) => a.cree - b.cree);
+    return `${P.admin && todo.length ? `<section class="card approve-card"><h3>À approuver (${todo.length})</h3><p class="note">Terrains proposés par les groupes. Ouvrez-les pour vérifier la carte, puis approuvez ou refusez : approuvés, ils entrent dans la banque commune.</p>
+        <div class="list">${todo.map(p => `<button class="item" data-prop="${esc(p.id)}" type="button"><b>${esc(p.course.name)}</b><span>${esc([p.course.city, p.course.web && p.course.web.region].filter(Boolean).join(' · '))}${p.course.web ? ' · trouvé sur le web' : ''} · proposé par ${esc(p.proposePar || 'un joueur')}${p.groupeNom ? ' (' + esc(p.groupeNom) + ')' : ''}, ${ilya(p.cree)}</span></button>`).join('')}</div></section>` : ''}
+      ${attente.length ? `<section class="card"><h3>En attente d’approbation</h3><p class="note">Les terrains ajoutés sont vérifiés par l’équipe Fanion avant d’entrer dans la banque.</p>
+        <div class="list">${attente.map(p => `<div class="item"><b>${esc(p.course.name)}</b><span>${p.statut === 'refuse' ? '<span class="pl-st none">Refusé</span>' : '<span class="pl-st wait">En attente</span>'} · envoyé ${ilya(p.cree)}${p.proposePar ? ' par ' + esc(p.proposePar) : ''}</span></div>`).join('')}</div></section>` : ''}
+      <div class="list">${S.courses.map(c => `<div class="course-row"><button class="item" data-edit="${esc(c.id)}"><b>${esc(c.name)}</b><span>${c.sim ? 'Simulateur · ' : ''}${c.catalog ? 'Catalogue Québec · ' : ''}${c.source === 'web' ? 'Trouvé sur le web · ' : ''}Normale ${L.teePar(c, c.tees[0])} · ${c.tees.length} tertres${c.city ? ' · ' + esc(c.city) : ''}</span></button>
         ${S.confirmDelCourse === c.id ? `<div class="row del-confirm"><span class="note">Effacer « ${esc(c.name)} » ?</span><button class="btn small" data-delcourse-ok="${esc(c.id)}" type="button" style="background:var(--red)">Effacer</button><button class="btn ghost small" data-delcourse-no type="button">Annuler</button></div>`
           : `<button class="btn ghost small danger-txt course-del" data-delcourse="${esc(c.id)}" type="button" aria-label="Effacer ${esc(c.name)}">Effacer</button>`}</div>`).join('')}</div>
       <button class="btn" data-addcourse type="button">Ajouter un terrain</button>
@@ -2077,6 +2107,12 @@
     const ad = b && b.address;
     if (ad && (ad.state || ad.country)) return { region: [ad.state || ad.county, ad.country].filter(Boolean).join(', '), ville: ad.city || ad.town || ad.village || '' };
     return { region: `environs de ${lat.toFixed(2)}, ${lng.toFixed(2)}`, ville: '' };
+  }
+  const P = { admin: false, mine: [], todo: [], charge: false };
+  async function chargerPropositions() {
+    if (Store.needLogin) return;
+    try { P.admin = await Store.isAdmin(); Object.assign(P, await Store.listProposals(P.admin), { charge: true }); } catch (e) { return; }
+    if ((S.view === 'home' && P.todo.length) || S.view === 'courses') { if (!document.querySelector('#sheetWrap:not([hidden]), #welcome, .cd-fond')) render(); }
   }
   function ajoutTerrainSheet() {
     const memo = ls.get(REGION_K, null);   // { region, auto } : dernière région détectée ou choisie
@@ -2151,9 +2187,10 @@
   }
   function vCourse() {
     const c = S.editCourse || (S.editCourse = { name: '', city: '', holes: Array.from({ length: 18 }, () => ({ par: 4, si: '' })), tees: [{ name: 'Blanc', rating: '', slope: '' }] });
-    $('#barTitle').textContent = c.web ? 'Carte à réviser' : c.id ? 'Modifier le terrain' : 'Nouveau terrain';
+    $('#barTitle').textContent = c.proposition ? 'Terrain à approuver' : c.web ? 'Carte à réviser' : c.id ? 'Modifier le terrain' : 'Nouveau terrain';
     const imgs = S.cardImgs || [];
-    const w = c.web;
+    const w = c.web, prop = c.proposition, admin = P.admin;
+    const propBand = prop ? `<section class="card web-band"><h2>Proposé pour la banque</h2><p>Par ${esc(prop.par || 'un joueur')}${prop.groupeNom ? ' (' + esc(prop.groupeNom) + ')' : ''}. Vérifiez la carte, corrigez au besoin, puis approuvez ou refusez.</p></section>` : '';
     const webBand = w ? `<section class="card web-band conf-${esc(w.confiance)}">
         <h2>Carte préparée par Léo · à réviser</h2>
         <p>Trouvée sur le web (fiabilité ${w.confiance === 'haute' ? 'élevée' : w.confiance === 'moyenne' ? 'moyenne' : 'faible'}). Comparez chaque normale, handicap, évaluation et slope avec la carte officielle du club, corrigez au besoin, puis approuvez ou refusez.</p>
@@ -2161,7 +2198,7 @@
         ${w.notes ? `<p class="note">${esc(w.notes)}</p>` : ''}
         ${w.sources.length ? `<p class="note">Sources : ${w.sources.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u.replace(/^https?:\/\/(www\.)?/, '').split('/')[0])}</a>`).join(' · ')}</p>` : ''}
       </section>` : '';
-    return `${webBand}
+    return `${propBand}${webBand}
       <section class="card card-upload">
         <h2>Carte de pointage</h2>
         <p class="note">Prenez la carte en photo (recto et verso) ou choisissez un PDF. L’app lit les normales, les handicaps et les tertres et remplit le formulaire : vérifiez ensuite avec la photo.</p>
@@ -2189,7 +2226,10 @@
         <div class="holes-edit"><span class="lbl">Trou</span><span class="lbl">Normale</span><span class="lbl">Handicap</span>
         ${c.holes.map((h, i) => `<span class="hh">${i + 1}</span><input data-hole="${i}:par" type="text" inputmode="numeric" value="${esc(h.par)}"><input data-hole="${i}:si" type="text" inputmode="numeric" value="${esc(h.si)}">`).join('')}</div>
       </section>
-      ${w ? `<div class="row web-actions"><button class="btn" id="saveCourse" type="button">Approuver et ajouter à la banque</button><button class="btn ghost danger-txt" id="refuseCourse" type="button">Refuser</button></div>`
+      ${prop || (w && admin) ? `<div class="row web-actions"><button class="btn" id="saveCourse" type="button">Approuver et ajouter à la banque</button><button class="btn ghost danger-txt" id="refuseCourse" type="button">Refuser</button></div>`
+        : w ? `<div class="row web-actions"><button class="btn" id="saveCourse" type="button">Envoyer pour approbation</button><button class="btn ghost danger-txt" id="refuseCourse" type="button">Refuser</button></div>
+          <p class="note">L’équipe Fanion vérifie chaque nouveau terrain avant de l’ajouter à la banque. Vous le verrez dans Terrains dès qu’il est approuvé.</p>`
+        : !c.id && !admin ? `<button class="btn" id="saveCourse" type="button">Envoyer pour approbation</button><p class="note">L’équipe Fanion vérifie chaque nouveau terrain avant de l’ajouter à la banque.</p>`
         : `<button class="btn" id="saveCourse" type="button">Enregistrer le terrain</button>`}
       ${c.id && S.courses.some(x => x.id === c.id) ? (S.confirmRetire === c.id
         ? `<div class="row retire-row"><span class="note">Effacer « ${esc(c.name)} » de la banque du groupe ?</span><button class="btn small" id="retireOk" type="button" style="background:var(--red)">Effacer</button><button class="btn ghost small" id="retireNo" type="button">Annuler</button></div>`
@@ -2544,6 +2584,12 @@
     courses(v) {
       commonNav(v);
       const ac = v.querySelector('[data-addcourse]'); if (ac) ac.onclick = ajoutTerrainSheet;
+      v.querySelectorAll('[data-prop]').forEach(b => b.onclick = () => {
+        const p = P.todo.find(x => x.id === b.dataset.prop); if (!p) return;
+        const { web, ...co } = JSON.parse(JSON.stringify(p.course)); delete co.id;
+        const fmt = x => x == null || x === '' || isNaN(x) ? '' : String(x).replace('.', ',');
+        go('course', { editCourse: { ...co, holes: co.holes.map(h => ({ par: h.par, si: h.si })), tees: co.tees.map(t => ({ ...t, rating: fmt(t.rating), slope: fmt(t.slope) })), ...(web ? { web: { alertes: [], notes: '', sources: [], ...web } } : {}), proposition: { id: p.id, par: p.proposePar, groupeNom: p.groupeNom } } });
+      });
       v.querySelectorAll('[data-delcourse]').forEach(b => b.onclick = () => { S.confirmDelCourse = b.dataset.delcourse; render(); });
       v.querySelectorAll('[data-delcourse-no]').forEach(b => b.onclick = () => { S.confirmDelCourse = null; render(); });
       v.querySelectorAll('[data-delcourse-ok]').forEach(b => b.onclick = async () => {
@@ -2599,11 +2645,19 @@
         try { await Store.setCourseRetired(c.id, true); S.courses = await Store.listCourses(); S.confirmRetire = null; S.editCourse = null; toast(`« ${c.name} » est effacé de la banque.`); go('courses'); }
         catch (e) { ro.disabled = false; toast('Retrait impossible : ' + e.message); }
       };
-      const rf = $('#refuseCourse'); if (rf) rf.onclick = () => { toast('Carte refusée : rien n’a été ajouté.'); S.editCourse = null; go(W.region ? 'clubs' : 'courses'); };
+      const rf = $('#refuseCourse'); if (rf) rf.onclick = async () => {
+        if (c.proposition) {
+          rf.disabled = true;
+          try { await Store.decideProposal(c.proposition.id, false); P.todo = P.todo.filter(p => p.id !== c.proposition.id); toast('Terrain refusé : il n’entre pas dans la banque.'); S.editCourse = null; go('courses'); chargerPropositions(); }
+          catch (e) { rf.disabled = false; toast('Impossible : ' + e.message); }
+          return;
+        }
+        toast('Carte refusée : rien n’a été ajouté.'); S.editCourse = null; go(W.region ? 'clubs' : 'courses');
+      };
       $('#saveCourse').onclick = async () => {
         sync();
         const num = x => parseFloat(String(x).replace(',', '.'));
-        const { web, ...base } = c;
+        const { web, proposition, ...base } = c;
         const out = { ...base, catalog: false, name: c.name.trim(), ...(web ? { source: 'web', region: web.region || '', sources: web.sources.slice(0, 6), approuvePar: Store.uid || '', approuveLe: Date.now() } : {}), holes: c.holes.map(h => ({ par: parseInt(h.par, 10), si: parseInt(h.si, 10) })),
           tees: c.tees.filter(t => String(t.name).trim()).map(t => ({ ...t, name: String(t.name).trim(), rating: num(t.rating), slope: parseInt(t.slope, 10) })) };
         const sis = out.holes.map(h => h.si).sort((a, b) => a - b).join(',');
@@ -2611,6 +2665,17 @@
         if (out.holes.some(h => !(h.par >= 3 && h.par <= 6))) return toast('Chaque normale doit être entre 3 et 6.');
         if (sis !== Array.from({ length: 18 }, (_, i) => i + 1).join(',')) return toast('Les handicaps doivent utiliser 1 à 18, une fois chacun.');
         if (!out.tees.length || out.tees.some(t => !(t.rating > 50 && t.rating < 90) || !(t.slope >= 55 && t.slope <= 155))) return toast('Vérifiez l\'évaluation (ex. 70,7) et le slope (55 à 155) des tertres.');
+        if (proposition) {
+          try { await Store.decideProposal(proposition.id, true, out); P.todo = P.todo.filter(p => p.id !== proposition.id); S.courses = await Store.listCourses(); toast('Terrain approuvé : il est dans la banque.'); go('courses', { editCourse: null }); chargerPropositions(); }
+          catch (e) { toast('Approbation impossible : ' + e.message); }
+          return;
+        }
+        if (!c.id && !P.admin) {
+          const g = curGroup(), moi = (S.players.find(p => p.id === meId()) || {}).name || ls.get('pelland.me', '') || '';
+          try { const p = await Store.proposeCourse({ ...out, ...(web ? { web } : {}) }, { proposePar: moi, groupeNom: g.name || '' }); P.mine.push(p); toast('Envoyé pour approbation. Merci !'); go(S.draft ? 'setup' : 'courses', { editCourse: null }); }
+          catch (e) { toast('Envoi impossible : ' + e.message); }
+          return;
+        }
         try { await Store.saveCourse(out); S.courses = await Store.listCourses(); toast(web ? 'Terrain approuvé et ajouté à la banque.' : 'Terrain enregistré.'); go(S.draft ? 'setup' : 'courses', { editCourse: null }); }
         catch (e) { toast('Enregistrement impossible : ' + e.message); }
       };
@@ -3895,7 +3960,8 @@
       Store.listJeux().catch(() => []), Store.listGroups().catch(() => [])]);
     Object.assign(S, { courses, players, quatuors, jeux, groups });
     if (!courses.some(c => c.id === L.PINEGROVE.id) && !(Store.retired || []).some(c => c.id === L.PINEGROVE.id)) { S.courses = [...courses, L.PINEGROVE]; Store.saveCourse(L.PINEGROVE).catch(() => { }); }
-    setTimeout(chargerRetour, 800);   // boucle de retour : réponses de l'équipe, nouveautés, sondage (sans retarder l'ouverture)
+    setTimeout(chargerRetour, 800);
+    setTimeout(chargerPropositions, 1200);   // terrains proposés : en attente pour le groupe, à approuver pour l'équipe Fanion   // boucle de retour : réponses de l'équipe, nouveautés, sondage (sans retarder l'ouverture)
     try { ls.set(snapK, { players, quatuors, jeux, groups, courses: courses.filter(c => !(window.QC_COURSES || []).some(q => q === c)), retired: (Store.retired || []).map(c => c.id), at: Date.now() }); } catch (e) { }
     // Groupes créés avant le compteur : on l'initialise une fois avec le nombre de joueurs
     if (Store.mode === 'firebase' && curGroup().nPlayers == null && S.players.length && canOrganize()) { try { await Store.db.collection('players').doc('_groupe_' + Store.gid).set({ nPlayers: S.players.length }, { merge: true }); S.groups = await Store.listGroups(); } catch (e) { console.warn('compteur', e.message); } }

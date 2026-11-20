@@ -217,10 +217,29 @@ service cloud.firestore {
       allow read, write: if dansGroupe(get(/databases/$(database)/documents/games/$(gameId)).data.get('groupId', 'pelland'));
     }
 
+    // ---------- Équipe Fanion : admins/{uid} (document créé à la main dans la console Firebase) ----------
+    function admin() {
+      return membre() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    match /admins/{uid} {
+      allow get: if membre() && uid == request.auth.uid;
+      allow list, write: if false;
+    }
+
     // ---------- Terrains (communs) ----------
+    // Un nouveau terrain n'entre dans la banque que si l'équipe Fanion l'approuve.
+    // Les membres peuvent encore corriger un terrain existant et garder une copie corrigée d'un terrain du catalogue (qc-…).
     match /courses/{courseId} {
-      allow read, create, update: if membre();
+      allow read, update: if membre();
+      allow create: if admin() || (membre() && (courseId.matches('qc-.+') || courseId == 'pinegrove'));
       allow delete: if false;
+    }
+    // Terrains proposés par un groupe : en attente jusqu'à la décision de l'équipe Fanion
+    match /terrainsProposes/{id} {
+      allow create: if membre() && dansGroupe(request.resource.data.groupe)
+        && request.resource.data.proposeUid == request.auth.uid && request.resource.data.statut == 'propose';
+      allow read: if admin() || dansGroupe(resource.data.groupe);
+      allow update, delete: if admin();
     }
   }
 }
