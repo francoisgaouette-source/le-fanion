@@ -221,6 +221,10 @@
       const [mine, todo] = await Promise.all([map(this.db.collection('terrainsProposes').where('groupe', '==', this.gid)), admin ? map(this.db.collection('terrainsProposes').where('statut', '==', 'propose')) : []]);
       return { mine, todo };
     },
+    async withdrawProposal(id) {
+      if (this.mode === 'firebase') { await this.db.collection('terrainsProposes').doc(id).delete(); return; }
+      ls.set('pelland.terrainsProposes', ls.get('pelland.terrainsProposes', []).filter(p => p.id !== id));
+    },
     async decideProposal(id, ok, course, photos) {
       const ch = { statut: ok ? 'approuve' : 'refuse', decideLe: Date.now(), decideUid: this.uid || '' };
       if (ok) {
@@ -2046,17 +2050,31 @@
   function vCourses() {
     $('#barTitle').textContent = 'Terrains';
     const ilya = t => { const j = Math.round((Date.now() - t) / 864e5); return j < 1 ? 'aujourd’hui' : j === 1 ? 'hier' : `il y a ${j} jours`; };
-    const attente = P.mine.filter(p => p.statut === 'propose' || (p.statut === 'refuse' && Date.now() - (p.decideLe || 0) < 30 * 864e5)).sort((a, b) => b.cree - a.cree);
-    const todo = [...P.todo].sort((a, b) => a.cree - b.cree);
-    return `${P.admin && todo.length ? `<section class="card approve-card"><h3>À approuver (${todo.length})</h3><p class="note">Terrains proposés par les groupes. Ouvrez-les pour vérifier la carte, puis approuvez ou refusez : approuvés, ils entrent dans la banque commune.</p>
-        <div class="list">${todo.map(p => `<button class="item" data-prop="${esc(p.id)}" type="button"><b>${esc(p.course.name)}</b><span>${esc([p.course.city, p.course.web && p.course.web.region].filter(Boolean).join(' · '))}${p.course.web ? ' · trouvé sur le web' : ''} · proposé par ${esc(p.proposePar || 'un joueur')}${p.groupeNom ? ' (' + esc(p.groupeNom) + ')' : ''}, ${ilya(p.cree)}</span></button>`).join('')}</div></section>` : ''}
-      ${attente.length ? `<section class="card"><h3>En attente d’approbation</h3><p class="note">Les terrains ajoutés sont vérifiés par l’équipe Fanion avant d’entrer dans la banque.</p>
-        <div class="list">${attente.map(p => `<div class="item"><b>${esc(p.course.name)}</b><span>${p.statut === 'refuse' ? '<span class="pl-st none">Refusé</span>' : '<span class="pl-st wait">En attente</span>'} · envoyé ${ilya(p.cree)}${p.proposePar ? ' par ' + esc(p.proposePar) : ''}</span></div>`).join('')}</div></section>` : ''}
-      <div class="list">${S.courses.map(c => `<div class="course-row"><button class="item" data-edit="${esc(c.id)}"><b>${esc(c.name)}</b><span>${c.sim ? 'Simulateur · ' : ''}${c.catalog ? 'Catalogue Québec · ' : ''}${c.source === 'web' ? 'Trouvé sur le web · ' : ''}Normale ${L.teePar(c, c.tees[0])} · ${c.tees.length} tertres${c.city ? ' · ' + esc(c.city) : ''}</span></button>
+    // 2. À approuver : pour l'équipe Fanion, toutes les propositions ; pour un groupe, les siennes (en attente, ou refusées depuis moins de 30 jours)
+    const liste = P.admin ? [...P.todo, ...P.mine.filter(p => p.statut === 'refuse' && Date.now() - (p.decideLe || 0) < 30 * 864e5)]
+      : P.mine.filter(p => p.statut === 'propose' || (p.statut === 'refuse' && Date.now() - (p.decideLe || 0) < 30 * 864e5));
+    const aApprouver = liste.sort((a, b) => a.cree - b.cree);
+    const ligneProp = p => {
+      const attente = p.statut === 'propose';
+      const infos = `${esc([p.course.city, p.course.web && p.course.web.region].filter(Boolean).join(' · '))}${p.course.web ? ' · trouvé sur le web' : ''}${(p.photos || []).length ? ' · photo de la carte' : ''} · proposé par ${esc(p.proposePar || 'un joueur')}${p.groupeNom && P.admin ? ' (' + esc(p.groupeNom) + ')' : ''}, ${ilya(p.cree)}`;
+      const etat = attente ? '<span class="pl-st wait">En attente</span>' : '<span class="pl-st none">Refusé</span>';
+      const actions = !attente ? '' : S.confirmDelProp === p.id
+        ? `<div class="row del-confirm"><span class="note">${P.admin ? 'Effacer cette proposition ? Le terrain n’entrera pas dans la banque.' : 'Retirer votre proposition ?'}</span><button class="btn small" data-delprop-ok="${esc(p.id)}" type="button" style="background:var(--red)">Effacer</button><button class="btn ghost small" data-delprop-no type="button">Annuler</button></div>`
+        : `<div class="row prop-actions">${P.admin ? `<button class="btn small" data-prop="${esc(p.id)}" type="button">Vérifier et approuver</button>` : ''}<button class="btn ghost small danger-txt" data-delprop="${esc(p.id)}" type="button">Effacer</button></div>`;
+      return `<div class="prop-row">${P.admin && attente ? `<button class="item" data-prop="${esc(p.id)}" type="button">` : '<div class="item">'}<b>${esc(p.course.name)}</b><span>${etat} · ${infos}</span>${P.admin && attente ? '</button>' : '</div>'}${actions}</div>`;
+    };
+    const nAtt = aApprouver.filter(p => p.statut === 'propose').length;
+    return `<section class="card terr-etape"><h3><span class="terr-n">1</span> Terrain à ajouter</h3>
+        <p class="note">Léo cherche les clubs de votre région sur le web et prépare la carte de pointage ; vous pouvez aussi photographier la carte ou l’entrer à la main.</p>
+        <button class="btn" data-addcourse type="button">Ajouter un terrain</button></section>
+      <section class="card terr-etape${nAtt && P.admin ? ' approve-card' : ''}"><h3><span class="terr-n">2</span> Terrains à approuver${nAtt ? ' (' + nAtt + ')' : ''}</h3>
+        <p class="note">${P.admin ? 'Vérifiez chaque terrain avec sa carte de pointage, puis approuvez-le ou effacez-le.' : 'Chaque nouveau terrain est vérifié par l’équipe Fanion, qui l’approuve ou l’efface.'}</p>
+        ${aApprouver.length ? `<div class="list">${aApprouver.map(ligneProp).join('')}</div>` : '<p class="note vide">Aucun terrain en attente.</p>'}</section>
+      <section class="card terr-etape"><h3><span class="terr-n">3</span> Terrains disponibles (${S.courses.length})</h3>
+        <p class="note">Ceux marqués « Catalogue Québec » viennent de cartes publiques : vérifiez-les avec la carte du club et corrigez au besoin. « Effacer » enlève le terrain de la banque de votre groupe ; les parties jouées le gardent.</p>
+        <div class="list">${S.courses.map(c => `<div class="course-row"><button class="item" data-edit="${esc(c.id)}"><b>${esc(c.name)}</b><span>${c.sim ? 'Simulateur · ' : ''}${c.catalog ? 'Catalogue Québec · ' : ''}${c.source === 'web' ? 'Trouvé sur le web · ' : ''}Normale ${L.teePar(c, c.tees[0])} · ${c.tees.length} tertres${c.city ? ' · ' + esc(c.city) : ''}</span></button>
         ${S.confirmDelCourse === c.id ? `<div class="row del-confirm"><span class="note">Effacer « ${esc(c.name)} » ?</span><button class="btn small" data-delcourse-ok="${esc(c.id)}" type="button" style="background:var(--red)">Effacer</button><button class="btn ghost small" data-delcourse-no type="button">Annuler</button></div>`
-          : `<button class="btn ghost small danger-txt course-del" data-delcourse="${esc(c.id)}" type="button" aria-label="Effacer ${esc(c.name)}">Effacer</button>`}</div>`).join('')}</div>
-      <button class="btn" data-addcourse type="button">Ajouter un terrain</button>
-      <p class="note">Ceux marqués « Catalogue Québec » viennent de cartes de pointage publiques : vérifiez les normales, handicaps et tertres avec la carte du club, et corrigez au besoin (la correction est gardée). « Effacer » enlève le terrain de la banque de votre groupe ; les parties déjà jouées le gardent, et vous pouvez le remettre plus bas.</p>
+          : `<button class="btn ghost small danger-txt course-del" data-delcourse="${esc(c.id)}" type="button" aria-label="Effacer ${esc(c.name)}">Effacer</button>`}</div>`).join('')}</div></section>
       ${(Store.retired || []).length ? `<section class="card"><h3>Terrains effacés</h3><p class="note">Ils n’apparaissent plus dans la banque ni dans Nouvelle partie. Les parties déjà jouées gardent leur terrain.</p>
         <div class="list">${Store.retired.map(c => `<div class="item"><b>${esc(c.name)}</b><button class="btn ghost small" data-unretire="${esc(c.id)}" type="button">Remettre</button></div>`).join('')}</div></section>` : ''}`;
   }
@@ -2259,7 +2277,7 @@
         <div class="holes-edit"><span class="lbl">Trou</span><span class="lbl">Normale</span><span class="lbl">Handicap</span>
         ${c.holes.map((h, i) => `<span class="hh">${i + 1}</span><input data-hole="${i}:par" type="text" inputmode="numeric" value="${esc(h.par)}"><input data-hole="${i}:si" type="text" inputmode="numeric" value="${esc(h.si)}">`).join('')}</div>
       </section>
-      ${prop || (w && admin) ? `<div class="row web-actions"><button class="btn" id="saveCourse" type="button">Approuver et ajouter à la banque</button><button class="btn ghost danger-txt" id="refuseCourse" type="button">Refuser</button></div>`
+      ${prop || (w && admin) ? `<div class="row web-actions"><button class="btn" id="saveCourse" type="button">Approuver et ajouter à la banque</button><button class="btn ghost danger-txt" id="refuseCourse" type="button">${prop ? 'Effacer' : 'Refuser'}</button></div>`
         : w ? `<div class="row web-actions"><button class="btn" id="saveCourse" type="button">Envoyer pour approbation</button><button class="btn ghost danger-txt" id="refuseCourse" type="button">Refuser</button></div>
           <p class="note">L’équipe Fanion vérifie chaque nouveau terrain avant de l’ajouter à la banque. Vous le verrez dans Terrains dès qu’il est approuvé.</p>`
         : !c.id && !admin ? `<button class="btn" id="saveCourse" type="button">Envoyer pour approbation</button><p class="note">L’équipe Fanion vérifie chaque nouveau terrain avant de l’ajouter à la banque.</p>`
@@ -2617,6 +2635,16 @@
     courses(v) {
       commonNav(v);
       const ac = v.querySelector('[data-addcourse]'); if (ac) ac.onclick = ajoutTerrainSheet;
+      v.querySelectorAll('[data-delprop]').forEach(b => b.onclick = () => { S.confirmDelProp = b.dataset.delprop; render(); });
+      v.querySelectorAll('[data-delprop-no]').forEach(b => b.onclick = () => { S.confirmDelProp = null; render(); });
+      v.querySelectorAll('[data-delprop-ok]').forEach(b => b.onclick = async () => {
+        b.disabled = true; const id = b.dataset.delpropOk;
+        try {
+          if (P.admin) await Store.decideProposal(id, false); else await Store.withdrawProposal(id);
+          P.todo = P.todo.filter(p => p.id !== id); P.mine = P.admin ? P.mine.map(p => p.id === id ? { ...p, statut: 'refuse', decideLe: Date.now() } : p) : P.mine.filter(p => p.id !== id);
+          S.confirmDelProp = null; toast(P.admin ? 'Terrain effacé : il n’entre pas dans la banque.' : 'Proposition retirée.'); render();
+        } catch (e) { b.disabled = false; toast('Impossible : ' + e.message); }
+      });
       v.querySelectorAll('[data-prop]').forEach(b => b.onclick = () => {
         const p = P.todo.find(x => x.id === b.dataset.prop); if (!p) return;
         const { web, ...co } = JSON.parse(JSON.stringify(p.course)); delete co.id;
@@ -2687,7 +2715,7 @@
       const rf = $('#refuseCourse'); if (rf) rf.onclick = async () => {
         if (c.proposition) {
           rf.disabled = true;
-          try { await Store.decideProposal(c.proposition.id, false); P.todo = P.todo.filter(p => p.id !== c.proposition.id); toast('Terrain refusé : il n’entre pas dans la banque.'); S.editCourse = null; go('courses'); chargerPropositions(); }
+          try { await Store.decideProposal(c.proposition.id, false); P.todo = P.todo.filter(p => p.id !== c.proposition.id); toast('Terrain effacé : il n’entre pas dans la banque.'); S.editCourse = null; go('courses'); chargerPropositions(); }
           catch (e) { rf.disabled = false; toast('Impossible : ' + e.message); }
           return;
         }

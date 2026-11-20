@@ -933,3 +933,12 @@ body:has(#sheetWrap:not([hidden])) .cd-lanceur { display: none; }
 .carte-img img { display: block; width: 100%; max-height: 260px; object-fit: contain; }
 .carte-img span { position: absolute; right: 6px; bottom: 6px; font-size: 12px; background: rgba(0,0,0,.6); color: #fff; padding: 2px 8px; border-radius: 99px; }
 .carte-img.ko { display: none; }
+.terr-etape h3 { display: flex; align-items: center; gap: 10px; margin-top: 0; }
+.terr-n { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--flag, #e0a800); color: var(--flag-ink, #1a1a1a); font-size: 15px; font-weight: 800; flex: 0 0 auto; }
+.terr-etape .btn[data-addcourse] { margin-top: 4px; }
+.prop-row { display: grid; gap: 6px; }
+.prop-actions { justify-content: flex-end; }
+.prop-actions { flex-wrap: nowrap; }
+.prop-actions .btn { width: auto; margin: 0; flex: 1 1 auto; font-size: 16px; padding: 0 12px; }
+.prop-actions .btn.ghost.danger-txt { width: auto; margin: 0; flex: 0 0 auto; }
+.terr-etape .vide { font-style: italic; }

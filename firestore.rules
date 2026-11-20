@@ -239,7 +239,9 @@ service cloud.firestore {
       allow create: if membre() && dansGroupe(request.resource.data.groupe)
         && request.resource.data.proposeUid == request.auth.uid && request.resource.data.statut == 'propose';
       allow read: if admin() || dansGroupe(resource.data.groupe);
-      allow update, delete: if admin();
+      allow update: if admin();
+      // L'équipe Fanion, ou le joueur qui l'a proposé tant qu'elle est en attente (il retire sa proposition)
+      allow delete: if admin() || (membre() && resource.data.proposeUid == request.auth.uid && resource.data.statut == 'propose');
     }
     // Photos de la carte de pointage d'un terrain approuvé (pour vérifier)
     match /cartesTerrains/{courseId} {
