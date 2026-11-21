@@ -40,9 +40,10 @@ service cloud.firestore {
     }
     // ---------- Forfait et nombre de joueurs ----------
     function grp(g) { return /databases/$(database)/documents/players/$('_groupe_' + g); }
-    // Joueurs permis : 16 avec le forfait Groupe en cours, sinon 4 (Gratuit)
+    // Joueurs permis : 16 avec le forfait Groupe en cours, sinon 4 (Gratuit) ; maxJoueurs (donné par Fanion, ex. groupe de test) l'emporte
     function maxJoueurs(d) {
-      return d.get('plan', '') == 'groupe' && (!('paidUntil' in d) || d.paidUntil > request.time.toMillis()) ? 16 : 4;
+      return d.get('maxJoueurs', 0) > 0 ? d.maxJoueurs
+        : d.get('plan', '') == 'groupe' && (!('paidUntil' in d) || d.paidUntil > request.time.toMillis()) ? 16 : 4;
     }
     // Un joueur ajouté : le compteur du groupe monte de 1 dans la même écriture, sans dépasser le forfait
     function ajoutCompte(g) {
@@ -86,11 +87,11 @@ service cloud.firestore {
       // Groupe : _groupe_<g>
       // Le forfait (plan, paidUntil) est donné par Fanion après le paiement : jamais modifiable depuis l'app
       allow create: if membre() && id.matches('_groupe_.+') && request.resource.data.id == id.split('_groupe_')[1]
-        && !request.resource.data.keys().hasAny(['plan', 'paidUntil'])
+        && !request.resource.data.keys().hasAny(['plan', 'paidUntil', 'maxJoueurs'])
         && request.resource.data.get('nPlayers', 1) == 1;
       allow update: if membre() && id.matches('_groupe_.+') && dansGroupe(id.split('_groupe_')[1])
         && request.resource.data.id == resource.data.id
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['plan', 'paidUntil'])
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['plan', 'paidUntil', 'maxJoueurs'])
         // compteur de joueurs : +1 avec un nouveau joueur du groupe, −1 avec un joueur retiré, ou première initialisation
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['nPlayers'])
             || !('nPlayers' in resource.data)

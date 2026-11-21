@@ -834,6 +834,8 @@
   // Forfait gardé dans players/_groupe_<g> : plan = 'groupe' (16 joueurs, payé) et paidUntil (ms). Sans forfait : Gratuit, 4 joueurs.
   function planOf(gr) {
     gr = gr || curGroup();
+    // Limite donnée par Fanion (groupe de test, entente spéciale) : l'emporte sur le forfait
+    if (Number(gr.maxJoueurs) > 0) { const b = gr.plan === 'groupe' && (!gr.paidUntil || gr.paidUntil > Date.now()); return { name: b ? 'Groupe' : 'Test', max: Number(gr.maxJoueurs), until: b ? gr.paidUntil || null : null, paid: true }; }
     if (gr.plan === 'groupe' && (!gr.paidUntil || gr.paidUntil > Date.now())) return { name: 'Groupe', max: 16, until: gr.paidUntil || null, paid: true };
     return { name: 'Gratuit', max: 4, until: null, paid: false, expired: gr.plan === 'groupe' };
   }
