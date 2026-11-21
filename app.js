@@ -787,7 +787,7 @@
     document.body.appendChild(wrap);
     const close = () => { try { ls.set(welcomeKey(), Date.now()); } catch (e) { } wrap.classList.add('out'); setTimeout(() => wrap.remove(), 250); };
     // Notifications du groupe : activées d'office en entrant (le geste du joueur permet de demander la permission au téléphone)
-    wrap.querySelector('#wlGo').onclick = () => { close(); if (Push.supported() && !Push.needsInstall() && Push.perm() !== 'denied') Push.enable().then(() => toast('Notifications du groupe activées.')).catch(() => { }).then(() => render()); };
+    wrap.querySelector('#wlGo').onclick = () => { close(); if (Push.supported() && !Push.needsInstall() && Push.perm() !== 'denied') Push.enable().then(() => toast('Notifications du groupe activées.')).catch(() => Push.signaler()).then(() => render()); else Push.signaler(); };
     wrap.querySelector('#wlOwn').onclick = () => { close(); setTimeout(newGroupSheet, 260); };
     wrap.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
     wrap.tabIndex = -1; setTimeout(() => { wrap.scrollTop = 0; wrap.focus({ preventScroll: true }); }, 50);
@@ -795,7 +795,7 @@
   function maybeWelcome() { if (S.view === 'home' && isParticipant() && !ls.get(welcomeKey(), 0) && !document.getElementById('welcome')) showWelcome(); }
   document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-welcome]'); if (t) { e.preventDefault(); showWelcome(); } });
   function vHome() {
-    $('#barTitle').textContent = APP;
+    $('#barTitle').innerHTML = `${APP}<small class="bar-sous">le golf entre amis</small>`;
     const last = ls.get('pelland.lastGame', null);
     const info = ls.get('pelland.lastGameInfo', null);
     const lastDate = info && info.id === last && info.createdAt ? new Date(info.createdAt).toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' }) : null;
@@ -1931,7 +1931,7 @@
 
   // ---------------- Terrains ----------------
   function vLogin() {
-    $('#barTitle').textContent = APP;
+    $('#barTitle').innerHTML = `${APP}<small class="bar-sous">le golf entre amis</small>`;
     $('#back').hidden = true;
     const qs = new URLSearchParams(location.search), me = ls.get('pelland.me', ''), invited = qs.get('joueur'), refQ = qs.get('ref');
     const groups = S.groups || [{ id: 'pelland', name: 'La gang à Pelland' }];
@@ -2058,6 +2058,9 @@
         <div class="row" style="flex-wrap:nowrap"><input id="newPhone" type="tel" inputmode="tel" placeholder="Cellulaire" style="flex:1;min-width:0"><button class="btn small" id="addPlayer" type="button">Ajouter</button></div>
         ${canOrganize() ? `<div class="import-row"><label class="btn ghost small" for="xlsFile">Importer un fichier Excel</label><input id="xlsFile" type="file" accept=".xlsx,.xls,.csv,.ods" hidden><span class="note">Deux colonnes : le nom et le cellulaire.</span></div>` : ''}`}
         </section>
+      ${canOrganize() && S.notifs ? (() => { const sans = S.players.filter(p => hasAccepted(p) && p.id !== meId() && (S.notifs[p.id] || 'a_activer') !== 'actif'); const bl = sans.filter(p => ['bloque', 'non_supporte'].includes(S.notifs[p.id]));
+        return sans.length ? `<div class="warn notif-warn"><b>${sans.length} joueur${sans.length > 1 ? 's ne reçoivent' : ' ne reçoit'} pas les notifications :</b> ${sans.map(p => esc(p.name) + ' (' + NOTIF[S.notifs[p.id] || 'a_activer'][1].replace(/^🔕 /, '').toLowerCase() + ')').join(', ')}.
+          ${bl.length ? 'Ils ne verront ni les dates, ni les rappels, ni les parties : parlez-leur, ou retirez-les du groupe.' : 'Rappelez-leur d’ouvrir l’app et d’accepter les notifications.'}</div>` : ''; })() : ''}
       ${(() => { const dups = duplicateMap(S.players); const nd = Object.keys(dups).length; return nd ? `<div class="warn">${nd} joueurs semblent en double. Vérifiez les noms marqués « Doublon ? » et retirez celui de trop.</div>` : ''; })()}
       ${!ownerId() && S.players.length ? `<div class="warn">Le groupe n’a pas encore de propriétaire (la personne qui l’administre et paie l’abonnement). <button class="linkbtn" id="claimOwner" type="button">C’est moi</button></div>` : ''}
       ${S.players.length ? `<div class="row pl-head"><p class="pl-count"><b>${S.players.length}</b> joueur${S.players.length > 1 ? 's' : ''} dans le groupe</p>${canOrganize() ? `<button class="btn ghost small" data-selmode type="button">${S.selMode ? 'Terminer' : 'Sélectionner'}</button>` : ''}</div>` : ''}
@@ -2067,8 +2070,26 @@
         : `<span class="row" style="flex-wrap:nowrap;flex:none"><button class="btn ghost small" data-phone="${esc(p.id)}" type="button">${p.phone ? '☎ ' + esc(fmtPhone(p.phone)) : p.authEmail ? '☎ ••' + esc(p.phoneHint || '') : '+ Téléphone'}</button>${p.id === ownerId() ? '' : `<button class="btn ghost small" data-askdel="${esc(p.id)}" type="button">Retirer</button>`}</span>`}</div>`).join(''); })() : '<p class="note">Aucun joueur pour l\'instant.</p>'}</div>`;
   }
   // Statut d'invitation d'un joueur : compte créé, invité en attente, ou sans cellulaire
+  // Notifications de chaque joueur, pour l'organisateur (lu dans subs du groupe)
+  const NOTIF = { actif: ['ok', '🔔 Notifications actives', 'Il reçoit les alertes du groupe.'], bloque: ['bad', '🔕 Notifications bloquées', 'Il les a bloquées sur son téléphone : il ne reçoit rien. Parlez-lui, ou retirez-le du groupe.'],
+    a_activer: ['wait', '🔕 Notifications pas activées', 'Il n’a pas encore accepté les notifications sur son téléphone.'], a_installer: ['wait', '🔕 App pas sur l’écran d’accueil', 'Sur iPhone, il doit ajouter l’app à l’écran d’accueil pour recevoir les alertes.'],
+    non_supporte: ['bad', '🔕 Téléphone sans notifications', 'Son navigateur ne reçoit pas les notifications.'] };
+  async function chargerNotifs() {
+    if (Store.mode !== 'firebase' || !canOrganize()) return;
+    try {
+      const snap = await Store.db.collection('subs').where('groupId', '==', Store.gid).get(), m = {};
+      snap.docs.forEach(d => { const x = d.data(), e = x.sub ? 'actif' : (x.etat || 'a_activer'); if (!m[x.playerId] || (x.at || 0) > m[x.playerId].at) m[x.playerId] = { e, at: x.at || 0 }; });
+      S.notifs = Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.e]));
+    } catch (e) { S.notifs = {}; }
+    if (S.view === 'players') render();
+  }
+  function notifStatus(p) {
+    if (!S.notifs || !hasAccepted(p)) return '';
+    const n = NOTIF[S.notifs[p.id] || 'a_activer'];
+    return ` <span class="pl-st notif-${n[0]}" title="${esc(n[2])}">${n[1]}</span>`;
+  }
   function plStatus(p) {
-    if (hasAccepted(p)) return ' <span class="pl-st ok" title="Invitation acceptée : compte créé">✓ Compte créé</span>';
+    if (hasAccepted(p)) return ' <span class="pl-st ok" title="Invitation acceptée : compte créé">✓ Compte créé</span>' + notifStatus(p);
     if (p.phone || p.phoneHint) return ' <span class="pl-st wait" title="Le texto d’invitation a pu être envoyé ; le joueur n’a pas encore créé son compte">Invité · en attente</span>';
     return ' <span class="pl-st none" title="Ajoutez son cellulaire pour l’inviter">Sans cellulaire</span>';
   }
@@ -2590,6 +2611,7 @@
       });
     },
     players(v) {
+      if (!S.notifsAt || Date.now() - S.notifsAt > 60e3) { S.notifsAt = Date.now(); chargerNotifs(); }
       if (S.pMode === 'inviter' && !S.pFocused && roomLeft() > 0) { S.pFocused = true; setTimeout(() => { const i = $('#newPlayer'); if (i) i.focus(); }, 80); }
       v.querySelectorAll('[data-org]').forEach(b => b.onclick = async () => {
         // un seul organisateur (en plus du propriétaire) : en nommer un nouveau remplace l'ancien
@@ -3734,12 +3756,12 @@
       if (Store.mode !== 'firebase' || !Store.uid) return;
       let mine = []; try { mine = await Store.myPlayers(); } catch (e) { }
       if (!mine.length && meId()) mine = [{ id: meId(), groupId: Store.gid }];
-      const js = JSON.stringify(sub);
+      const js = sub ? JSON.stringify(sub) : '';
       // Groupes quittés : leur abonnement est retiré (on ne reçoit plus rien d'un groupe dont on n'est plus membre)
       const avant = ls.get('pelland.push.groupes', []), maintenant = mine.map(p => p.groupId || 'pelland');
       for (const g of avant.filter(g => !maintenant.includes(g))) { try { await Store.db.collection('subs').doc(Store.uid + '_' + g).delete(); } catch (e) { } }
       ls.set('pelland.push.groupes', maintenant);
-      for (const p of mine) { const g = p.groupId || 'pelland'; try { await Store.db.collection('subs').doc(Store.uid + '_' + g).set({ uid: Store.uid, groupId: g, playerId: p.id, sub: js, at: Date.now() }); } catch (e) { console.warn('abonnement', g, e.message); } }
+      for (const p of mine) { const g = p.groupId || 'pelland'; try { await Store.db.collection('subs').doc(Store.uid + '_' + g).set({ uid: Store.uid, groupId: g, playerId: p.id, sub: js, etat: js ? 'actif' : (this.etatAct || 'a_activer'), at: Date.now() }); } catch (e) { console.warn('abonnement', g, e.message); } }
     },
     async disable() {
       const sub = await this.sub(); if (sub) { try { await sub.unsubscribe(); } catch (e) { } }
@@ -3751,13 +3773,21 @@
     },
     // Garde l'abonnement à jour (nouveau groupe, abonnement renouvelé par le navigateur)
     // Membre d'un groupe = notifications actives : dès que le téléphone les permet, l'abonnement est (re)fait sans rien demander
+    // État vu par l'organisateur (Joueurs) : actif, bloque, a_activer, a_installer, non_supporte
+    etat() { return !this.supported() ? (this.needsInstall() ? 'a_installer' : 'non_supporte') : this.perm() === 'denied' ? 'bloque' : this.perm() === 'granted' ? 'actif' : 'a_activer'; },
+    async signaler() {
+      if (Store.mode !== 'firebase' || !Store.uid) return;
+      const e = this.etat(); if (e === 'actif' || ls.get('pelland.push.etat', '') === e + ':' + Store.gid) return;
+      this.etatAct = e; try { await this.save(null); ls.set('pelland.push.etat', e + ':' + Store.gid); } catch (x) { }
+    },
     async refresh() {
-      if (!this.supported() || this.perm() !== 'granted' || Store.mode !== 'firebase' || !Store.uid) return;
+      if (this.perm() !== 'granted' || !this.supported()) return this.signaler();
+      if (Store.mode !== 'firebase' || !Store.uid) return;
       try {
         const reg = await navigator.serviceWorker.ready;
         const s = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: this.key() });
-        await this.save(s); ls.set('pelland.push', 1);
-      } catch (e) { }
+        await this.save(s); ls.set('pelland.push', 1); ls.set('pelland.push.etat', '');
+      } catch (e) { this.etatAct = 'a_activer'; }
     },
     on() { return this.perm() === 'granted' && !!ls.get('pelland.push', 0); },
     // Avertit les membres du groupe (sauf soi) ; playerIds = seulement ces joueurs
@@ -3782,7 +3812,7 @@
     const t = e.target.closest && e.target.closest('[data-pushon]'); if (!t) return;
     e.preventDefault();
     t.disabled = true;
-    try { await Push.enable(); toast('Notifications activées.'); } catch (x) { toast(x.message); }
+    try { await Push.enable(); toast('Notifications activées.'); } catch (x) { toast(x.message); Push.signaler(); }
     render();
   });
   // ---------------- Le Caddie : l'agent qui répond aux questions (API Claude, par le serveur Fanion) ----------------
