@@ -858,7 +858,7 @@
       ${meOwner ? acctAct(sameOrg) : ''}
       ${!sameOrg ? `<div class="who-line"><b>${esc(org.name)}</b>${tagO}</div>${org.id === meId() ? acctAct() : ''}` : ''}
       ${isParticipant() ? `<div class="who-line me-line"><b>${esc((S.players.find(p => p.id === meId()) || {}).name || '')}</b><span class="role-tag part">Participant</span><button class="linkbtn" data-welcome type="button">Ce que je peux faire</button></div>${acctAct()}` : ''}
-      <div class="plan-line"><span>Forfait</span><b>${pl.name}${pl.expired ? ' (saison terminée)' : ''}</b><small class="${over ? 'over' : ''}">${n} / ${pl.max} joueurs${until}</small>${buy}</div>
+      ${over ? `<div class="plan-line"><small class="over">${n} / ${pl.max} joueurs : forfait dépassé</small>${buy}</div>` : ''}
     </div>`;
   }
 
@@ -952,16 +952,34 @@
         ${S.fromLogin ? '<p class="note"><b>Bienvenue !</b> Choisissez votre groupe.</p>' : ''}
         <p class="note">${cell ? 'Cellulaire confirmé : ' + esc(fmtPhone(cell)) : 'Compte créé avant les comptes avec mot de passe : déconnectez-vous puis touchez « Créer mon compte » pour le mettre à jour.'}</p>
         ${u.uid ? `<p class="note uid-ligne">Identifiant du compte : <code>${esc(u.uid)}</code> <button class="linkbtn" data-copyuid="${esc(u.uid)}" type="button">Copier</button>${P.admin ? ' · <b>approbateur des terrains ✓</b>' : ''}</p>` : ''}</section>
+      ${S.fromLogin ? '' : forfaitHtml()}
+      <h3 class="acct-h">Notifications</h3>
+      <div class="acct-box">
+      <div class="acct-g"><div><b>${Push.perm() === 'granted' && ls.get('pelland.push', 0) ? 'Activées sur ce téléphone' : Push.perm() === 'denied' ? 'Bloquées' : 'Désactivées'}</b><small>${Push.perm() === 'denied' ? 'Permettez-les dans les réglages du navigateur ou du téléphone.' : Push.needsInstall() ? 'Sur iPhone : ajoutez d’abord l’app à l’écran d’accueil.' : 'Nouvelles dates, rappels, parties et résultats.'}</small></div>
+        ${Push.perm() === 'granted' && ls.get('pelland.push', 0) ? '<button class="btn ghost small" data-pushoff type="button">Désactiver</button>' : Push.perm() === 'denied' ? '' : Push.needsInstall() ? '<button class="btn small" data-onbact="ecran" type="button">Comment</button>' : '<button class="btn small" data-pushon type="button">Activer</button>'}</div>
+      </div>
+      <h3 class="acct-h">Mot de passe</h3>
+      <div class="acct-box acct-g"><div><b>Mot de passe du compte</b><small>Avec votre cellulaire, il sert à vous connecter sur un autre appareil.</small></div><button class="btn ghost small" id="chgPw" type="button">Changer</button></div>
       <h3 class="acct-h">Mes groupes (${S.acctGroups.filter(x => !x.archived).length})</h3>
       ${groupRows(S.acctGroups.filter(x => !x.archived), S.fromLogin ? null : Store.gid, S.acctGroups).replace(S.fromLogin ? /Ouvrir/g : /^$/, 'Entrer')}
       ${S.acctGroups.some(x => x.archived) ? `<h3 class="acct-h">Groupes archivés (${S.acctGroups.filter(x => x.archived).length})</h3>
         ${groupRows(S.acctGroups.filter(x => x.archived), S.fromLogin ? null : Store.gid, S.acctGroups)}<p class="note">Un groupe archivé garde ses joueurs, ses parties et ses résultats. Son propriétaire peut le rétablir.</p>` : ''}
       ${manageGroupHtml()}
       <p class="note">Ce sont les groupes où votre cellulaire est inscrit. Pour en rejoindre un autre, demandez à son organisateur de vous ajouter dans Joueurs.</p>
-      <h3 class="acct-h">Notifications</h3>
-      <div class="acct-g"><div><b>${Push.perm() === 'granted' && ls.get('pelland.push', 0) ? 'Activées sur ce téléphone' : Push.perm() === 'denied' ? 'Bloquées' : 'Désactivées'}</b><small>${Push.perm() === 'denied' ? 'Permettez-les dans les réglages du navigateur ou du téléphone.' : Push.needsInstall() ? 'Sur iPhone : ajoutez d’abord l’app à l’écran d’accueil.' : 'Nouvelles dates, rappels, parties et résultats.'}</small></div>
-        ${Push.perm() === 'granted' && ls.get('pelland.push', 0) ? '<button class="btn ghost small" data-pushoff type="button">Désactiver</button>' : Push.perm() === 'denied' ? '' : Push.needsInstall() ? '<button class="btn small" data-onbact="ecran" type="button">Comment</button>' : '<button class="btn small" data-pushon type="button">Activer</button>'}</div>
-      <div class="row acct-actions"><button class="btn ghost small" data-viral type="button">Créer un groupe</button><button class="btn ghost small" data-avis type="button">Donner mon avis</button><button class="btn ghost small" data-idee type="button">💡 Une idée ?</button><button class="btn ghost small" id="chgPw" type="button">Changer mon mot de passe</button><button class="btn ghost small" id="logout2" type="button">Se déconnecter</button></div>`;
+      <div class="row acct-actions"><button class="btn ghost small" data-viral type="button">Créer un groupe</button><button class="btn ghost small" data-avis type="button">Donner mon avis</button><button class="btn ghost small" data-idee type="button">💡 Une idée ?</button></div>
+      <button class="btn ghost danger-txt acct-logout" id="logout2" type="button">Se déconnecter</button>`;
+  }
+  // Forfait du groupe actif (le propriétaire peut passer au forfait Groupe ou le renouveler)
+  function forfaitHtml() {
+    const pl = planOf(), n = (S.players || []).length, meOwner = !!meId() && meId() === ownerId();
+    const own = (S.players || []).find(p => p.id === ownerId());
+    const until = pl.until ? 'jusqu’au ' + new Date(pl.until).toLocaleDateString('fr-CA', { day: 'numeric', month: 'long', year: 'numeric' }) : pl.expired ? 'saison terminée' : 'sans limite de temps';
+    return `<h3 class="acct-h">Forfait · ${esc(groupName())}</h3>
+      <div class="acct-box">
+        <div class="forfait-l"><b>${pl.name}</b><span class="${n > pl.max ? 'over' : ''}">${n} / ${pl.max} joueurs</span><span>${until}</span></div>
+        <p class="note">${pl.paid ? 'Le forfait Groupe permet jusqu’à 16 joueurs.' : 'Le forfait Gratuit permet 4 joueurs. Le forfait Groupe va jusqu’à 16.'} ${meOwner ? 'Vous êtes le propriétaire : c’est vous qui gérez le forfait.' : 'Le forfait est géré par le propriétaire du groupe' + (own ? ' (' + esc(own.name) + ')' : '') + '.'}</p>
+        ${meOwner ? `<a class="btn small" href="${buyUrl()}" target="_blank" rel="noopener">${pl.paid ? 'Renouveler ou gérer' : 'Passer au Groupe'}</a>` : ''}
+      </div>`;
   }
   // Gérer le groupe actif : archiver / rétablir / supprimer (propriétaire seulement)
   function manageGroupHtml() {

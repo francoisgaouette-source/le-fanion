@@ -951,3 +951,11 @@ body:has(#sheetWrap:not([hidden])) .cd-lanceur { display: none; }
 .bar-acct { flex: 0 0 auto; width: 38px; height: 38px; margin-left: 10px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--bar-ink) 55%, transparent); background: color-mix(in srgb, var(--bar-ink) 12%, transparent); color: var(--bar-ink); font: 700 14px var(--body, inherit); letter-spacing: .02em; display: grid; place-items: center; cursor: pointer; padding: 0; }
 .bar-acct.on { background: var(--flag); color: #1b1b1b; border-color: var(--flag); }
 .bar-badge:empty { display: none; }
+.acct-box { background: var(--surface); border: 1px solid var(--line, #dde3df); border-radius: 14px; padding: 12px 14px; margin-bottom: 6px; }
+.acct-box.acct-g, .acct-box .acct-g { border: 0; padding: 0; background: none; }
+.acct-box.acct-g { border: 1px solid var(--line, #dde3df); padding: 12px 14px; background: var(--surface); }
+.forfait-l { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.forfait-l b { font-size: 20px; font-family: var(--display); }
+.forfait-l span { color: var(--muted); font-size: 14px; } .forfait-l span.over { color: #b3402b; font-weight: 700; }
+.acct-logout { margin-top: 22px; }
+.acct-box a.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; margin-top: 4px; }
