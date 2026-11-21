@@ -853,8 +853,9 @@
     const moiOrg = me && org && me.id === org.id;
     return `<div class="grp-info${compact ? ' compact' : ''}">
       <div class="grp-info-k">Rôles dans ce groupe</div>
-      <div class="who-line"><b>${org ? esc(org.name) : 'Aucun organisateur'}</b>${org ? tagO : ''}${moiOrg ? '<span class="role-moi">vous</span>' : ''}</div>
-      ${me && !moiOrg ? `<div class="who-line me-line"><b>${esc(me.name)}</b><span class="role-tag part">Participant</span><span class="role-moi">vous</span><button class="linkbtn" data-welcome type="button">Ce que je peux faire</button></div>` : ''}
+      ${moiOrg ? `<div class="who-line"><b>Vous êtes</b>${tagO}</div>`
+        : `<div class="who-line"><b>${org ? esc(org.name) : 'Aucun organisateur'}</b>${org ? tagO : ''}</div>
+      ${me ? `<div class="who-line me-line"><b>Vous êtes</b><span class="role-tag part">Participant</span><button class="linkbtn" data-welcome type="button">Ce que je peux faire</button></div>` : ''}`}
       ${over ? `<div class="plan-line"><small class="over">${n} / ${pl.max} joueurs : forfait dépassé</small>${buy}</div>` : ''}
     </div>`;
   }
