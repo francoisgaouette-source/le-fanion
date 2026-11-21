@@ -940,7 +940,10 @@
 
   // ---------------- Mon compte : le compte de la personne et tous les groupes dont elle fait partie ----------------
   function groupRows(l, cur, base) {
-    return `<div class="acct-groups">${l.map((x, k) => [x, base ? base.indexOf(x) : k]).map(([x, i]) => `<div class="acct-g ${x.gid === cur ? 'cur' : ''}"><div><b><span class="g-k">Groupe :</span> ${esc(x.name)}</b><small>${esc(x.playerName)} · ${[x.owner ? 'propriétaire' : '', x.organizer ? 'organisateur' : ''].filter(Boolean).join(' et ') || 'participant'}</small></div>${x.gid === cur ? '<span class="acct-cur">Groupe actuel</span>' : `<button class="btn small" data-gopen="${i}" type="button">Ouvrir</button>`}</div>`).join('') || '<p class="note">Aucun groupe pour l’instant.</p>'}</div>`;
+    return `<div class="acct-groups">${l.map((x, k) => [x, base ? base.indexOf(x) : k]).map(([x, i]) => `<div class="acct-g ${x.gid === cur ? 'cur' : ''}"><div><b><span class="g-k">Groupe :</span> ${esc(x.name)}</b><small>${esc(x.playerName)} · ${[x.owner ? 'propriétaire' : '', x.organizer ? 'organisateur' : ''].filter(Boolean).join(' et ') || 'participant'}</small></div>${x.gid === cur ? '<span class="acct-cur">Groupe actuel</span>' : `<button class="btn small" data-gopen="${i}" type="button">Ouvrir</button>`}${x.gid === cur && x.owner && !S.fromLogin ? `<div class="g-manage">${x.archived
+        ? '<button class="btn ghost small" data-grpstate="unarchive" type="button">Rétablir le groupe</button>'
+        : '<button class="btn ghost small" data-grpstate="archive" type="button">Archiver le groupe</button>'}<button class="btn ghost small danger-txt" data-grpstate="delete" type="button">Supprimer le groupe</button>
+        <small>Archiver : le groupe est mis de côté pour tous, rien n’est perdu et vous pouvez le rétablir. Supprimer : il disparaît pour tous avec ses parties, ses dates et ses compétitions, sans retour possible.</small></div>` : ''}</div>`).join('') || '<p class="note">Aucun groupe pour l’instant.</p>'}</div>`;
   }
   function vCompte() {
     $('#barTitle').textContent = 'Mon compte';
@@ -964,7 +967,6 @@
       ${groupRows(S.acctGroups.filter(x => !x.archived), S.fromLogin ? null : Store.gid, S.acctGroups).replace(S.fromLogin ? /Ouvrir/g : /^$/, 'Entrer')}
       ${S.acctGroups.some(x => x.archived) ? `<h3 class="acct-h">Groupes archivés (${S.acctGroups.filter(x => x.archived).length})</h3>
         ${groupRows(S.acctGroups.filter(x => x.archived), S.fromLogin ? null : Store.gid, S.acctGroups)}<p class="note">Un groupe archivé garde ses joueurs, ses parties et ses résultats. Son propriétaire peut le rétablir.</p>` : ''}
-      ${manageGroupHtml()}
       <p class="note">Ce sont les groupes où votre cellulaire est inscrit. Pour en rejoindre un autre, demandez à son organisateur de vous ajouter dans Joueurs.</p>
       <div class="row acct-actions"><button class="btn ghost small" data-avis type="button">Donner mon avis</button><button class="btn ghost small" data-idee type="button">💡 Une idée ?</button></div>
       <button class="btn ghost danger-txt acct-logout" id="logout2" type="button">Se déconnecter</button>`;
