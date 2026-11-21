@@ -960,13 +960,13 @@
       </div>
       <h3 class="acct-h">Mot de passe</h3>
       <div class="acct-box acct-g"><div><b>Mot de passe du compte</b><small>Avec votre cellulaire, il sert à vous connecter sur un autre appareil.</small></div><button class="btn ghost small" id="chgPw" type="button">Changer</button></div>
-      <h3 class="acct-h">Mes groupes (${S.acctGroups.filter(x => !x.archived).length})</h3>
+      <h3 class="acct-h acct-h-act"><span>Mes groupes (${S.acctGroups.filter(x => !x.archived).length})</span><button class="btn ghost small" data-viral type="button">+ Créer un groupe</button></h3>
       ${groupRows(S.acctGroups.filter(x => !x.archived), S.fromLogin ? null : Store.gid, S.acctGroups).replace(S.fromLogin ? /Ouvrir/g : /^$/, 'Entrer')}
       ${S.acctGroups.some(x => x.archived) ? `<h3 class="acct-h">Groupes archivés (${S.acctGroups.filter(x => x.archived).length})</h3>
         ${groupRows(S.acctGroups.filter(x => x.archived), S.fromLogin ? null : Store.gid, S.acctGroups)}<p class="note">Un groupe archivé garde ses joueurs, ses parties et ses résultats. Son propriétaire peut le rétablir.</p>` : ''}
       ${manageGroupHtml()}
       <p class="note">Ce sont les groupes où votre cellulaire est inscrit. Pour en rejoindre un autre, demandez à son organisateur de vous ajouter dans Joueurs.</p>
-      <div class="row acct-actions"><button class="btn ghost small" data-viral type="button">Créer un groupe</button><button class="btn ghost small" data-avis type="button">Donner mon avis</button><button class="btn ghost small" data-idee type="button">💡 Une idée ?</button></div>
+      <div class="row acct-actions"><button class="btn ghost small" data-avis type="button">Donner mon avis</button><button class="btn ghost small" data-idee type="button">💡 Une idée ?</button></div>
       <button class="btn ghost danger-txt acct-logout" id="logout2" type="button">Se déconnecter</button>`;
   }
   // Forfait du groupe actif (le propriétaire peut passer au forfait Groupe ou le renouveler)

@@ -959,3 +959,5 @@ body:has(#sheetWrap:not([hidden])) .cd-lanceur { display: none; }
 .forfait-l span { color: var(--muted); font-size: 14px; } .forfait-l span.over { color: #b3402b; font-weight: 700; }
 .acct-logout { margin-top: 22px; }
 .acct-box a.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; margin-top: 4px; }
+.acct-h-act { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.acct-h-act .btn { width: auto; margin: 0; min-height: 38px; font-size: 15px; padding: 0 12px; flex: 0 0 auto; }
