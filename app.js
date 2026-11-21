@@ -953,11 +953,6 @@
         <p class="note">${cell ? 'Cellulaire confirmé : ' + esc(fmtPhone(cell)) : 'Compte créé avant les comptes avec mot de passe : déconnectez-vous puis touchez « Créer mon compte » pour le mettre à jour.'}</p>
         ${u.uid ? `<p class="note uid-ligne">Identifiant du compte : <code>${esc(u.uid)}</code> <button class="linkbtn" data-copyuid="${esc(u.uid)}" type="button">Copier</button>${P.admin ? ' · <b>approbateur des terrains ✓</b>' : ''}</p>` : ''}</section>
       ${S.fromLogin ? '' : forfaitHtml()}
-      <h3 class="acct-h">Notifications</h3>
-      <div class="acct-box">
-      <div class="acct-g"><div><b>${Push.on() ? '✓ Activées sur ce téléphone' : Push.perm() === 'denied' ? 'Bloquées sur ce téléphone' : 'À activer'}</b><small>${Push.perm() === 'denied' ? 'Permettez-les dans les réglages du téléphone, puis rouvrez l’app.' : Push.needsInstall() ? 'Sur iPhone : ajoutez d’abord l’app à l’écran d’accueil.' : 'Obligatoires tant que vous êtes membre d’un groupe : nouvelles dates, rappels, parties et résultats. Elles s’arrêtent quand vous quittez le groupe.'}</small></div>
-        ${Push.on() || Push.perm() === 'denied' ? '' : Push.needsInstall() ? '<button class="btn small" data-onbact="ecran" type="button">Comment</button>' : '<button class="btn small" data-pushon type="button">Activer</button>'}</div>
-      </div>
       <h3 class="acct-h">Mot de passe</h3>
       <div class="acct-box acct-g"><div><b>Mot de passe du compte</b><small>Avec votre cellulaire, il sert à vous connecter sur un autre appareil.</small></div><button class="btn ghost small" id="chgPw" type="button">Changer</button></div>
       <h3 class="acct-h acct-h-act"><span>Mes groupes (${S.acctGroups.filter(x => !x.archived).length})</span><button class="btn ghost small" data-viral type="button">+ Créer un groupe</button></h3>
