@@ -184,14 +184,13 @@
     async savePhone(id, digits, strict, groupId) { try { await this.db.collection('phones').doc(id).set({ phone: digits, e164: this.phoneE164(digits), groupId: groupId || this.gid }); this.phonesBlocked = false; } catch (e) { console.warn('phones', e.message); this.phonesBlocked = true; if (strict) throw new Error('Numéro non conservé : publiez la règle « phones » dans Firebase (Firestore → Règles).'); } },
     async ensureSeed() {
       const list = await this.listCourses();
-      if (!list.find(c => c.id === L.PINEGROVE.id)) await this.saveCourse(L.PINEGROVE);
+      return list;
     },
     async listCourses() {
       let list;
       if (this.mode === 'firebase') { const snap = await this.db.collection('courses').get(); list = snap.docs.map(d => ({ ...d.data(), id: d.id })); }
       else list = ls.get('pelland.courses', []);
-      // Catalogue des terrains du Québec : ajouté s'il n'est pas déjà dans la base (une copie modifiée l'emporte)
-      (window.QC_COURSES || []).forEach(c => { if (!list.some(x => x.id === c.id)) list.push(c); });
+      // Banque : seulement les terrains approuvés dans la base (plus de catalogue intégré ni de terrain ajouté d'office)
       // Terrains retirés de la banque de ce groupe (les autres groupes les gardent)
       const out = await this.retiredCourses();
       this.retired = list.filter(c => out.includes(c.id)).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
@@ -1560,7 +1559,7 @@
   // ---------------- Nouvelle partie ----------------
   function newDraft() {
     return {
-      courseId: (S.courses[0] || {}).id || 'pinegrove', mode: 'bas', responsable: 0, teamMode: 'auto', teams: null, stake: '', leadChangeValue: '', perPoint: '1', par3Value: '5', count: 4,
+      courseId: (S.courses[0] || {}).id || '', mode: 'bas', responsable: 0, teamMode: 'auto', teams: null, stake: '', leadChangeValue: '', perPoint: '1', par3Value: '5', count: 4,
       players: [0, 1, 2, 3].map(() => ({ name: '', index: '', tee: 'II' }))
     };
   }
@@ -1584,6 +1583,7 @@
   function missingList(d) {
     const out = [], idx = filledIdx(d);
     if (useOffres(d) && !d.offre) return ['la date de la partie'];
+    if (!S.courses.find(x => x.id === d.courseId) && !S.courses[0]) return ['un terrain (ajoutez-en un dans Terrains)'];
     if (idx.length < 2) d.players.forEach((p, i) => { if (i < 2 && !String(p.name || '').trim()) out.push(`le nom du joueur ${i + 1}`); });
     idx.forEach(i => { const p = d.players[i];
       if (!String(p.index).trim()) out.push(`l'index de ${p.name.trim()}`);
@@ -1629,7 +1629,7 @@
       ${d.players.map((_, i) => `<datalist id="playerList${i}">${listOptions(d, i)}</datalist>`).join('')}
       <section class="card">
         <div class="step">1 · Terrain</div>
-        ${fromOffre ? `<p class="fixed-course"><b>${esc(fromOffre.name)}</b><span class="note">Choisi dans Parties à préparer</span></p>` : `<select id="course">${S.courses.map(x => `<option value="${esc(x.id)}" ${x.id === d.courseId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
+        ${fromOffre ? `<p class="fixed-course"><b>${esc(fromOffre.name)}</b><span class="note">Choisi dans Parties à préparer</span></p>` : !S.courses.length ? `<p class="note">Aucun terrain dans la banque pour l’instant.</p><button class="btn" data-go="courses" type="button">Ajouter un terrain</button>` : `<select id="course">${S.courses.map(x => `<option value="${esc(x.id)}" ${x.id === d.courseId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
         <p class="note">Le terrain n'est pas dans la liste ? Ajoutez-le d'abord dans <b>Terrains</b>, à l'accueil.</p>`}
       </section>
       <section class="card">
@@ -3546,7 +3546,7 @@
   }
 
   function newCompDraft() {
-    const c0 = S.courses[0] || L.PINEGROVE;
+    const c0 = S.courses[0] || { id: '', tees: [] };
     return { name: 'Membre-membre ' + new Date().getFullYear(), date: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10), courseId: c0.id, tee: (c0.tees[0] || {}).name, allowance: 90, flights: 2, format: 'match',
       teams: [0, 1, 2, 3].map(() => ({ id: Math.random().toString(36).slice(2, 8), p: [{ name: '', index: '' }, { name: '', index: '' }] })) };
   }
@@ -3658,6 +3658,7 @@
         }
         if (teams.length < 2) return toast('Il faut au moins deux équipes.');
         const course = S.courses.find(x => x.id === d.courseId) || S.courses[0];
+        if (!course) return toast('Ajoutez d’abord un terrain dans Terrains.');
         const c = { ...(d.id ? S.comp : {}), id: d.id || Date.now().toString(36), groupId: Store.gid, kind: 'membre-membre', format: d.format || 'match', name: d.name.trim(), date: d.date, courseId: course.id,
           course: JSON.parse(JSON.stringify(course)), tee: d.tee, allowance: d.allowance, flights: d.flights, teams, teamSize: d.format === 'texas' ? (d.teamSize || 4) : 2, minDrives: d.format === 'texas' ? (d.minDrives == null ? 3 : d.minDrives) : null, by: ls.get('pelland.me', '') || '', createdAt: (S.comp && d.id && S.comp.createdAt) || Date.now() };
         try { await Store.saveComp(c); S.compList = null; openComp(c.id); toast(d.id ? 'Compétition modifiée.' : 'Compétition créée.');
@@ -4107,10 +4108,9 @@
       render();
     }
     const [courses, players, quatuors, jeux, groups] = await Promise.all([
-      Store.listCourses().catch(() => [L.PINEGROVE]), Store.listPlayers().catch(() => []), Store.listQuatuors().catch(() => []),
+      Store.listCourses().catch(() => []), Store.listPlayers().catch(() => []), Store.listQuatuors().catch(() => []),
       Store.listJeux().catch(() => []), Store.listGroups().catch(() => [])]);
     Object.assign(S, { courses, players, quatuors, jeux, groups });
-    if (!courses.some(c => c.id === L.PINEGROVE.id) && !(Store.retired || []).some(c => c.id === L.PINEGROVE.id)) { S.courses = [...courses, L.PINEGROVE]; Store.saveCourse(L.PINEGROVE).catch(() => { }); }
     setTimeout(chargerRetour, 800);
     setTimeout(chargerPropositions, 1200);   // terrains proposés : en attente pour le groupe, à approuver pour l'équipe Fanion   // boucle de retour : réponses de l'équipe, nouveautés, sondage (sans retarder l'ouverture)
     try { ls.set(snapK, { players, quatuors, jeux, groups, courses: courses.filter(c => !(window.QC_COURSES || []).some(q => q === c)), retired: (Store.retired || []).map(c => c.id), at: Date.now() }); } catch (e) { }
