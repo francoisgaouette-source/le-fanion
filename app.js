@@ -91,7 +91,7 @@
     async myGroupList() {
       const pl = await this.myPlayers(), gs = await this.listGroups();
       // Groupes supprimés par leur propriétaire : retirés de la liste ; groupes archivés : à part
-      return pl.map(p => { const g = gs.find(x => x.id === (p.groupId || 'pelland')) || { id: p.groupId, name: p.groupId }; return { gid: g.id, name: g.name, playerId: p.id, playerName: p.name, owner: g.owner === p.id, archived: !!g.archived, deleted: !!g.deleted }; })
+      return pl.map(p => { const g = gs.find(x => x.id === (p.groupId || 'pelland')) || { id: p.groupId, name: p.groupId }; return { gid: g.id, name: g.name, playerId: p.id, playerName: p.name, owner: g.owner === p.id, organizer: (g.organizers || []).includes(p.id) || (g.owner === p.id && !(g.organizers || []).length), archived: !!g.archived, deleted: !!g.deleted }; })
         .filter(x => !x.deleted).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
     },
     // Archiver, rétablir ou supprimer le groupe actif (propriétaire seulement ; vérifié par les règles)
@@ -795,11 +795,11 @@
     const info = ls.get('pelland.lastGameInfo', null);
     const lastDate = info && info.id === last && info.createdAt ? new Date(info.createdAt).toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' }) : null;
     return `
+      <div class="hero"><h1><span class="hero-k">Groupe :</span> ${esc(groupName())}${canOrganize() ? ' <button class="hero-edit" id="renameGroup" type="button" aria-label="Modifier le nom du groupe">Modifier</button>' : ''}</h1><p>${APP} · le golf entre amis${(S.myPlayers || []).length > 1 ? ` · <button class="linkbtn" id="switchGroup" type="button">Changer de groupe (${S.myPlayers.length})</button>` : ''}</p></div>
       ${Store.needLogin ? '' : groupInfo(true)}
       ${retourCarte()}
       ${P.admin && P.todo.length ? `<button class="warn approve-band" data-go="courses" type="button">🏌️ ${P.todo.length} terrain${P.todo.length > 1 ? 's' : ''} à approuver pour la banque · Voir</button>` : ''}
       ${curGroup().archived ? `<div class="warn archived-band">Ce groupe est archivé.${meId() && meId() === ownerId() ? ' <button class="linkbtn" data-go="compte" type="button">Le rétablir dans Mon compte</button>' : ' Son propriétaire peut le rétablir.'}</div>` : ''}
-      <div class="hero"><h1><span class="hero-k">Groupe :</span> ${esc(groupName())}${canOrganize() ? ' <button class="hero-edit" id="renameGroup" type="button" aria-label="Modifier le nom du groupe">Modifier</button>' : ''}</h1><p>${APP} · le golf entre amis${(S.myPlayers || []).length > 1 ? ` · <button class="linkbtn" id="switchGroup" type="button">Changer de groupe (${S.myPlayers.length})</button>` : ''}</p></div>
       <h3 class="home-h">Les étapes</h3>
       ${lockTiles(`<div class="tiles steps">
         <button class="tile" data-go="players" data-pmode="inviter"><span class="pin step-n">1</span><div><strong>Inviter des joueurs</strong><span>Ajoutez vos joueurs et leur cellulaire : ils reçoivent l’invitation par texto</span></div></button>
@@ -849,6 +849,7 @@
     const sameOrg = !org || (own && org.id === own.id);
     const tagP = '<span class="role-tag own" title="Détient le forfait du groupe">Propriétaire</span>', tagO = '<span class="role-tag org" title="Prépare les parties">Organisateur</span>';
     return `<div class="grp-info${compact ? ' compact' : ''}">
+      <div class="grp-info-k">Rôles dans ce groupe</div>
       <div class="who-line"><b>${own ? esc(own.name) : 'Aucun propriétaire'}</b>${own ? tagP : ''}${own && sameOrg ? tagO : ''}</div>
       ${meOwner ? acctAct(sameOrg) : ''}
       ${!sameOrg ? `<div class="who-line"><b>${esc(org.name)}</b>${tagO}</div>${org.id === meId() ? acctAct() : ''}` : ''}
@@ -935,7 +936,7 @@
 
   // ---------------- Mon compte : le compte de la personne et tous les groupes dont elle fait partie ----------------
   function groupRows(l, cur, base) {
-    return `<div class="acct-groups">${l.map((x, k) => [x, base ? base.indexOf(x) : k]).map(([x, i]) => `<div class="acct-g ${x.gid === cur ? 'cur' : ''}"><div><b><span class="g-k">Groupe :</span> ${esc(x.name)}</b><small>${esc(x.playerName)}${x.owner ? ' · propriétaire' : ''}</small></div>${x.gid === cur ? '<span class="acct-cur">Groupe actuel</span>' : `<button class="btn small" data-gopen="${i}" type="button">Ouvrir</button>`}</div>`).join('') || '<p class="note">Aucun groupe pour l’instant.</p>'}</div>`;
+    return `<div class="acct-groups">${l.map((x, k) => [x, base ? base.indexOf(x) : k]).map(([x, i]) => `<div class="acct-g ${x.gid === cur ? 'cur' : ''}"><div><b><span class="g-k">Groupe :</span> ${esc(x.name)}</b><small>${esc(x.playerName)} · ${[x.owner ? 'propriétaire' : '', x.organizer ? 'organisateur' : ''].filter(Boolean).join(' et ') || 'participant'}</small></div>${x.gid === cur ? '<span class="acct-cur">Groupe actuel</span>' : `<button class="btn small" data-gopen="${i}" type="button">Ouvrir</button>`}</div>`).join('') || '<p class="note">Aucun groupe pour l’instant.</p>'}</div>`;
   }
   function vCompte() {
     $('#barTitle').textContent = 'Mon compte';

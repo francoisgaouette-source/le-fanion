@@ -947,3 +947,4 @@ body:has(#sheetWrap:not([hidden])) .cd-lanceur { display: none; }
 .maj-liste { margin: 8px 0 0; padding-left: 18px; font-weight: 600; }
 .verif-card h3 { margin-top: 0; }
 .uid-ligne code { font-size: 12px; word-break: break-all; user-select: all; }
+.grp-info-k { grid-column: 1 / -1; flex: 1 0 100%; width: 100%; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
