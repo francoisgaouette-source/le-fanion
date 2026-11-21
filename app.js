@@ -746,6 +746,7 @@
         <p class="lk-own">Envie d’organiser votre propre gang ? <button class="linkbtn" data-viral type="button">Créer mon groupe gratuit</button></p>
       </div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; });
   }
+  document.addEventListener('click', async e => { const b = e.target.closest && e.target.closest('[data-copyuid]'); if (!b) return; try { await navigator.clipboard.writeText(b.dataset.copyuid); toast('Identifiant copié.'); } catch (x) { toast('Sélectionnez le code pour le copier.'); } });
   document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-locked]'); if (t) { e.preventDefault(); lockedSheet(t.dataset.locked); } });
 
   // Accueil du participant : une étiquette de sac à son nom, ce qu'il peut faire, ce que l'organisateur fait
@@ -944,7 +945,8 @@
     if (mine && !S.fromLogin) ls.set('pelland.me', mine.playerName);
     return `<section class="card"><h2>${esc(mine ? mine.playerName : ls.get('pelland.me', '') || '')}</h2>
         ${S.fromLogin ? '<p class="note"><b>Bienvenue !</b> Choisissez votre groupe.</p>' : ''}
-        <p class="note">${cell ? 'Cellulaire confirmé : ' + esc(fmtPhone(cell)) : 'Compte créé avant les comptes avec mot de passe : déconnectez-vous puis touchez « Créer mon compte » pour le mettre à jour.'}</p></section>
+        <p class="note">${cell ? 'Cellulaire confirmé : ' + esc(fmtPhone(cell)) : 'Compte créé avant les comptes avec mot de passe : déconnectez-vous puis touchez « Créer mon compte » pour le mettre à jour.'}</p>
+        ${u.uid ? `<p class="note uid-ligne">Identifiant du compte : <code>${esc(u.uid)}</code> <button class="linkbtn" data-copyuid="${esc(u.uid)}" type="button">Copier</button>${P.admin ? ' · <b>approbateur des terrains ✓</b>' : ''}</p>` : ''}</section>
       <h3 class="acct-h">Mes groupes (${S.acctGroups.filter(x => !x.archived).length})</h3>
       ${groupRows(S.acctGroups.filter(x => !x.archived), S.fromLogin ? null : Store.gid, S.acctGroups).replace(S.fromLogin ? /Ouvrir/g : /^$/, 'Entrer')}
       ${S.acctGroups.some(x => x.archived) ? `<h3 class="acct-h">Groupes archivés (${S.acctGroups.filter(x => x.archived).length})</h3>
