@@ -157,7 +157,7 @@ L'APP
 
 FORFAITS (par saison de 12 mois, pas d'abonnement automatique)
 - Gratuit : 1 groupe, jusqu'à 4 joueurs, tous les jeux.
-- Groupe : jusqu'à 16 joueurs, 79 $ + taxes ; prix fondateur 49 $ + taxes pour les groupes inscrits avant le 31 mars 2027, garanti les saisons suivantes. Achat : accueil, « Passer au Groupe » (propriétaire). Activation dans les 24 heures. Remboursement complet sur demande dans les 30 jours.
+- Groupe : jusqu'à 16 joueurs, 79 $ + taxes ; prix fondateur 49 $ + taxes pour les groupes inscrits avant le 31 mars 2027, garanti les saisons suivantes. Achat : accueil, « Passer au forfait Groupe » (propriétaire). Activation dans les 24 heures. Remboursement complet sur demande dans les 30 jours.
 - Ligue (bientôt) : jusqu'à 64 joueurs, 199 $ + taxes.
 
 LES JEUX (tout au net, avec handicap ; montants par joueur)

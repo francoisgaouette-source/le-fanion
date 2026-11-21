@@ -848,7 +848,7 @@
   function groupInfo(compact) {
     // Rôle dans le groupe : organisateur ou participant. Le propriétaire (forfait) se gère dans Mon compte.
     const own = (S.players || []).find(p => p.id === ownerId()), pl = planOf(), n = (S.players || []).length, over = n > pl.max;
-    const buy = !pl.paid && meId() && meId() === ownerId() ? ` <a class="linkbtn" href="${buyUrl()}" target="_blank" rel="noopener">Passer au Groupe</a>` : '';
+    const buy = !pl.paid && meId() && meId() === ownerId() ? ` <a class="linkbtn" href="${buyUrl()}" target="_blank" rel="noopener">Passer au forfait Groupe</a>` : '';
     const orgId = (curGroup().organizers || [])[0], org = (S.players || []).find(p => p.id === orgId) || own;
     const me = (S.players || []).find(p => p.id === meId());
     const tagO = '<span class="role-tag org" title="Prépare les parties">Organisateur</span>';
@@ -891,7 +891,7 @@
       ${pl.paid ? '<p class="note">Pour une ligue de plus de 16 joueurs, écrivez à bonjour@fanion.ai.</p>'
         : `<ul class="info-list"><li>Jusqu’à 16 joueurs</li><li>Dates offertes, disponibilités et quatuors</li><li>49 $ + taxes pour la saison, au prix fondateur</li></ul>
       ${meOwner ? '' : `<p class="note">Seul le propriétaire du groupe${own ? ', ' + esc(own.name) + ',' : ''} peut changer de forfait.</p>`}`}
-      <div class="sheet-actions">${!pl.paid && meOwner ? `<a class="btn" href="${buyUrl()}" target="_blank" rel="noopener">Passer au Groupe</a>` : ''}<button class="btn ghost" data-close type="button">${!pl.paid && meOwner ? 'Plus tard' : 'Compris'}</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; });
+      <div class="sheet-actions">${!pl.paid && meOwner ? `<a class="btn" href="${buyUrl()}" target="_blank" rel="noopener">Passer au forfait Groupe</a>` : ''}<button class="btn ghost" data-close type="button">${!pl.paid && meOwner ? 'Plus tard' : 'Compris'}</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; });
   }
 
   // ---------------- Bien démarrer : 4 premiers pas pour un nouveau groupe (propriétaire et organisateur) ----------------
@@ -975,7 +975,7 @@
       <div class="acct-box">
         <div class="forfait-l"><b>${pl.name}</b><span class="${n > pl.max ? 'over' : ''}">${n} / ${pl.max} joueurs</span><span>${until}</span></div>
         <p class="note">${pl.paid ? 'Le forfait Groupe permet jusqu’à 16 joueurs.' : 'Le forfait Gratuit permet 4 joueurs. Le forfait Groupe va jusqu’à 16.'} ${meOwner ? 'Vous êtes le propriétaire : c’est vous qui gérez le forfait.' : 'Le forfait est géré par le propriétaire du groupe' + (own ? ' (' + esc(own.name) + ')' : '') + '.'}</p>
-        ${meOwner ? `<a class="btn small" href="${buyUrl()}" target="_blank" rel="noopener">${pl.paid ? 'Renouveler ou gérer' : 'Passer au Groupe'}</a>` : ''}
+        ${meOwner ? `<a class="btn small" href="${buyUrl()}" target="_blank" rel="noopener">${pl.paid ? 'Renouveler ou gérer' : 'Passer au forfait Groupe'}</a>` : ''}
       </div>`;
   }
   // Gérer le groupe actif : archiver / rétablir / supprimer (propriétaire seulement)
@@ -2064,7 +2064,7 @@
     return `${inviter ? '<p class="note">Entrez le nom et le cellulaire : un texto d’invitation est prêt à envoyer. La personne crée ensuite son compte avec son cellulaire.</p>' : groupInfo()}<section class="card"><h2>${inviter ? 'Inviter un joueur' : 'Ajouter un joueur'}</h2>
         ${roomLeft() <= 0 ? `<div class="full-box"><b>Le groupe est complet : ${S.players.length} / ${planOf().max} joueurs.</b>
           <p>${planOf().paid ? `Le forfait ${planOf().name} permet ${planOf().max} joueurs. Retirez un joueur pour en ajouter un autre, ou écrivez à bonjour@fanion.ai pour une ligue.` : `Le forfait Gratuit permet ${planOf().max} joueurs. Passez au forfait Groupe pour en inviter jusqu’à 16.`}</p>
-          ${!planOf().paid ? (meId() && meId() === ownerId() ? `<a class="btn small" href="${buyUrl()}" target="_blank" rel="noopener">Passer au Groupe</a>` : `<p class="note">Seul le propriétaire peut changer de forfait.</p>`) : ''}</div>`
+          ${!planOf().paid ? (meId() && meId() === ownerId() ? `<a class="btn small" href="${buyUrl()}" target="_blank" rel="noopener">Passer au forfait Groupe</a>` : `<p class="note">Seul le propriétaire peut changer de forfait.</p>`) : ''}</div>`
         : `${!planOf().paid ? `<p class="note room-left">Forfait Gratuit : il reste <b>${roomLeft()}</b> place${roomLeft() > 1 ? 's' : ''} sur ${planOf().max}.</p>` : ''}        <input id="newPlayer" type="text" placeholder="Prénom et nom" autocapitalize="words">
         <div class="row" style="flex-wrap:nowrap"><input id="newPhone" type="tel" inputmode="tel" placeholder="Cellulaire" style="flex:1;min-width:0"><button class="btn small" id="addPlayer" type="button">Ajouter</button></div>
         ${canOrganize() ? `<div class="import-row"><label class="btn ghost small" for="xlsFile">Importer un fichier Excel</label><input id="xlsFile" type="file" accept=".xlsx,.xls,.csv,.ods" hidden><span class="note">Deux colonnes : le nom et le cellulaire.</span></div>` : ''}`}
