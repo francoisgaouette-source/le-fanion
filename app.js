@@ -672,7 +672,7 @@
     $('#dbBadge').textContent = !navigator.onLine ? 'Hors ligne' : Store.mode === 'firebase' ? '' : 'Local';
     // Mon compte : en haut à droite, avec les initiales du joueur
     const ab = $('#acctBtn'), acctOk = Store.mode === 'firebase' && !!Store.email && !Store.needLogin && S.view !== 'login';
-    ab.hidden = !acctOk; ab.classList.toggle('on', S.view === 'compte');
+    ab.hidden = !acctOk; $('#ideeBtn').hidden = !acctOk; $('#ideeBtn').classList.toggle('compact', S.view !== 'home'); ab.classList.toggle('on', S.view === 'compte');
     if (acctOk) { const nm = (S.players.find(p => p.id === meId()) || {}).name || ls.get('pelland.me', '') || ''; $('#acctIni').textContent = nm.split(/[\s-]+/).filter(Boolean).slice(0, 2).map(x => x[0].toUpperCase()).join('') || '👤'; ab.title = 'Mon compte' + (nm ? ' · ' + nm : ''); }
     $('#dbBadge').classList.toggle('offline', !navigator.onLine);
     const showDock = false; // plus d'interface vocale
@@ -824,7 +824,6 @@
       ${avisCard('home')}
       ${referralCard()}
       ${Store.needLogin ? '' : `<button class="caddie-tile" data-caddie type="button"><span class="cad-ico" aria-hidden="true">${window.CaddieGuide ? CaddieGuide.avatar() : '?'}</span><span><b>Une question ?</b><small>Demandez à Léo, votre caddie : l’app, les règles des jeux, les forfaits.</small></span></button>`}
-      ${Store.needLogin || Store.mode !== 'firebase' ? '' : `<button class="idee-tile" data-idee type="button"><span aria-hidden="true">💡</span><span><b>Une idée ? Un pépin ?</b><small>Dites-le à l’équipe de Fanion : on vous répond ici, dans l’app.</small></span></button>`}
       ${viralCard('home')}
       <p class="note">${Store.mode === 'firebase' ? 'Base partagée active : les autres joueurs suivent la partie en direct dans Parties en cours.' : 'Mode local : les parties restent sur ce téléphone.'}</p>
       ${Store.mode === 'local' && Store.error ? `<div class="warn"><b>Pourquoi le mode local :</b> ${esc(Store.error)}</div>` : ''}`;

@@ -965,3 +965,9 @@ body:has(#sheetWrap:not([hidden])) .cd-lanceur { display: none; }
 .g-manage { flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line, #dde3df); }
 .g-manage .btn, .g-manage .btn.ghost.danger-txt { width: auto; flex: 1 1 auto; margin: 0; min-height: 40px; font-size: 15px; }
 .g-manage small { flex: 1 0 100%; color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+.bar-title { flex: 0 1 auto; }
+.bar-idee { flex: 0 0 auto; margin: 0 auto 0 12px; border: 1px solid color-mix(in srgb, var(--bar-ink) 40%, transparent); background: color-mix(in srgb, var(--flag) 22%, transparent); color: var(--bar-ink); border-radius: 999px; padding: 5px 11px; font: 600 13px var(--body, inherit); white-space: nowrap; cursor: pointer; }
+.bar-idee[hidden] { display: none; }
+.bar-idee[hidden] ~ .bar-badge { margin-left: auto; }
+@media (max-width: 360px) { .bar-idee span { display: none; } }
+.bar-idee.compact { padding: 5px 9px; } .bar-idee.compact span { display: none; }
