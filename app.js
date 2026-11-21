@@ -843,20 +843,17 @@
     return acct || pick ? `<div class="who-act">${[acct, pick].filter(Boolean).join('<span aria-hidden="true"> · </span>')}</div>` : '';
   }
   function groupInfo(compact) {
+    // Rôle dans le groupe : organisateur ou participant. Le propriétaire (forfait) se gère dans Mon compte.
     const own = (S.players || []).find(p => p.id === ownerId()), pl = planOf(), n = (S.players || []).length, over = n > pl.max;
-    const until = pl.until ? ' · jusqu’au ' + new Date(pl.until).toLocaleDateString('fr-CA', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
     const buy = !pl.paid && meId() && meId() === ownerId() ? ` <a class="linkbtn" href="${buyUrl()}" target="_blank" rel="noopener">Passer au Groupe</a>` : '';
-    const orgId = (curGroup().organizers || [])[0], org = (S.players || []).find(p => p.id === orgId);
-    const meOwner = !!meId() && meId() === ownerId();
-    // Le propriétaire, avec ses pastilles ; l'organisateur sur sa propre ligne seulement s'il est quelqu'un d'autre
-    const sameOrg = !org || (own && org.id === own.id);
-    const tagP = '<span class="role-tag own" title="Détient le forfait du groupe">Propriétaire</span>', tagO = '<span class="role-tag org" title="Prépare les parties">Organisateur</span>';
+    const orgId = (curGroup().organizers || [])[0], org = (S.players || []).find(p => p.id === orgId) || own;
+    const me = (S.players || []).find(p => p.id === meId());
+    const tagO = '<span class="role-tag org" title="Prépare les parties">Organisateur</span>';
+    const moiOrg = me && org && me.id === org.id;
     return `<div class="grp-info${compact ? ' compact' : ''}">
       <div class="grp-info-k">Rôles dans ce groupe</div>
-      <div class="who-line"><b>${own ? esc(own.name) : 'Aucun propriétaire'}</b>${own ? tagP : ''}${own && sameOrg ? tagO : ''}</div>
-      ${meOwner ? acctAct(sameOrg) : ''}
-      ${!sameOrg ? `<div class="who-line"><b>${esc(org.name)}</b>${tagO}</div>${org.id === meId() ? acctAct() : ''}` : ''}
-      ${isParticipant() ? `<div class="who-line me-line"><b>${esc((S.players.find(p => p.id === meId()) || {}).name || '')}</b><span class="role-tag part">Participant</span><button class="linkbtn" data-welcome type="button">Ce que je peux faire</button></div>${acctAct()}` : ''}
+      <div class="who-line"><b>${org ? esc(org.name) : 'Aucun organisateur'}</b>${org ? tagO : ''}${moiOrg ? '<span class="role-moi">vous</span>' : ''}</div>
+      ${me && !moiOrg ? `<div class="who-line me-line"><b>${esc(me.name)}</b><span class="role-tag part">Participant</span><span class="role-moi">vous</span><button class="linkbtn" data-welcome type="button">Ce que je peux faire</button></div>` : ''}
       ${over ? `<div class="plan-line"><small class="over">${n} / ${pl.max} joueurs : forfait dépassé</small>${buy}</div>` : ''}
     </div>`;
   }
@@ -939,10 +936,10 @@
 
   // ---------------- Mon compte : le compte de la personne et tous les groupes dont elle fait partie ----------------
   function groupRows(l, cur, base) {
-    return `<div class="acct-groups">${l.map((x, k) => [x, base ? base.indexOf(x) : k]).map(([x, i]) => `<div class="acct-g ${x.gid === cur ? 'cur' : ''}"><div><b><span class="g-k">Groupe :</span> ${esc(x.name)}</b><small>${esc(x.playerName)} · ${[x.owner ? 'propriétaire' : '', x.organizer ? 'organisateur' : ''].filter(Boolean).join(' et ') || 'participant'}</small></div>${x.gid === cur ? '<span class="acct-cur">Groupe actuel</span>' : `<button class="btn small" data-gopen="${i}" type="button">Ouvrir</button>`}${x.gid === cur && x.owner && !S.fromLogin ? `<div class="g-manage">${x.archived
+    return `<div class="acct-groups">${l.map((x, k) => [x, base ? base.indexOf(x) : k]).map(([x, i]) => `<div class="acct-g ${x.gid === cur ? 'cur' : ''}"><div><b><span class="g-k">Groupe :</span> ${esc(x.name)}</b><small>${esc(x.playerName)} · ${x.organizer ? 'organisateur' : 'participant'}${x.owner ? ' · <b class="own-txt">propriétaire</b>' : ''}</small></div>${x.gid === cur ? '<span class="acct-cur">Groupe actuel</span>' : `<button class="btn small" data-gopen="${i}" type="button">Ouvrir</button>`}${x.gid === cur && x.owner && !S.fromLogin ? `<div class="g-manage"><button class="btn ghost small" data-pickorg type="button">${(curGroup().organizers || []).length ? 'Changer l’organisateur' : 'Nommer un organisateur'}</button>${x.archived
         ? '<button class="btn ghost small" data-grpstate="unarchive" type="button">Rétablir le groupe</button>'
         : '<button class="btn ghost small" data-grpstate="archive" type="button">Archiver le groupe</button>'}<button class="btn ghost small danger-txt" data-grpstate="delete" type="button">Supprimer le groupe</button>
-        <small>Archiver : le groupe est mis de côté pour tous, rien n’est perdu et vous pouvez le rétablir. Supprimer : il disparaît pour tous avec ses parties, ses dates et ses compétitions, sans retour possible.</small></div>` : ''}</div>`).join('') || '<p class="note">Aucun groupe pour l’instant.</p>'}</div>`;
+        <small>Comme propriétaire, vous détenez le forfait et nommez l’organisateur, qui prépare les parties. Archiver : le groupe est mis de côté pour tous, rien n’est perdu et vous pouvez le rétablir. Supprimer : il disparaît pour tous avec ses parties, ses dates et ses compétitions, sans retour possible.</small></div>` : ''}</div>`).join('') || '<p class="note">Aucun groupe pour l’instant.</p>'}</div>`;
   }
   function vCompte() {
     $('#barTitle').textContent = 'Mon compte';
