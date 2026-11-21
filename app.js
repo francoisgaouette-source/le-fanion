@@ -780,12 +780,14 @@
           <li>Inviter les joueurs</li><li>Offrir les dates et former les quatuors</li><li>Créer les parties</li><li>Gérer les terrains et les jeux</li></ul>
           <p>Ces tuiles sont grisées pour vous. Touchez-en une pour voir à quoi elle sert.</p></section>
       </div>
+      <p class="wl-notif">🔔 En entrant, les notifications du groupe s’activent : nouvelles dates, rappels, parties et résultats. Elles restent actives tant que vous êtes membre du groupe.</p>
       <button class="btn wl-go" id="wlGo" type="button">Entrer dans le groupe</button>
       <p class="wl-own">Envie d’organiser votre propre gang ? <button class="linkbtn" id="wlOwn" type="button">Créer mon groupe gratuit</button></p>
     </div>`;
     document.body.appendChild(wrap);
     const close = () => { try { ls.set(welcomeKey(), Date.now()); } catch (e) { } wrap.classList.add('out'); setTimeout(() => wrap.remove(), 250); };
-    wrap.querySelector('#wlGo').onclick = close;
+    // Notifications du groupe : activées d'office en entrant (le geste du joueur permet de demander la permission au téléphone)
+    wrap.querySelector('#wlGo').onclick = () => { close(); if (Push.supported() && !Push.needsInstall() && Push.perm() !== 'denied') Push.enable().then(() => toast('Notifications du groupe activées.')).catch(() => { }).then(() => render()); };
     wrap.querySelector('#wlOwn').onclick = () => { close(); setTimeout(newGroupSheet, 260); };
     wrap.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
     wrap.tabIndex = -1; setTimeout(() => { wrap.scrollTop = 0; wrap.focus({ preventScroll: true }); }, 50);
@@ -953,8 +955,8 @@
       ${S.fromLogin ? '' : forfaitHtml()}
       <h3 class="acct-h">Notifications</h3>
       <div class="acct-box">
-      <div class="acct-g"><div><b>${Push.perm() === 'granted' && ls.get('pelland.push', 0) ? 'Activées sur ce téléphone' : Push.perm() === 'denied' ? 'Bloquées' : 'Désactivées'}</b><small>${Push.perm() === 'denied' ? 'Permettez-les dans les réglages du navigateur ou du téléphone.' : Push.needsInstall() ? 'Sur iPhone : ajoutez d’abord l’app à l’écran d’accueil.' : 'Nouvelles dates, rappels, parties et résultats.'}</small></div>
-        ${Push.perm() === 'granted' && ls.get('pelland.push', 0) ? '<button class="btn ghost small" data-pushoff type="button">Désactiver</button>' : Push.perm() === 'denied' ? '' : Push.needsInstall() ? '<button class="btn small" data-onbact="ecran" type="button">Comment</button>' : '<button class="btn small" data-pushon type="button">Activer</button>'}</div>
+      <div class="acct-g"><div><b>${Push.on() ? '✓ Activées sur ce téléphone' : Push.perm() === 'denied' ? 'Bloquées sur ce téléphone' : 'À activer'}</b><small>${Push.perm() === 'denied' ? 'Permettez-les dans les réglages du téléphone, puis rouvrez l’app.' : Push.needsInstall() ? 'Sur iPhone : ajoutez d’abord l’app à l’écran d’accueil.' : 'Obligatoires tant que vous êtes membre d’un groupe : nouvelles dates, rappels, parties et résultats. Elles s’arrêtent quand vous quittez le groupe.'}</small></div>
+        ${Push.on() || Push.perm() === 'denied' ? '' : Push.needsInstall() ? '<button class="btn small" data-onbact="ecran" type="button">Comment</button>' : '<button class="btn small" data-pushon type="button">Activer</button>'}</div>
       </div>
       <h3 class="acct-h">Mot de passe</h3>
       <div class="acct-box acct-g"><div><b>Mot de passe du compte</b><small>Avec votre cellulaire, il sert à vous connecter sur un autre appareil.</small></div><button class="btn ghost small" id="chgPw" type="button">Changer</button></div>
@@ -3733,6 +3735,10 @@
       let mine = []; try { mine = await Store.myPlayers(); } catch (e) { }
       if (!mine.length && meId()) mine = [{ id: meId(), groupId: Store.gid }];
       const js = JSON.stringify(sub);
+      // Groupes quittés : leur abonnement est retiré (on ne reçoit plus rien d'un groupe dont on n'est plus membre)
+      const avant = ls.get('pelland.push.groupes', []), maintenant = mine.map(p => p.groupId || 'pelland');
+      for (const g of avant.filter(g => !maintenant.includes(g))) { try { await Store.db.collection('subs').doc(Store.uid + '_' + g).delete(); } catch (e) { } }
+      ls.set('pelland.push.groupes', maintenant);
       for (const p of mine) { const g = p.groupId || 'pelland'; try { await Store.db.collection('subs').doc(Store.uid + '_' + g).set({ uid: Store.uid, groupId: g, playerId: p.id, sub: js, at: Date.now() }); } catch (e) { console.warn('abonnement', g, e.message); } }
     },
     async disable() {
@@ -3744,7 +3750,16 @@
       for (const g of gs) { try { await Store.db.collection('subs').doc(Store.uid + '_' + g).delete(); } catch (e) { } }
     },
     // Garde l'abonnement à jour (nouveau groupe, abonnement renouvelé par le navigateur)
-    async refresh() { if (this.supported() && this.perm() === 'granted' && ls.get('pelland.push', 0)) { const s = await this.sub(); if (s) await this.save(s); } },
+    // Membre d'un groupe = notifications actives : dès que le téléphone les permet, l'abonnement est (re)fait sans rien demander
+    async refresh() {
+      if (!this.supported() || this.perm() !== 'granted' || Store.mode !== 'firebase' || !Store.uid) return;
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const s = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: this.key() });
+        await this.save(s); ls.set('pelland.push', 1);
+      } catch (e) { }
+    },
+    on() { return this.perm() === 'granted' && !!ls.get('pelland.push', 0); },
     // Avertit les membres du groupe (sauf soi) ; playerIds = seulement ces joueurs
     async notify(data) {
       if (Store.mode !== 'firebase' || !Store.uid) return;
@@ -3753,21 +3768,19 @@
   };
   function pushCard() {
     if (Store.needLogin || Store.mode !== 'firebase') return '';
-    if ((ls.get('pelland.push.later', 0) || 0) > Date.now()) return '';
-    const on = Push.perm() === 'granted' && ls.get('pelland.push', 0);
-    if (on || Push.perm() === 'denied') return '';
+    if (Push.on()) return '';
+    const bloque = Push.perm() === 'denied';
     const install = Push.needsInstall();
     if (!install && !Push.supported()) return '';
     return `<section class="card push-card"><span class="push-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 3a6 6 0 0 0-6 6v3.6L4.3 15.4A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6z" fill="currentColor"/><path d="M9.5 19a2.5 2.5 0 0 0 5 0" fill="currentColor"/></svg></span>
-      <div><h3>Recevez les nouvelles du groupe</h3><p>Une alerte sur votre téléphone pour les nouvelles dates, les rappels, le début des parties et les résultats. Gratuit.</p>
-      <div class="row">${install ? '<button class="btn small" data-onbact="ecran" type="button">Ajouter l’app à l’écran d’accueil</button>' : '<button class="btn small" data-pushon type="button">Activer les notifications</button>'}<button class="btn ghost small" data-pushlater type="button">Plus tard</button></div>
+      <div><h3>Activez les notifications du groupe</h3><p>Elles sont obligatoires pour les membres : nouvelles dates, rappels, début des parties et résultats. Elles restent actives tant que vous êtes dans le groupe.</p>
+      ${bloque ? '<p class="note"><b>Elles sont bloquées sur ce téléphone.</b> Permettez-les dans les réglages : iPhone, Réglages → Notifications → Fanion ; Android, appui long sur l’icône de Fanion → Infos sur l’appli → Notifications. Puis rouvrez l’app.</p>'
+        : `<div class="row">${install ? '<button class="btn small" data-onbact="ecran" type="button">Ajouter l’app à l’écran d’accueil</button>' : '<button class="btn small" data-pushon type="button">Activer les notifications</button>'}</div>`}
       ${install ? '<p class="note">Sur iPhone, les notifications fonctionnent une fois l’app ajoutée à l’écran d’accueil. Ouvrez-la ensuite par son icône.</p>' : ''}</div></section>`;
   }
   document.addEventListener('click', async e => {
-    const t = e.target.closest && e.target.closest('[data-pushon],[data-pushlater],[data-pushoff]'); if (!t) return;
+    const t = e.target.closest && e.target.closest('[data-pushon]'); if (!t) return;
     e.preventDefault();
-    if (t.hasAttribute('data-pushlater')) { ls.set('pelland.push.later', Date.now() + 14 * 864e5); return render(); }
-    if (t.hasAttribute('data-pushoff')) { await Push.disable(); toast('Notifications désactivées.'); return render(); }
     t.disabled = true;
     try { await Push.enable(); toast('Notifications activées.'); } catch (x) { toast(x.message); }
     render();

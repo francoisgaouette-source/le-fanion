@@ -117,8 +117,15 @@ async function pushGroup(env, tok, uid, data) {
     body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'subs' }], where: { fieldFilter: { field: { fieldPath: 'groupId' }, op: 'EQUAL', value: { stringValue: g } } }, limit: 200 } }) });
   if (!r.ok) throw new Error('lecture des abonnements refusée');
   const only = Array.isArray(data.playerIds) && data.playerIds.length ? new Set(data.playerIds) : null;
+  // Seulement les joueurs encore membres du groupe : un joueur retiré ne reçoit plus rien de ce groupe
+  let membres = null;
+  try {
+    const pr = await fetch(`${FS}:runQuery`, { method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'players' }], where: { fieldFilter: { field: { fieldPath: 'groupId' }, op: 'EQUAL', value: { stringValue: g } } }, limit: 500 } }) });
+    if (pr.ok) membres = new Set((await pr.json()).map(x => x.document && x.document.name && x.document.name.split('/').pop()).filter(Boolean));
+  } catch (e) { }
   const subs = (await r.json()).map(x => (x.document || {}).fields).filter(Boolean).map(f => ({ uid: (f.uid || {}).stringValue, playerId: (f.playerId || {}).stringValue, sub: (() => { try { return JSON.parse((f.sub || {}).stringValue); } catch (e) { return null; } })() }))
-    .filter(x => x.sub && x.sub.endpoint && x.uid !== uid && (!only || only.has(x.playerId)));
+    .filter(x => x.sub && x.sub.endpoint && x.uid !== uid && (!only || only.has(x.playerId)) && (!membres || !membres.size || membres.has(x.playerId)));
   const msg = { title: String(data.title || 'Fanion').slice(0, 80), body: String(data.body || '').slice(0, 240), url: String(data.url || './').slice(0, 300), tag: data.tag ? String(data.tag).slice(0, 60) : undefined };
   const res = await Promise.all(subs.map(x => sendPush(env, x.sub, msg).catch(() => 0)));
   return { sent: res.filter(s => s >= 200 && s < 300).length, total: subs.length, gone: res.filter(s => s === 404 || s === 410).length };
@@ -135,6 +142,7 @@ L'accueil présente 6 étapes : 1 Inviter des joueurs, 2 Parties à préparer, 3
 L'APP
 - Compte : la première fois, « Créer mon compte » (il faut un cellulaire) : on entre son cellulaire, on reçoit un code à 6 chiffres par texto, on le confirme, puis on choisit un mot de passe (6 caractères ou plus). Ensuite on se connecte avec son cellulaire et son mot de passe, sans code, et on arrive dans « Mon compte » pour choisir son groupe. Un seul compte pour tous ses groupes : chaque groupe où ce cellulaire est inscrit apparaît dans « Mon compte » (bouton rond avec ses initiales en haut à droite : forfait du groupe, notifications, mot de passe, groupes, Se déconnecter ; aussi accessible par « Changer de groupe » sur l'accueil). Mot de passe oublié : « Mot de passe oublié ? » sur l'écran de connexion (nouveau code, puis nouveau mot de passe). Le cellulaire doit être celui inscrit pour ce joueur dans Joueurs ; sinon l'organisateur le corrige avec le bouton ☎ du joueur. Si le code ne vient pas : vérifier le numéro, attendre une minute, « Renvoyer le code ».
 - Ajouter l'app à l'écran d'accueil : iPhone, dans Safari, bouton Partager puis « Sur l'écran d'accueil ». Android, dans Chrome, menu ⋮ puis « Ajouter à l'écran d'accueil ».
+- Notifications : obligatoires pour les membres d'un groupe. Elles s'activent en entrant dans le groupe (après avoir accepté l'invitation) et on ne peut pas les désactiver ; elles s'arrêtent seulement quand on n'est plus membre du groupe. Si le téléphone les bloque, il faut les permettre dans ses réglages (iPhone : Réglages → Notifications → Fanion ; sur iPhone, l'app doit être ajoutée à l'écran d'accueil).
 - Une idée ou un pépin : bouton « 💡 Idée ou pépin ? » en haut, à côté de Fanion (une ampoule sur les autres écrans) ; l'équipe répond dans l'app.
 - Rôles (propres à chaque groupe : on peut être organisateur d'un groupe et simple participant d'un autre) : le propriétaire détient le forfait et nomme l'organisateur ; l'organisateur prépare les parties. Sans organisateur nommé, c'est le propriétaire. Sur l'accueil, la carte « Rôles dans ce groupe » montre l'organisateur et votre rôle (organisateur ou participant). Le propriétaire se voit dans Mon compte : il y nomme ou change l'organisateur (« Nommer un organisateur » dans la case du groupe actuel), et y gère le forfait, l'archivage et la suppression du groupe.
 - Joueurs : ajouter un nom et un cellulaire ; une invitation par texto est prête à envoyer (elle part de l'app Messages du téléphone : il faut toucher Envoyer). Import Excel ou CSV : deux colonnes, le nom et le cellulaire. Renommer : toucher le nom. Retirer : « Retirer », ou « Sélectionner » pour plusieurs.
