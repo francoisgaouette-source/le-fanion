@@ -669,7 +669,11 @@
   function render() {
     const v = $('#view');
     $('#back').hidden = S.view === 'home' || S.view === 'login';
-    $('#dbBadge').textContent = !navigator.onLine ? 'Hors ligne' : Store.mode === 'firebase' ? 'Partagé' : 'Local';
+    $('#dbBadge').textContent = !navigator.onLine ? 'Hors ligne' : Store.mode === 'firebase' ? '' : 'Local';
+    // Mon compte : en haut à droite, avec les initiales du joueur
+    const ab = $('#acctBtn'), acctOk = Store.mode === 'firebase' && !!Store.email && !Store.needLogin && S.view !== 'login';
+    ab.hidden = !acctOk; ab.classList.toggle('on', S.view === 'compte');
+    if (acctOk) { const nm = (S.players.find(p => p.id === meId()) || {}).name || ls.get('pelland.me', '') || ''; $('#acctIni').textContent = nm.split(/[\s-]+/).filter(Boolean).slice(0, 2).map(x => x[0].toUpperCase()).join('') || '👤'; ab.title = 'Mon compte' + (nm ? ' · ' + nm : ''); }
     $('#dbBadge').classList.toggle('offline', !navigator.onLine);
     const showDock = false; // plus d'interface vocale
     document.body.classList.toggle('view-game', S.view === 'game');
@@ -835,7 +839,7 @@
   }
   // « Mon compte » sous le nom de la personne connectée (et, pour le propriétaire, le choix de l'organisateur)
   function acctAct(sameOrg) {
-    const acct = Store.mode === 'firebase' && Store.email ? `<button class="linkbtn" data-go="compte" type="button">Mon compte</button>` : '';
+    const acct = '';   // Mon compte : bouton en haut à droite
     const pick = sameOrg !== undefined ? `<button class="linkbtn" data-pickorg type="button">${sameOrg ? 'Nommer un organisateur' : 'Changer l’organisateur'}</button>` : '';
     return acct || pick ? `<div class="who-act">${[acct, pick].filter(Boolean).join('<span aria-hidden="true"> · </span>')}</div>` : '';
   }
@@ -4043,6 +4047,7 @@
     else if (S.view === 'compEdit') { if (S.compDraft && S.compDraft.id) openComp(S.compDraft.id); else go('comps'); }
     else go('home');
   };
+  $('#acctBtn').onclick = () => { if (S.view !== 'compte') go('compte'); };
   $('#micBtn').onclick = () => Voice.ptt();
   $('#wakeBtn').onclick = () => Voice.setWake(!Voice.wake);
   $('#typeForm').onsubmit = e => { e.preventDefault(); const t = $('#typeInput').value.trim(); if (t) { $('#typeInput').value = ''; handle(t); } };
