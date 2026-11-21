@@ -810,7 +810,7 @@
       ${lockTiles(`<div class="tiles steps">
         <button class="tile" data-go="players" data-pmode="inviter"><span class="pin step-n">1</span><div><strong>Inviter des joueurs</strong><span>Ajoutez vos joueurs et leur cellulaire : ils reçoivent l’invitation par texto</span></div></button>
         <button class="tile" data-go="quatuors"><span class="pin step-n">2</span><div><strong>Parties à préparer</strong><span>Offrez des dates ; les joueurs répondent et l’app forme les quatuors</span></div></button>
-        <button class="tile" data-go="setup"><span class="pin step-n">3</span><div><strong>Créer une partie</strong><span>Terrain, joueurs, jeu et montants</span></div></button>
+        <button class="tile" data-typepartie type="button"><span class="pin step-n">3</span><div><strong>Créer une partie</strong><span>Terrain, joueurs, jeu et montants</span></div></button>
         <button class="tile" data-go="live"><span class="pin step-n">4</span><div><strong>Parties en cours</strong><span>Suivez les parties en direct</span></div></button>
         <button class="tile" data-go="comps" data-clive="1"><span class="pin step-n">5</span><div><strong>Compétitions en cours</strong><span>Classements en direct des compétitions du groupe</span></div></button>
         <button class="tile" data-go="history"><span class="pin step-n">6</span><div><strong>Parties et compétitions jouées</strong><span>Les résultats, qui doit quoi et les classements finaux</span></div></button>
@@ -1266,6 +1266,19 @@
       });
     });
   }
+  // Créer une partie : d'abord le type, partie normale ou compétition
+  function typePartieSheet() {
+    openSheet(`<h3>Quel type de partie ?</h3>
+      <div class="type-partie">
+        <button class="type-choix" data-tp="normale" type="button"><span aria-hidden="true">⛳</span><span><b>Partie normale</b><small>Une partie entre amis : terrain, joueurs, jeu (Nassau, skins, Vegas, match…) et montants.</small></span></button>
+        <button class="type-choix" data-tp="comp" type="button"><span aria-hidden="true">🏆</span><span><b>Compétition</b><small>Un tournoi avec classement : match play, Texas scramble, Stableford… avec équipes et handicaps.</small></span></button>
+      </div>
+      <button class="btn ghost" data-close type="button">Annuler</button>`, sh => {
+      sh.querySelector('[data-close]').onclick = closeSheet;
+      sh.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => { closeSheet(); if (b.dataset.tp === 'normale') go('setup'); else go('comps', { compLive: false }); });
+    });
+  }
+  document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-typepartie]'); if (!t) return; e.preventDefault(); typePartieSheet(); });
   document.addEventListener('click', e => {
     const t = e.target.closest && e.target.closest('[data-viral],[data-viralhide],#switchGroup'); if (!t) return;
     e.preventDefault();

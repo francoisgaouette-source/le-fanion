@@ -987,3 +987,9 @@ body:has(#sheetWrap:not([hidden])) .cd-lanceur { display: none; }
 .carte-source a, .web-band a { overflow-wrap: anywhere; }
 .carte-img, .carte-img img { max-width: 100%; }
 main section.card { min-width: 0; max-width: 100%; }
+.type-partie { display: grid; gap: 10px; }
+.type-choix { display: flex; gap: 14px; align-items: flex-start; text-align: left; padding: 14px; border-radius: 14px; border: 1px solid var(--line, #dde3df); background: var(--surface); color: inherit; font: inherit; cursor: pointer; }
+.type-choix > span:first-child { font-size: 28px; line-height: 1; }
+.type-choix b { display: block; font-size: 18px; margin-bottom: 3px; }
+.type-choix small { display: block; color: var(--muted); font-size: 14px; line-height: 1.35; }
+.type-choix:active { transform: scale(.99); }
