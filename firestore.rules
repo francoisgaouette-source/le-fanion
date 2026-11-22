@@ -88,7 +88,10 @@ service cloud.firestore {
       // Le forfait (plan, paidUntil) est donné par Fanion après le paiement : jamais modifiable depuis l'app
       allow create: if membre() && id.matches('_groupe_.+') && request.resource.data.id == id.split('_groupe_')[1]
         && !request.resource.data.keys().hasAny(['plan', 'paidUntil', 'maxJoueurs'])
-        && request.resource.data.get('nPlayers', 1) == 1;
+        && request.resource.data.get('nPlayers', 1) == 1
+        // Forfait Gratuit : un seul groupe gratuit par compte (marqueur gratuits/{uid} créé avec le groupe)
+        && !exists(/databases/$(database)/documents/gratuits/$(request.auth.uid))
+        && getAfter(/databases/$(database)/documents/gratuits/$(request.auth.uid)).data.groupId == request.resource.data.id;
       allow update: if membre() && id.matches('_groupe_.+') && dansGroupe(id.split('_groupe_')[1])
         && request.resource.data.id == resource.data.id
         && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['plan', 'paidUntil', 'maxJoueurs'])
@@ -225,6 +228,18 @@ service cloud.firestore {
     match /admins/{uid} {
       allow get: if membre() && uid == request.auth.uid;
       allow list, write: if false;
+    }
+
+    // ---------- Groupe gratuit de chaque compte (un seul à la fois) ----------
+    // Libéré quand ce groupe est supprimé ou passe au forfait Groupe
+    match /gratuits/{uid} {
+      allow get: if membre() && uid == request.auth.uid;
+      allow create: if membre() && uid == request.auth.uid && request.resource.data.keys().hasOnly(['groupId', 'at'])
+        && getAfter(grp(request.resource.data.groupId)).data.id == request.resource.data.groupId;
+      allow delete: if membre() && uid == request.auth.uid
+        && (!exists(grp(resource.data.groupId)) || get(grp(resource.data.groupId)).data.get('deleted', false) == true
+            || get(grp(resource.data.groupId)).data.get('plan', '') == 'groupe');
+      allow list, update: if false;
     }
 
     // ---------- Terrains (communs) ----------

@@ -316,6 +316,15 @@
     // Parrainage : ?ref=<code> (un groupe ou un centre) est gardé 90 jours sur ce téléphone, puis noté sur le groupe créé
     refCode() { const r = ls.get('pelland.ref', null); return r && r.until > Date.now() ? r.code : ''; },
     // Nouveau groupe, créé par la personne connectée (son compte a déjà son cellulaire confirmé et son mot de passe)
+    // Le groupe gratuit que ce compte possède déjà (non supprimé, sans forfait Groupe en cours), ou null
+    async groupeGratuit() {
+      if (this.mode !== 'firebase') return null;
+      try {
+        const l = await this.myGroupList(), gs = await this.listGroups();
+        for (const x of l.filter(x => x.owner)) { const g = gs.find(y => y.id === x.gid); if (g && !g.deleted && !planOf(g).paid) return g; }
+      } catch (e) { }
+      return null;
+    },
     async createGroup(groupName, name, ref) {
       if (!String(groupName || '').trim()) throw new Error('Donnez un nom au groupe.');
       if (!String(name || '').trim()) throw new Error('Entrez votre prénom et nom.');
@@ -326,7 +335,15 @@
         const u = firebase.auth().currentUser;
         if (!u || !u.phoneNumber || !u.email) throw new Error('Créez d’abord votre compte avec votre cellulaire (déconnectez-vous, puis « Créer mon compte »).');
         const digits = u.phoneNumber.replace(/\D/g, '').slice(-10);
-        await this.saveGroup(gr);
+        // Forfait Gratuit : un seul groupe gratuit par compte (archivé compris) ; marqueur gratuits/{uid}, vérifié par les règles
+        const gratuit = await this.groupeGratuit();
+        if (gratuit) throw Object.assign(new Error(`Avec le forfait Gratuit, vous avez droit à un groupe de 4 joueurs : vous avez déjà « ${gratuit.name} ». Passez ce groupe au forfait Groupe pour en créer un autre.`), { code: 'local/gratuit' });
+        const mk = this.db.collection('gratuits').doc(u.uid);
+        try { const m = await mk.get(); if (m.exists) await mk.delete(); } catch (e) { }
+        const b = this.db.batch();
+        b.set(this.db.collection('players').doc('_groupe_' + gr.id), gr);
+        b.set(mk, { groupId: gr.id, at: Date.now() });
+        await b.commit();
         await this.db.collection('players').doc(pid).set({ id: pid, name: name.trim(), groupId: gr.id, authEmail: u.email, acct: u.email, phoneHint: digits.slice(-2), updatedAt: Date.now() });
         await this.linkTo({ id: pid, name: name.trim(), groupId: gr.id });
         await this.savePhone(pid, digits, false, gr.id);
@@ -1271,6 +1288,9 @@
       <div class="row"><button class="btn small" id="vgGo" type="button">Créer le groupe</button><button class="btn ghost small" data-close type="button">Annuler</button></div>`, sh => {
       sh.querySelector('[data-close]').onclick = closeSheet;
       const b = sh.querySelector('#vgGo');
+      // Déjà un groupe gratuit : on le dit tout de suite, avec le passage au forfait Groupe
+      Store.groupeGratuit().then(g => { if (!g || !sh.isConnected) return; b.disabled = true;
+        sh.querySelector('#vgMsg').innerHTML = `<b>Avec le forfait Gratuit, vous avez droit à un groupe de 4 joueurs.</b> Vous avez déjà « ${esc(g.name)} ». Passez-le au forfait Groupe (jusqu’à 16 joueurs) pour créer un autre groupe, ou supprimez-le dans Mon compte. <a class="linkbtn" href="${buyUrl()}" target="_blank" rel="noopener">Passer au forfait Groupe</a>`; }).catch(() => { });
       b.onclick = async () => {
         const msg = sh.querySelector('#vgMsg'); b.disabled = true; msg.textContent = 'Création…';
         try { await Store.createGroup(sh.querySelector('#vgName').value, sh.querySelector('#vgMe').value, Store.gid); ls.set('pelland.lastGame', null); location.href = location.pathname; }
