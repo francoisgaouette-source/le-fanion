@@ -833,10 +833,10 @@
         <button class="tile" data-go="jeux"><span class="pin" style="font-family:var(--display);font-weight:700">$</span><div><strong>Banque de jeux</strong><span>Les règles et l’argent de chaque jeu ; ajoutez les vôtres</span></div></button>
         <button class="tile" data-go="comps"><span class="pin"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M7 4h10v3a5 5 0 0 1-10 0V4z" fill="currentColor"/><path d="M7 5H4v2a3 3 0 0 0 3 3M17 5h3v2a3 3 0 0 1-3 3" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M12 12v4M8 20h8l-1-4H9z" fill="currentColor" stroke="currentColor" stroke-width="1.2"/></svg></span><div><strong>Banque de compétitions</strong><span>Membre-membre : équipes de 2, classes et classement en direct</span></div></button>
       </div>`)}
-      <div class="hero"><h1><span class="hero-k">Groupe :</span> ${canOrganize() ? `<button class="hero-nom" id="renameGroup" type="button" title="Toucher pour changer le nom du groupe" aria-label="Changer le nom du groupe : ${esc(groupName())}">${esc(groupName())}</button>` : esc(groupName())}</h1></div>
-      ${Store.needLogin ? '' : groupInfo(true)}
       ${(() => { const autres = (S.myPlayers || []).filter(x => !x.archived && !x.deleted && (x.gid || x.groupId) !== Store.gid).length;
         return Store.needLogin ? '' : `<p class="hero-liens"><button class="linkbtn" data-viral type="button">+ Créer un nouveau groupe</button>${autres ? ` · <button class="linkbtn" id="switchGroup" type="button">Changer de groupe (${autres} autre${autres > 1 ? 's' : ''})</button>` : ''}</p>`; })()}
+      <div class="hero"><h1><span class="hero-k">Groupe :</span> ${canOrganize() ? `<button class="hero-nom" id="renameGroup" type="button" title="Toucher pour changer le nom du groupe" aria-label="Changer le nom du groupe : ${esc(groupName())}">${esc(groupName())}</button>` : esc(groupName())}</h1></div>
+      ${Store.needLogin ? '' : groupInfo(true)}
       ${retourCarte()}
       ${P.admin && P.todo.length ? `<button class="warn approve-band" data-go="courses" type="button">🏌️ ${P.todo.length} terrain${P.todo.length > 1 ? 's' : ''} à approuver pour la banque · Voir</button>` : ''}
       ${curGroup().archived ? `<div class="warn archived-band">Ce groupe est archivé.${meId() && meId() === ownerId() ? ' <button class="linkbtn" data-go="compte" type="button">Le rétablir dans Mon compte</button>' : ' Son propriétaire peut le rétablir.'}</div>` : ''}

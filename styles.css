@@ -981,7 +981,7 @@ body:has(#sheetWrap:not([hidden])) .cd-lanceur { display: none; }
 .warn.notif-warn { display: block; } .pl-st[class*="notif-"] { white-space: normal; }
 .bar-sous { display: block; font-family: var(--body, inherit); font-size: 11.5px; font-weight: 500; letter-spacing: .02em; opacity: .75; line-height: 1.1; margin-top: -2px; }
 .bar-title:has(.bar-sous) { font-size: 30px; line-height: 1.05; padding: 2px 0 3px; letter-spacing: -.01em; } .bar-sous { line-height: 1.25; font-size: 12px; }
-.hero-liens { margin: -14px 0 10px 2px; }
+.hero-liens { margin: 22px 0 -6px 2px; }
 /* Carte préparée par Léo : rien ne dépasse l'écran (adresses longues, noms de tertres, image de la carte) */
 .web-band, .carte-source, .web-alertes, .maj-liste, .club-item, .leo-cherche { overflow-wrap: anywhere; word-break: break-word; min-width: 0; max-width: 100%; }
 .carte-source a, .web-band a { overflow-wrap: anywhere; }
@@ -998,4 +998,4 @@ main section.card { min-width: 0; max-width: 100%; }
 .retire-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: nowrap; }
 .retire-row > div { min-width: 0; } .retire-row > div > span { display: block; font-size: 13px; color: var(--muted); }
 .retire-row .btn { width: auto; margin: 0; }
-.home-h-first { margin-top: 4px; } .tiles.banks + .hero { margin-top: 22px; }
+.home-h-first { margin-top: 4px; }
