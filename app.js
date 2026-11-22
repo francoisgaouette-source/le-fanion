@@ -800,7 +800,7 @@
     const info = ls.get('pelland.lastGameInfo', null);
     const lastDate = info && info.id === last && info.createdAt ? new Date(info.createdAt).toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' }) : null;
     return `
-      <div class="hero"><h1><span class="hero-k">Groupe :</span> ${esc(groupName())}${canOrganize() ? ' <button class="hero-edit" id="renameGroup" type="button" aria-label="Modifier le nom du groupe">Modifier</button>' : ''}</h1>${(() => { const autres = (S.myPlayers || []).filter(x => !x.archived && !x.deleted && (x.gid || x.groupId) !== Store.gid).length;
+      <div class="hero"><h1><span class="hero-k">Groupe :</span> ${canOrganize() ? `<button class="hero-nom" id="renameGroup" type="button" title="Toucher pour changer le nom du groupe" aria-label="Changer le nom du groupe : ${esc(groupName())}">${esc(groupName())}</button>` : esc(groupName())}</h1>${(() => { const autres = (S.myPlayers || []).filter(x => !x.archived && !x.deleted && (x.gid || x.groupId) !== Store.gid).length;
         return Store.needLogin ? '' : `<p class="hero-liens"><button class="linkbtn" data-viral type="button">+ Créer un nouveau groupe</button>${autres ? ` · <button class="linkbtn" id="switchGroup" type="button">Changer de groupe (${autres} autre${autres > 1 ? 's' : ''})</button>` : ''}</p>`; })()}</div>
       ${Store.needLogin ? '' : groupInfo(true)}
       ${retourCarte()}
