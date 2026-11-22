@@ -444,12 +444,21 @@
       if (this.mode === 'firebase') { await this.db.collection('players').doc(id).set({ name: name.trim(), updatedAt: Date.now() }, { merge: true }); return; }
       ls.set('pelland.players', ls.get('pelland.players', []).map(x => x.id === id ? { ...x, name: name.trim() } : x));
     },
-    async deletePlayer(id, count) {
+    async deletePlayer(id, count, deja) {
       if (this.mode === 'firebase') {
+        // Le compte doit être relié à ce groupe-ci (auth/{uid}) : sinon les règles refusent. On le relie et on réessaie une fois.
+        if (!deja) {
+          try { const a = await this.db.collection('auth').doc(this.uid).get(); const moi = (S.players || []).find(p => p.id === meId());
+            if (moi && (!a.exists || a.data().groupId !== this.gid || a.data().playerId !== moi.id)) await this.linkTo(moi); } catch (e) { }
+        }
         const b = this.db.batch();
         b.delete(this.db.collection('players').doc(id));
         b.set(this.db.collection('players').doc('_groupe_' + this.gid), { nPlayers: this.incr(-1, Math.max(0, (count || 1) - 1)), lastDel: id }, { merge: true });
-        await b.commit();
+        try { await b.commit(); }
+        catch (e) {
+          console.warn('retrait refusé', id, this.gid, e.message);
+          throw new Error(/permission|insufficient/i.test(e.message || '') ? 'Firebase refuse le retrait (droits)' : e.message);
+        }
         try { await this.db.collection('phones').doc(id).delete(); } catch (e) { }
         return;
       }
