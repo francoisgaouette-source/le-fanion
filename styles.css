@@ -980,7 +980,7 @@ body:has(#sheetWrap:not([hidden])) .cd-lanceur { display: none; }
 .notif-warn b { display: inline; }
 .warn.notif-warn { display: block; } .pl-st[class*="notif-"] { white-space: normal; }
 .bar-sous { display: block; font-family: var(--body, inherit); font-size: 11.5px; font-weight: 500; letter-spacing: .02em; opacity: .75; line-height: 1.1; margin-top: -2px; }
-.bar-title:has(.bar-sous) { line-height: 1.1; padding: 2px 0 3px; } .bar-sous { line-height: 1.25; }
+.bar-title:has(.bar-sous) { font-size: 30px; line-height: 1.05; padding: 2px 0 3px; letter-spacing: -.01em; } .bar-sous { line-height: 1.25; font-size: 12px; }
 .hero-liens { margin-top: 4px; }
 /* Carte préparée par Léo : rien ne dépasse l'écran (adresses longues, noms de tertres, image de la carte) */
 .web-band, .carte-source, .web-alertes, .maj-liste, .club-item, .leo-cherche { overflow-wrap: anywhere; word-break: break-word; min-width: 0; max-width: 100%; }
