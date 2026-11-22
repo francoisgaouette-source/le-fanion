@@ -939,6 +939,15 @@
       <div class="sheet-actions">${!pl.paid && meOwner ? `<a class="btn" href="${buyUrl()}" target="_blank" rel="noopener">Passer au forfait Groupe</a>` : ''}<button class="btn ghost" data-close type="button">${!pl.paid && meOwner ? 'Plus tard' : 'Compris'}</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; });
   }
 
+  // Deuxième groupe avec le forfait Gratuit : même offre que pour un 5e joueur
+  function deuxiemeGroupeSheet(g) {
+    const url = 'https://fanion.ai/achat.html?groupe=' + encodeURIComponent(g.id) + '&nom=' + encodeURIComponent(g.name || '');
+    openSheet(`<h3>Passez au forfait Groupe</h3>
+      <p>Le forfait Gratuit permet un groupe de 4 joueurs, pour essayer avec un quatuor. Vous avez déjà « ${esc(g.name)} » : pour créer un deuxième groupe, passez-le au forfait Groupe.</p>
+      <ul class="info-list"><li>Jusqu’à 16 joueurs</li><li>Dates offertes, disponibilités et quatuors</li><li>Un autre groupe gratuit possible</li><li>49 $ + taxes pour la saison, au prix fondateur</li></ul>
+      <div class="sheet-actions"><a class="btn" href="${url}" target="_blank" rel="noopener">Passer au forfait Groupe</a><button class="btn ghost" data-close type="button">Plus tard</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; });
+  }
+
   // ---------------- Bien démarrer : 4 premiers pas pour un nouveau groupe (propriétaire et organisateur) ----------------
   // Le progrès est gardé sur le groupe (onb), donc le même sur tous les téléphones ; l'écran d'accueil est propre à chaque téléphone.
   async function markStep(key) {
@@ -1334,7 +1343,9 @@
     e.preventDefault();
     if (t.id === 'switchGroup') return go('compte');
     if (t.hasAttribute('data-viralhide')) { ls.set('pelland.viral.hide', Date.now() + 30 * 864e5); return render(); }
-    closeSheet(); setTimeout(newGroupSheet, 30);
+    closeSheet();
+    // Forfait Gratuit = un seul groupe : un deuxième groupe demande le forfait Groupe, comme un 5e joueur
+    Store.groupeGratuit().then(g => g ? deuxiemeGroupeSheet(g) : newGroupSheet()).catch(() => newGroupSheet());
   });
 
   // ---------------- Petit « i » d'explication ----------------
