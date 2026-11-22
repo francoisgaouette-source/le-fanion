@@ -800,9 +800,10 @@
     const info = ls.get('pelland.lastGameInfo', null);
     const lastDate = info && info.id === last && info.createdAt ? new Date(info.createdAt).toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' }) : null;
     return `
-      <div class="hero"><h1><span class="hero-k">Groupe :</span> ${canOrganize() ? `<button class="hero-nom" id="renameGroup" type="button" title="Toucher pour changer le nom du groupe" aria-label="Changer le nom du groupe : ${esc(groupName())}">${esc(groupName())}</button>` : esc(groupName())}</h1>${(() => { const autres = (S.myPlayers || []).filter(x => !x.archived && !x.deleted && (x.gid || x.groupId) !== Store.gid).length;
-        return Store.needLogin ? '' : `<p class="hero-liens"><button class="linkbtn" data-viral type="button">+ Créer un nouveau groupe</button>${autres ? ` · <button class="linkbtn" id="switchGroup" type="button">Changer de groupe (${autres} autre${autres > 1 ? 's' : ''})</button>` : ''}</p>`; })()}</div>
+      <div class="hero"><h1><span class="hero-k">Groupe :</span> ${canOrganize() ? `<button class="hero-nom" id="renameGroup" type="button" title="Toucher pour changer le nom du groupe" aria-label="Changer le nom du groupe : ${esc(groupName())}">${esc(groupName())}</button>` : esc(groupName())}</h1></div>
       ${Store.needLogin ? '' : groupInfo(true)}
+      ${(() => { const autres = (S.myPlayers || []).filter(x => !x.archived && !x.deleted && (x.gid || x.groupId) !== Store.gid).length;
+        return Store.needLogin ? '' : `<p class="hero-liens"><button class="linkbtn" data-viral type="button">+ Créer un nouveau groupe</button>${autres ? ` · <button class="linkbtn" id="switchGroup" type="button">Changer de groupe (${autres} autre${autres > 1 ? 's' : ''})</button>` : ''}</p>`; })()}
       ${retourCarte()}
       ${P.admin && P.todo.length ? `<button class="warn approve-band" data-go="courses" type="button">🏌️ ${P.todo.length} terrain${P.todo.length > 1 ? 's' : ''} à approuver pour la banque · Voir</button>` : ''}
       ${curGroup().archived ? `<div class="warn archived-band">Ce groupe est archivé.${meId() && meId() === ownerId() ? ' <button class="linkbtn" data-go="compte" type="button">Le rétablir dans Mon compte</button>' : ' Son propriétaire peut le rétablir.'}</div>` : ''}
