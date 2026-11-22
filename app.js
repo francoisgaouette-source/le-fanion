@@ -444,6 +444,23 @@
       if (this.mode === 'firebase') { await this.db.collection('players').doc(id).set({ name: name.trim(), updatedAt: Date.now() }, { merge: true }); return; }
       ls.set('pelland.players', ls.get('pelland.players', []).map(x => x.id === id ? { ...x, name: name.trim() } : x));
     },
+    // Joueurs retirés du groupe : gardés dans la banque (nom, cellulaire) pour les remettre en un geste
+    async retiredPlayers() {
+      if (this.mode === 'firebase') { const g = await this.gdata(); return (g && g.joueursRetires) || []; }
+      return ls.get('pelland.joueursRetires', []);
+    },
+    async setRetiredPlayers(list) {
+      if (this.mode === 'firebase') return this.setGdata('joueursRetires', list);
+      ls.set('pelland.joueursRetires', list);
+    },
+    async keepInBank(p) {
+      if (!p) return;
+      let phone = p.phone || '';
+      if (!phone && this.mode === 'firebase') { try { const d = await this.db.collection('phones').doc(p.id).get(); if (d.exists) phone = d.data().phone || ''; } catch (e) { } }
+      const l = (await this.retiredPlayers()).filter(x => x.name.toLowerCase() !== p.name.toLowerCase());
+      l.unshift({ name: p.name, phone, retireLe: Date.now() });
+      await this.setRetiredPlayers(l.slice(0, 200));
+    },
     async deletePlayer(id, count, deja) {
       if (this.mode === 'firebase') {
         // Le compte doit être relié à ce groupe-ci (auth/{uid}) : sinon les règles refusent. On le relie et on réessaie une fois.
@@ -2088,7 +2105,10 @@
       ${S.selMode ? (() => { const sel = S.sel || [], removable = S.players.filter(p => canRemove(p)); return `<div class="sel-bar"><button class="linkbtn" data-selall type="button">${sel.length === removable.length && removable.length ? 'Tout désélectionner' : 'Tout sélectionner'}</button><span class="note">${sel.length} sélectionné${sel.length > 1 ? 's' : ''}</span>${sel.length ? (S.confirmBulk ? `<button class="btn small" data-bulkdel type="button" style="background:var(--red)">Confirmer : retirer ${sel.length}</button><button class="btn ghost small" data-bulkcancel type="button">Annuler</button>` : `<button class="btn small" data-bulkask type="button" style="background:var(--red)">Retirer (${sel.length})</button>`) : ''}</div>`; })() : ''}
       <div class="list">${S.players.length ? (() => { const dups = duplicateMap(S.players); return S.players.map((p, n) => S.selMode ? `<label class="item pl-row sel-row ${dups[p.id] ? 'dup' : ''}">${canRemove(p) ? `<input type="checkbox" data-selp="${esc(p.id)}" ${(S.sel || []).includes(p.id) ? 'checked' : ''}>` : '<span class="sel-lock" title="Ne peut pas être retiré">—</span>'}<b><span class="pl-n">${n + 1}.</span> ${esc(p.name)}${p.id === ownerId() ? ' <span class="owner-tag">Propriétaire</span>' : ''}${p.id === meId() ? ' <span class="note">(vous)</span>' : ''}</b></label>` : `<div class="item pl-row ${dups[p.id] ? 'dup' : ''}"><b><span class="pl-n">${n + 1}.</span> ${canOrganize() || p.id === meId() ? `<button class="name-btn" data-rename="${esc(p.id)}" type="button">${esc(p.name)}</button>` : esc(p.name)}${p.id === ownerId() ? ' <span class="owner-tag">Propriétaire</span>' : !ownerId() ? '' : meId() === ownerId() ? ` <button class="role-chip ${isOrganizer(p.id) ? 'on' : ''}" data-org="${esc(p.id)}" type="button" ${!isOrganizer(p.id) && !hasAccepted(p) ? 'disabled title="Invitation pas encore acceptée"' : ''}>${isOrganizer(p.id) ? 'Organisateur ✓' : '+ Organisateur'}</button>` : isOrganizer(p.id) ? ' <span class="org-tag">Organisateur</span>' : ''}${dups[p.id] ? ` <span class="dup-flag" title="Ressemble à ${esc(dups[p.id].join(', '))}">Doublon ?</span>` : ''}${plStatus(p)}</b>${S.confirmDel === p.id
         ? `<span class="row"><button class="btn small" data-delp="${esc(p.id)}" type="button" style="background:var(--red)">Confirmer</button><button class="btn ghost small" data-canceldel type="button">Annuler</button></span>`
-        : `<span class="row" style="flex-wrap:nowrap;flex:none"><button class="btn ghost small" data-phone="${esc(p.id)}" type="button">${p.phone ? '☎ ' + esc(fmtPhone(p.phone)) : p.authEmail ? '☎ ••' + esc(p.phoneHint || '') : '+ Téléphone'}</button>${p.id === ownerId() ? '' : `<button class="btn ghost small" data-askdel="${esc(p.id)}" type="button">Retirer</button>`}</span>`}</div>`).join(''); })() : '<p class="note">Aucun joueur pour l\'instant.</p>'}</div>`;
+        : `<span class="row" style="flex-wrap:nowrap;flex:none"><button class="btn ghost small" data-phone="${esc(p.id)}" type="button">${p.phone ? '☎ ' + esc(fmtPhone(p.phone)) : p.authEmail ? '☎ ••' + esc(p.phoneHint || '') : '+ Téléphone'}</button>${p.id === ownerId() ? '' : `<button class="btn ghost small" data-askdel="${esc(p.id)}" type="button">Retirer</button>`}</span>`}</div>`).join(''); })() : '<p class="note">Aucun joueur pour l\'instant.</p>'}</div>
+      ${canOrganize() && (S.retiredPl || []).length ? `<h3 class="acct-h">Retirés du groupe (${S.retiredPl.length})</h3><p class="note">Ils ne font plus partie du groupe : plus de notifications ni d’accès. Leur nom et leur cellulaire restent ici pour les remettre en un geste.</p>
+        <div class="list">${S.retiredPl.map((x, i) => `<div class="item pl-row retire-row"><div><b>${esc(x.name)}</b><span>${x.phone ? '☎ ' + esc(fmtPhone(x.phone)) + ' · ' : ''}retiré le ${new Date(x.retireLe).toLocaleDateString('fr-CA', { day: 'numeric', month: 'long' })}</span></div>
+          <span class="row" style="flex-wrap:nowrap;flex:none"><button class="btn small" data-remettre="${i}" type="button">Remettre</button><button class="btn ghost small" data-oublier="${i}" type="button" aria-label="Enlever ${esc(x.name)} de la banque">✕</button></span></div>`).join('')}</div>` : ''}`;
   }
   // Statut d'invitation d'un joueur : compte créé, invité en attente, ou sans cellulaire
   // Notifications de chaque joueur, pour l'organisateur (lu dans subs du groupe)
@@ -2661,6 +2681,23 @@
       const xf = $('#xlsFile'); if (xf) xf.onchange = async () => { const f = xf.files[0]; xf.value = ''; if (f) importPlayersFile(f); };
       if ($('#newPlayer')) $('#newPlayer').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); add(); } };
       v.querySelectorAll('[data-askdel]').forEach(b => b.onclick = () => { S.confirmDel = b.dataset.askdel; render(); });
+      if (canOrganize() && !S.retiredPlAt) { S.retiredPlAt = 1; Store.retiredPlayers().then(l => { S.retiredPl = l; if (l.length && S.view === 'players') render(); }).catch(() => { }); }
+      v.querySelectorAll('[data-remettre]').forEach(b => b.onclick = async () => {
+        const x = S.retiredPl[+b.dataset.remettre]; if (!x) return;
+        if (roomLeft() <= 0) return toast(`Le groupe est complet (${S.players.length} / ${planOf().max}).`);
+        b.disabled = true;
+        try {
+          const np = await Store.savePlayer(x.name, S.players.length);
+          if (x.phone && x.phone.length >= 10) { try { await Store.setPhone(np, x.phone); } catch (e) { } }
+          S.retiredPl = S.retiredPl.filter(y => y !== x); await Store.setRetiredPlayers(S.retiredPl);
+          S.players = await Store.listPlayers(); toast(`${x.name} est de retour dans le groupe.`); render();
+          if (x.phone) inviteText(x.name, x.phone, np && np.id);
+        } catch (e) { b.disabled = false; toast('Impossible : ' + e.message); }
+      });
+      v.querySelectorAll('[data-oublier]').forEach(b => b.onclick = async () => {
+        const x = S.retiredPl[+b.dataset.oublier]; if (!x) return;
+        S.retiredPl = S.retiredPl.filter(y => y !== x); try { await Store.setRetiredPlayers(S.retiredPl); } catch (e) { } toast(`${x.name} est enlevé de la banque.`); render();
+      });
       v.querySelectorAll('[data-phone]').forEach(b => b.onclick = () => {
         const pl = S.players.find(x => x.id === b.dataset.phone);
         openSheet(`<h3>Téléphone de ${esc(pl.name)}</h3>
@@ -2701,13 +2738,15 @@
       const bc = v.querySelector('[data-bulkcancel]'); if (bc) bc.onclick = () => { S.confirmBulk = false; render(); };
       const bd = v.querySelector('[data-bulkdel]'); if (bd) bd.onclick = async () => {
         const ids = (S.sel || []).slice(); let ok = 0;
-        for (const id of ids) { try { await Store.deletePlayer(id, S.players.length - ok); ok++; } catch (e) { } }
+        for (const id of ids) { const p = S.players.find(x => x.id === id); try { await Store.deletePlayer(id, S.players.length - ok); ok++; try { await Store.keepInBank(p); } catch (e) { } } catch (e) { } }
+        S.retiredPl = await Store.retiredPlayers().catch(() => []);
         S.players = await Store.listPlayers(); S.sel = []; S.confirmBulk = false; S.selMode = false;
         toast(ok === ids.length ? `${ok} joueur${ok > 1 ? 's' : ''} retiré${ok > 1 ? 's' : ''}.` : `${ok} sur ${ids.length} retirés : réessayez pour les autres.`); render();
       };
       v.querySelectorAll('[data-canceldel]').forEach(b => b.onclick = () => { S.confirmDel = null; render(); });
       v.querySelectorAll('[data-delp]').forEach(b => b.onclick = async () => {
-        try { await Store.deletePlayer(b.dataset.delp, S.players.length); S.players = await Store.listPlayers(); S.confirmDel = null; render(); } catch (e) { toast('Retrait impossible : ' + e.message); }
+        const p = S.players.find(x => x.id === b.dataset.delp);
+        try { await Store.deletePlayer(b.dataset.delp, S.players.length); try { await Store.keepInBank(p); } catch (e) { } S.players = await Store.listPlayers(); S.retiredPl = await Store.retiredPlayers().catch(() => []); S.confirmDel = null; toast(`${p ? p.name : 'Le joueur'} est retiré du groupe ; il reste dans la banque.`); render(); } catch (e) { toast('Retrait impossible : ' + e.message); }
       });
     },
     home(v) {
