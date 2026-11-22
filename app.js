@@ -459,7 +459,8 @@
       if (!phone && this.mode === 'firebase') { try { const d = await this.db.collection('phones').doc(p.id).get(); if (d.exists) phone = d.data().phone || ''; } catch (e) { } }
       const l = (await this.retiredPlayers()).filter(x => x.name.toLowerCase() !== p.name.toLowerCase());
       l.unshift({ name: p.name, phone, retireLe: Date.now() });
-      await this.setRetiredPlayers(l.slice(0, 200));
+      // Banque de joueurs : 64 au plus (joueurs du groupe + retirés) ; au-delà, les plus anciens retirés sont oubliés
+      await this.setRetiredPlayers(l.slice(0, Math.max(0, BANQUE_MAX - (S.players || []).length + 1)));
     },
     async deletePlayer(id, count, deja) {
       if (this.mode === 'firebase') {
@@ -2106,7 +2107,7 @@
       <div class="list">${S.players.length ? (() => { const dups = duplicateMap(S.players); return S.players.map((p, n) => S.selMode ? `<label class="item pl-row sel-row ${dups[p.id] ? 'dup' : ''}">${canRemove(p) ? `<input type="checkbox" data-selp="${esc(p.id)}" ${(S.sel || []).includes(p.id) ? 'checked' : ''}>` : '<span class="sel-lock" title="Ne peut pas être retiré">—</span>'}<b><span class="pl-n">${n + 1}.</span> ${esc(p.name)}${p.id === ownerId() ? ' <span class="owner-tag">Propriétaire</span>' : ''}${p.id === meId() ? ' <span class="note">(vous)</span>' : ''}</b></label>` : `<div class="item pl-row ${dups[p.id] ? 'dup' : ''}"><b><span class="pl-n">${n + 1}.</span> ${canOrganize() || p.id === meId() ? `<button class="name-btn" data-rename="${esc(p.id)}" type="button">${esc(p.name)}</button>` : esc(p.name)}${p.id === ownerId() ? ' <span class="owner-tag">Propriétaire</span>' : !ownerId() ? '' : meId() === ownerId() ? ` <button class="role-chip ${isOrganizer(p.id) ? 'on' : ''}" data-org="${esc(p.id)}" type="button" ${!isOrganizer(p.id) && !hasAccepted(p) ? 'disabled title="Invitation pas encore acceptée"' : ''}>${isOrganizer(p.id) ? 'Organisateur ✓' : '+ Organisateur'}</button>` : isOrganizer(p.id) ? ' <span class="org-tag">Organisateur</span>' : ''}${dups[p.id] ? ` <span class="dup-flag" title="Ressemble à ${esc(dups[p.id].join(', '))}">Doublon ?</span>` : ''}${plStatus(p)}</b>${S.confirmDel === p.id
         ? `<span class="row"><button class="btn small" data-delp="${esc(p.id)}" type="button" style="background:var(--red)">Confirmer</button><button class="btn ghost small" data-canceldel type="button">Annuler</button></span>`
         : `<span class="row" style="flex-wrap:nowrap;flex:none"><button class="btn ghost small" data-phone="${esc(p.id)}" type="button">${p.phone ? '☎ ' + esc(fmtPhone(p.phone)) : p.authEmail ? '☎ ••' + esc(p.phoneHint || '') : '+ Téléphone'}</button>${p.id === ownerId() ? '' : `<button class="btn ghost small" data-askdel="${esc(p.id)}" type="button">Retirer</button>`}</span>`}</div>`).join(''); })() : '<p class="note">Aucun joueur pour l\'instant.</p>'}</div>
-      ${canOrganize() && (S.retiredPl || []).length ? `<h3 class="acct-h">Retirés du groupe (${S.retiredPl.length})</h3><p class="note">Ils ne font plus partie du groupe : plus de notifications ni d’accès. Leur nom et leur cellulaire restent ici pour les remettre en un geste.</p>
+      ${canOrganize() && (S.retiredPl || []).length ? `<h3 class="acct-h">Retirés du groupe (${S.retiredPl.length})</h3><p class="note"><b>Banque : ${S.players.length + S.retiredPl.length} / ${BANQUE_MAX} joueurs</b> (groupe et retirés ; au-delà, les plus anciens retirés sont oubliés). Ils ne font plus partie du groupe : plus de notifications ni d’accès. Leur nom et leur cellulaire restent ici pour les remettre en un geste.</p>
         <div class="list">${S.retiredPl.map((x, i) => `<div class="item pl-row retire-row"><div><b>${esc(x.name)}</b><span>${x.phone ? '☎ ' + esc(fmtPhone(x.phone)) + ' · ' : ''}retiré le ${new Date(x.retireLe).toLocaleDateString('fr-CA', { day: 'numeric', month: 'long' })}</span></div>
           <span class="row" style="flex-wrap:nowrap;flex:none"><button class="btn small" data-remettre="${i}" type="button">Remettre</button><button class="btn ghost small" data-oublier="${i}" type="button" aria-label="Enlever ${esc(x.name)} de la banque">✕</button></span></div>`).join('')}</div>` : ''}`;
   }
@@ -2222,6 +2223,7 @@
     return { region: `environs de ${lat.toFixed(2)}, ${lng.toFixed(2)}`, ville: '' };
   }
   const P = { admin: false, mine: [], todo: [], charge: false };
+  const BANQUE_MAX = 64;
   // ---- Léo garde les cartes à jour : il revérifie chaque terrain sur le web environ une fois par saison
   const VERIF_JOURS = 300, VERIF_PAR_JOUR = 2;
   const derniereVerif = c => Number(c.verifieLe || c.approuveLe || 0);
