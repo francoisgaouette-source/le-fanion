@@ -858,7 +858,7 @@
         <button class="tile" data-go="comps"><span class="pin"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M7 4h10v3a5 5 0 0 1-10 0V4z" fill="currentColor"/><path d="M7 5H4v2a3 3 0 0 0 3 3M17 5h3v2a3 3 0 0 1-3 3" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M12 12v4M8 20h8l-1-4H9z" fill="currentColor" stroke="currentColor" stroke-width="1.2"/></svg></span><div><strong>Banque de compétitions</strong><span>Membre-membre : équipes de 2, classes et classement en direct</span></div></button>
       </div>`)}
       ${(() => { const autres = (S.myPlayers || []).filter(x => !x.archived && !x.deleted && (x.gid || x.groupId) !== Store.gid).length;
-        return Store.needLogin ? '' : `<p class="hero-liens"><button class="linkbtn" data-viral type="button">+ Créer un nouveau groupe</button>${autres ? ` · <button class="linkbtn" id="switchGroup" type="button">Changer de groupe (${autres} autre${autres > 1 ? 's' : ''})</button>` : ''}</p>`; })()}
+        return Store.needLogin ? '' : `<div class="hero-liens"><button class="btn ghost small" data-viral type="button">+ Ajouter un groupe</button>${autres ? `<button class="btn ghost small" id="switchGroup" type="button">Changer de groupe (${autres} autre${autres > 1 ? 's' : ''})</button>` : ''}</div>`; })()}
       <div class="hero"><h1><span class="hero-k">Groupe :</span> ${canOrganize() ? `<button class="hero-nom" id="renameGroup" type="button" title="Toucher pour changer le nom du groupe" aria-label="Changer le nom du groupe : ${esc(groupName())}">${esc(groupName())}</button>` : esc(groupName())}</h1></div>
       ${Store.needLogin ? '' : groupInfo(true)}
       ${retourCarte()}
@@ -1018,7 +1018,7 @@
       ${S.fromLogin ? '' : forfaitHtml()}
       <h3 class="acct-h">Mot de passe</h3>
       <div class="acct-box acct-g"><div><b>Mot de passe du compte</b><small>Avec votre cellulaire, il sert à vous connecter sur un autre appareil.</small></div><button class="btn ghost small" id="chgPw" type="button">Changer</button></div>
-      <h3 class="acct-h acct-h-act"><span>Mes groupes (${S.acctGroups.filter(x => !x.archived).length})</span><button class="btn ghost small" data-viral type="button">+ Créer un groupe</button></h3>
+      <h3 class="acct-h acct-h-act"><span>Mes groupes (${S.acctGroups.filter(x => !x.archived).length})</span><button class="btn ghost small" data-viral type="button">+ Ajouter un groupe</button></h3>
       ${groupRows(S.acctGroups.filter(x => !x.archived), S.fromLogin ? null : Store.gid, S.acctGroups).replace(S.fromLogin ? /Ouvrir/g : /^$/, 'Entrer')}
       ${S.acctGroups.some(x => x.archived) ? `<h3 class="acct-h">Groupes archivés (${S.acctGroups.filter(x => x.archived).length})</h3>
         ${groupRows(S.acctGroups.filter(x => x.archived), S.fromLogin ? null : Store.gid, S.acctGroups)}<p class="note">Un groupe archivé garde ses joueurs, ses parties et ses résultats. Son propriétaire peut le rétablir.</p>` : ''}
