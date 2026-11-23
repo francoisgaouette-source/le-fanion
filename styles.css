@@ -999,3 +999,47 @@ main section.card { min-width: 0; max-width: 100%; }
 .retire-row > div { min-width: 0; } .retire-row > div > span { display: block; font-size: 13px; color: var(--muted); }
 .retire-row .btn { width: auto; margin: 0; }
 .home-h-first { margin-top: 4px; }
+/* ---------- Compétitions : rondes, Coupe Ryder, tableau, ordre du mérite, écran télé ---------- */
+.cm-round { border-top: 1px solid var(--line, #dde3df); padding-top: 10px; margin-top: 10px; } .cm-round > b { margin-right: 10px; }
+.cm-rounds { margin: 8px 0 10px; }
+.cm-lb td.rd { text-align: center; color: var(--muted); font-size: 14px; }
+.cm-dep { margin-top: 6px; font-size: 14px; }
+.cm-outils { margin-top: 14px; flex-wrap: wrap; gap: 8px; } .cm-outils .btn { width: auto; flex: 1 1 auto; }
+.chk { display: flex; align-items: center; gap: 10px; font-weight: 500; } .chk input { width: auto; margin: 0; }
+.ry-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 420px) { .ry-sides { grid-template-columns: 1fr; } }
+.ry-side { padding: 10px; border-radius: 12px; border: 2px solid; } .ry-0 { border-color: #c8372d; background: #fdf1ef; } .ry-1 { border-color: #2a5bb8; background: #eef3fc; }
+.ry-side .ry-name { font-weight: 800; margin-bottom: 6px; } .ry-side small { color: var(--muted); }
+.ry-sess { border-top: 1px solid var(--line, #dde3df); padding: 10px 0; }
+.ry-m { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0; } .ry-m span { display: flex; gap: 4px; flex: 1 1 40%; min-width: 0; } .ry-m select { margin: 0; min-width: 0; flex: 1; font-size: 14px; padding: 6px; } .ry-m i { color: var(--muted); font-size: 13px; }
+.ry-score .ry-tot { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ry-tot > div { text-align: center; border-radius: 14px; padding: 12px 6px; color: #fff; } .ry-tot .ry-0 { background: #c8372d; border: 0; } .ry-tot .ry-1 { background: #2a5bb8; border: 0; }
+.ry-tot span { display: block; font-weight: 700; font-size: 15px; } .ry-tot b { font-size: 40px; line-height: 1.1; font-family: var(--display); }
+.ry-c0 { color: #c8372d; } .ry-c1 { color: #2a5bb8; }
+.ry-list li { flex-wrap: wrap; } .ry-list .linkbtn { margin-left: auto; }
+.tb-rounds { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; }
+.tb-round { flex: 0 0 auto; min-width: 190px; display: flex; flex-direction: column; justify-content: space-around; gap: 10px; }
+.tb-round h4 { margin: 0 0 2px; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.tb-m { border: 1px solid var(--line, #dde3df); border-radius: 10px; padding: 6px 8px; background: var(--surface); font-size: 14px; }
+.tb-m > div { padding: 2px 0; } .tb-m > div.win { font-weight: 800; color: var(--green); } .tb-m small { display: block; color: var(--muted); font-size: 12px; }
+.tb-seed { display: inline-block; min-width: 18px; color: var(--muted); font-size: 11px; margin-right: 4px; } .tb-tbd { color: var(--muted); }
+.tb-act { display: flex; gap: 6px; align-items: center; margin-top: 4px; } .tb-act select { margin: 0; padding: 4px; font-size: 13px; width: auto; flex: 1; }
+.tb-champ { font-size: 20px; font-weight: 800; margin: 10px 0 0; }
+.ms-t { font-size: 17px; margin: 8px 0; } .ms-t i { color: var(--muted); font-weight: 400; }
+.bal-list { max-height: 50vh; overflow-y: auto; display: grid; gap: 4px; margin: 8px 0; }
+.bal-row { display: flex; align-items: center; gap: 10px; } .bal-row input[type=checkbox] { width: auto; margin: 0; } .bal-row span { flex: 1; } .bal-row input[type=text] { width: 80px; margin: 0; }
+.bal-mode { margin: 8px 0; }
+.merit td:nth-child(3) { text-align: center; }
+/* Écran télé : grand, lisible de loin, sans barre de l'app */
+body.tv-mode .bar, body.tv-mode .leo-fab, body.tv-mode #leoBtn, body.tv-mode .cad-fab { display: none !important; }
+body.tv-mode main, body.tv-mode #view { max-width: none; padding: 0; }
+.tv { position: fixed; inset: 0; background: #0d2a1c; color: #fff; display: flex; flex-direction: column; z-index: 900; }
+.tv-top { display: flex; align-items: baseline; gap: 18px; padding: 18px 28px 10px; flex-wrap: wrap; }
+.tv-top h1 { margin: 0; font-size: clamp(26px, 3.4vw, 48px); color: #fff; } .tv-top span { font-size: clamp(14px, 1.6vw, 22px); opacity: .8; }
+.tv-live { color: #ff6b5e; opacity: 1 !important; font-weight: 700; } .tv-top .btn { margin-left: auto; width: auto; color: #fff; border-color: rgba(255,255,255,.4); }
+.tv-body { flex: 1; overflow-y: auto; padding: 0 28px 28px; display: grid; grid-template-columns: repeat(auto-fit, minmax(520px, 1fr)); gap: 18px; align-content: start; scroll-behavior: smooth; }
+.tv .card { background: #fff; color: #111; } .tv .cm-lb { font-size: clamp(16px, 1.6vw, 26px); } .tv .cm-lb td { padding: 10px 8px; } .tv .cm-lb td small { font-size: .65em; }
+.tv .ry-score.big .ry-tot b { font-size: clamp(60px, 9vw, 140px); } .tv .tb-m { font-size: 18px; }
+.ry-m span { flex-direction: column; } .ry-m select { width: 100%; }
+.tv-body { grid-template-columns: repeat(auto-fit, minmax(min(520px, 100%), 1fr)); }
+.ry-sess .ry-m { padding: 6px 0; border-bottom: 1px dashed var(--line, #dde3df); }

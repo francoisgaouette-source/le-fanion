@@ -544,6 +544,11 @@
       if (this.mode === 'firebase') { await this.db.collection('comps').doc(id).set({ scores: { [tid]: { [h]: arr } } }, { merge: true }); return; }
       const all = ls.get('pelland.comps', {}); const c = all[id]; if (!c) return; c.scores = c.scores || {}; c.scores[tid] = c.scores[tid] || {}; c.scores[tid][h] = arr; ls.set('pelland.comps', all);
     },
+    // Remplace un champ entier (ex. tableau.manual) : un « merge » garderait les anciennes clés
+    async setCompField(id, path, value) {
+      if (this.mode === 'firebase') { await this.db.collection('comps').doc(id).update({ [path]: value }); return; }
+      const all = ls.get('pelland.comps', {}); const c = all[id]; if (!c) return; const ks = path.split('.'); let o = c; ks.slice(0, -1).forEach(k => { o[k] = o[k] || {}; o = o[k]; }); o[ks[ks.length - 1]] = value; ls.set('pelland.comps', all);
+    },
     async deleteComp(id) {
       if (this.mode === 'firebase') { await this.db.collection('comps').doc(id).delete(); return; }
       const all = ls.get('pelland.comps', {}); delete all[id]; ls.set('pelland.comps', all);
@@ -712,6 +717,7 @@
   function render() {
     const v = $('#view');
     $('#back').hidden = S.view === 'home' || S.view === 'login';
+    document.body.classList.toggle('tv-mode', S.view === 'compTv');   // écran télé : sans barre ni bouton de Léo
     $('#dbBadge').textContent = !navigator.onLine ? 'Hors ligne' : Store.mode === 'firebase' ? '' : 'Local';
     // Mon compte : en haut à droite, avec les initiales du joueur
     const ab = $('#acctBtn'), acctOk = Store.mode === 'firebase' && !!Store.email && !Store.needLogin && S.view !== 'login';
@@ -721,7 +727,7 @@
     const showDock = false; // plus d'interface vocale
     document.body.classList.toggle('view-game', S.view === 'game');
     $('#dock').hidden = !showDock; document.body.classList.toggle('no-dock', !showDock);
-    const R = { home: vHome, jeux: vJeux, jeuEdit: vJeuEdit, quatuors: vQuatuors, offre: vOffre, setup: vSetup, game: vGame, join: vJoin, history: vHistory, live: vHistory, courses: vCourses, course: vCourse, clubs: vClubs, players: vPlayers, login: vLogin, compte: vCompte, comps: vComps, compEdit: vCompEdit, comp: vComp }[S.view];
+    const R = { home: vHome, jeux: vJeux, jeuEdit: vJeuEdit, quatuors: vQuatuors, offre: vOffre, setup: vSetup, game: vGame, join: vJoin, history: vHistory, live: vHistory, courses: vCourses, course: vCourse, clubs: vClubs, players: vPlayers, login: vLogin, compte: vCompte, comps: vComps, compEdit: vCompEdit, comp: vComp, compTv: vCompTv }[S.view];
     v.innerHTML = R();
     bind[S.view] && bind[S.view](v);
     leoApres();
@@ -3523,32 +3529,50 @@
   }
   // Textos : par le service Fanion (Twilio, via fanion.ai) quand il est en place ; sinon, Messages s'ouvre sur le téléphone
   // =====================================================================
-  // Compétitions : membre-membre (équipes de 2, meilleure balle nette en coups, classes, classement en direct)
+  // Compétitions (inspiré des tournois de Golf Genius) :
+  //   membre-membre en match play, Stableford ou coups ; membre-invité ; Texas scramble ; scramble à 4 ;
+  //   Coupe Ryder (deux camps, sessions de matchs) ; tableau à élimination (têtes de série, consolation) ;
+  //   plusieurs rondes (cumul) ; ordre du mérite de la saison ; équipes équilibrées A-B-C-D ou tirage ;
+  //   classement plein écran (télé du chalet) ; cartes de pointage et affiches de voiturette à imprimer.
+  // comps/<id> = { groupId, format, jeu?, name, date, courseId, course, tee, allowance, flights, teams:[{id, dep?, p:[{name,index}]}],
+  //   rounds?:[{date, courseId, course, tee}], ryder?:{sides, sessions}, tableau?:{entrants, seeding, consolation, manual},
+  //   scores:{ <équipe | équipe@ronde | match>: { <trou>: [scores] } } }
   // =====================================================================
   const CLASSES_LETTRES = ['A', 'B', 'C', 'D'];
   const toParTxt = x => x === 0 ? 'Par' : (x > 0 ? '+' : '−') + Math.abs(x);
   const parseIdx = v => { const n = parseFloat(String(v == null ? '' : v).replace(',', '.')); return isNaN(n) ? null : n; };
-  function compTee(c) { return (c.course.tees || []).find(t => t.name === c.tee) || (c.course.tees || [])[0]; }
+  const uid6 = () => Math.random().toString(36).slice(2, 8);
+  const prenom = n => esc(String(n || '?').split(' ')[0]);
+  const dateLong = d => d ? new Date(d + 'T12:00').toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
+  // Moteur de pointage réellement utilisé : le membre-invité suit le jeu choisi, le scramble à 4 suit le Texas scramble
+  const eff = c => c.format === 'invite' ? (c.jeu || 'match') : c.format === 'scramble' ? 'texas' : (c.format || 'match');
+  const isStroke = c => ['coups', 'stableford', 'texas'].includes(eff(c)) && !['ryder', 'tableau'].includes(c.format);
+  const nRounds = c => isStroke(c) ? 1 + (c.rounds || []).length : 1;
+  const roundOf = (c, r) => !r ? { date: c.date, course: c.course, tee: c.tee } : (c.rounds || [])[r - 1] || { date: c.date, course: c.course, tee: c.tee };
+  const skey = (t, r) => r ? t.id + '@' + r : t.id;
+  function compTee(c, r) { const R = roundOf(c, r); return (R.course.tees || []).find(t => t.name === R.tee) || (R.course.tees || [])[0]; }
+  const chOf = (idx, course, tee) => { const i = parseIdx(idx); return i == null || !tee ? 0 : L.courseHandicap(i, tee, L.teePar(course, tee)); };
   // Handicap de jeu de chaque joueur : handicap de parcours × allocation (85 % en meilleure balle, selon le système mondial)
-  function compPlayers(c, t) {
-    const tee = compTee(c), par = L.teePar(c.course, tee);
-    return t.p.map(p => { const idx = parseIdx(p.index); const ch = idx == null || !tee ? 0 : L.courseHandicap(idx, tee, par); return { ...p, ch, ph: Math.round(ch * (c.allowance || 85) / 100) }; });
+  function compPlayers(c, t, r) {
+    const R = roundOf(c, r), tee = compTee(c, r);
+    return t.p.map(p => { const ch = chOf(p.index, R.course, tee); return { ...p, ch, ph: Math.round(ch * (c.allowance || 85) / 100) }; });
   }
-  // Résultat d'une équipe : score net de la meilleure balle à chaque trou, total par rapport à la normale
   // Texas scramble : handicap d'équipe selon le système mondial (4 joueurs : 25-20-15-10 % ; 3 : 30-20-10 % ; 2 : 35-15 %)
   const TX_W = { 2: [0.35, 0.15], 3: [0.30, 0.20, 0.10], 4: [0.25, 0.20, 0.15, 0.10] };
-  function texasHcp(c, t) {
-    const tee = compTee(c), par = L.teePar(c.course, tee);
-    const chs = t.p.map(p => { const i = parseIdx(p.index); return i == null || !tee ? 0 : L.courseHandicap(i, tee, par); }).sort((a, b) => a - b);
+  function texasHcp(c, t, r) {
+    const R = roundOf(c, r), tee = compTee(c, r);
+    const chs = t.p.map(p => chOf(p.index, R.course, tee)).sort((a, b) => a - b);
     const w = TX_W[chs.length] || TX_W[4];
     return Math.round(chs.reduce((a, ch, k) => a + ch * (w[k] || 0), 0));
   }
-  function compTeamResult(c, t) {
-    if (c.format === 'texas') {
-      const tee = compTee(c), sc = (c.scores || {})[t.id] || {}, th = texasHcp(c, t), drives = t.p.map(() => 0);
+  // Résultat d'une équipe pour une ronde : meilleure balle nette à chaque trou (ou score unique en scramble)
+  function compTeamResult(c, t, r = 0) {
+    const R = roundOf(c, r), tee = compTee(c, r), sc = (c.scores || {})[skey(t, r)] || {};
+    if (eff(c) === 'texas') {
+      const th = texasHcp(c, t, r), drives = t.p.map(() => 0);
       let toPar = 0, thru = 0, gross = 0, net = 0; const holes = [];
       for (let h = 1; h <= 18; h++) {
-        const par = L.holePar(c.course, tee, h), si = c.course.holes[h - 1].si, s = sc[h] || [];
+        const par = L.holePar(R.course, tee, h), si = R.course.holes[h - 1].si, s = sc[h] || [];
         const g = s[0] == null || s[0] === '' ? null : Number(s[0]), dv = s[1] == null ? null : Number(s[1]);
         const best = g == null ? null : g - L.strokesOnHole(th, si);
         if (dv != null && drives[dv] != null && g != null) drives[dv]++;
@@ -3557,10 +3581,10 @@
       }
       return { t, ps: t.p.map(p => ({ ...p, ph: 0 })), toPar, thru, net, gross, pts: 0, holes, ph: th, drives };
     }
-    const ps = compPlayers(c, t), tee = compTee(c), sc = (c.scores || {})[t.id] || {};
+    const ps = compPlayers(c, t, r);
     let toPar = 0, thru = 0, net = 0, pts = 0; const holes = [];
     for (let h = 1; h <= 18; h++) {
-      const par = L.holePar(c.course, tee, h), si = c.course.holes[h - 1].si, s = sc[h] || [];
+      const par = L.holePar(R.course, tee, h), si = R.course.holes[h - 1].si, s = sc[h] || [];
       const nets = ps.map((p, i) => s[i] == null || s[i] === '' ? null : Number(s[i]) - L.strokesOnHole(p.ph, si)).filter(x => x != null);
       const best = nets.length ? Math.min(...nets) : null;
       // Stableford : 2 points pour la normale nette, 1 de plus par coup sous la normale, 1 de moins par coup au-dessus (minimum 0)
@@ -3570,20 +3594,51 @@
     }
     return { t, ps, toPar, thru, net, pts, holes, ph: ps.reduce((a, p) => a + p.ph, 0) };
   }
-  // Classes : les équipes sont classées par handicap d'équipe (somme des handicaps de jeu), puis réparties également
-  function compFlights(c) {
-    const res = (c.teams || []).map(t => compTeamResult(c, t)).sort((a, b) => a.ph - b.ph);
+  // Cumul de toutes les rondes (une seule ronde : le résultat de cette ronde)
+  function compTeamTotal(c, t) {
+    const n = nRounds(c), rs = Array.from({ length: n }, (_, r) => compTeamResult(c, t, r));
+    if (n === 1) return { ...rs[0], rounds: rs };
+    const sum = k => rs.reduce((a, x) => a + (x[k] || 0), 0);
+    return { t, ps: rs[0].ps, ph: rs[0].ph, drives: eff(c) === 'texas' ? t.p.map((_, i) => rs.reduce((a, x) => a + (x.drives[i] || 0), 0)) : null,
+      toPar: sum('toPar'), thru: sum('thru'), net: sum('net'), gross: sum('gross'), pts: sum('pts'), holes: rs[0].holes, rounds: rs };
+  }
+  // Classes : les équipes sont classées par handicap d'équipe, puis réparties également ; classement par ronde ou cumulé
+  function compFlights(c, r) {
+    const res = (c.teams || []).map(t => r == null ? compTeamTotal(c, t) : compTeamResult(c, t, r)).sort((a, b) => a.ph - b.ph);
     const n = Math.max(1, Math.min(c.flights || 1, res.length || 1)), out = [];
     let k = 0; for (let f = 0; f < n; f++) { const size = Math.floor(res.length / n) + (f < res.length % n ? 1 : 0); out.push({ name: n > 1 ? 'Classe ' + CLASSES_LETTRES[f] : 'Classement', teams: res.slice(k, k + size) }); k += size; }
     out.forEach(fl => {
-      const key = r => c.format === 'stableford' ? -r.pts : r.toPar;
+      const key = x => eff(c) === 'stableford' ? -x.pts : x.toPar;
       fl.teams.sort((a, b) => (a.thru ? 0 : 1) - (b.thru ? 0 : 1) || key(a) - key(b) || b.thru - a.thru);
-      let pos = 0; fl.teams.forEach((r, i) => { if (i === 0 || key(r) !== key(fl.teams[i - 1]) || !r.thru) pos = i + 1; r.pos = r.thru ? pos : null; r.tie = r.thru && fl.teams.filter(x => x.thru && key(x) === key(r)).length > 1; });
+      let pos = 0; fl.teams.forEach((x, i) => { if (i === 0 || key(x) !== key(fl.teams[i - 1]) || !x.thru) pos = i + 1; x.pos = x.thru ? pos : null; x.tie = x.thru && fl.teams.filter(y => y.thru && key(y) === key(x)).length > 1; });
     });
     return out;
   }
   const teamLabel = t => t.p.map(p => esc(p.name || '?')).join(' · ');
-  // Match play entre deux équipes (meilleure balle nette) : les coups se donnent à partir du plus bas handicap de jeu des quatre joueurs
+  // Match play générique : côtés A et B, allocation selon le type ; les coups se donnent à partir du plus bas handicap du match
+  //   quatre (quatre balles) : 90 % chacun, meilleure balle nette ; alterne : 50 % de la somme par côté ; simple : 100 %
+  function playMatch(course, tee, A, B, sc, type) {
+    const par = L.teePar(course, tee), ch = p => chOf(p.index, course, tee);
+    let ha, hb;
+    if (type === 'alterne') { ha = [Math.round(A.reduce((s, p) => s + ch(p), 0) * 0.5)]; hb = [Math.round(B.reduce((s, p) => s + ch(p), 0) * 0.5)]; }
+    else { const k = type === 'quatre' ? 0.9 : 1; ha = A.map(p => Math.round(ch(p) * k)); hb = B.map(p => Math.round(ch(p) * k)); }
+    const base = Math.min(...ha, ...hb); ha = ha.map(x => x - base); hb = hb.map(x => x - base);
+    const na = ha.length;
+    const best = (hs, s, off, si) => { const n = hs.map((x, i) => s[off + i] == null || s[off + i] === '' ? null : Number(s[off + i]) - L.strokesOnHole(x, si)).filter(x => x != null); return n.length === hs.length || type === 'quatre' && n.length ? Math.min(...n) : null; };
+    let d = 0, played = 0, last = 0, fini = false; const holes = [];
+    for (let h = 1; h <= 18; h++) {
+      const si = course.holes[h - 1].si, s = (sc || {})[h] || [], x = best(ha, s, 0, si), y = best(hb, s, na, si);
+      holes.push({ h, si, par: L.holePar(course, tee, h), s, x, y });
+      if (fini || x == null || y == null) continue;
+      played++; last = h; if (x < y) d++; else if (y < x) d--;
+      holes[h - 1].d = d;
+      if (Math.abs(d) > 18 - h) fini = true;   // match décidé
+    }
+    const left = 18 - last, done = played > 0 && (Math.abs(d) > left || last === 18);
+    const txt = !played ? 'À jouer' : d === 0 ? (done ? 'Match nul' : `Égal après ${last}`) : done && left > 0 ? `${Math.abs(d)} et ${left}` : done ? `${Math.abs(d)} UP` : `${Math.abs(d)} UP après ${last}`;
+    return { d, played, last, done, txt, holes, ha, hb, pts: done ? (d > 0 ? [1, 0] : d < 0 ? [0, 1] : [0.5, 0.5]) : [0, 0] };
+  }
+  // Membre-membre en match play : chaque équipe affronte toutes celles de sa classe (meilleure balle nette)
   function compMatch(c, A, B) {
     const pa = compPlayers(c, A), pb = compPlayers(c, B), base = Math.min(...pa.concat(pb).map(p => p.ph));
     const sa = (c.scores || {})[A.id] || {}, sb = (c.scores || {})[B.id] || {};
@@ -3593,7 +3648,7 @@
       const si = c.course.holes[h - 1].si, x = best(pa, sa[h] || [], si), y = best(pb, sb[h] || [], si);
       if (x == null || y == null) continue;
       played++; last = h; if (x < y) d++; else if (y < x) d--;
-      if (Math.abs(d) > 18 - h) break;   // match décidé
+      if (Math.abs(d) > 18 - h) break;
     }
     const left = 18 - last, done = played > 0 && (Math.abs(d) > left || (last === 18 && played === 18));
     const lead = d > 0 ? A : d < 0 ? B : null;
@@ -3613,213 +3668,583 @@
     return { T, M };
   }
   const fmtPt = x => String(x).replace('.5', ',5');
-  // Départs fournis par chaque joueur (Texas scramble), avec ⚠ pour ceux sous le minimum
-  const drivesTxt = (c, r) => r.t.p.map((p, i) => `${esc((p.name || '?').split(' ')[0])} ${r.drives[i]}${(c.minDrives || 0) && r.drives[i] < c.minDrives ? '⚠' : ''}`).join(' · ');
-  const sumHtml = (c, r) => `<span>${r.thru ? `Après ${r.thru} trou${r.thru > 1 ? 's' : ''}` : 'Aucun score'}</span><b class="${c.format !== 'stableford' && r.toPar < 0 ? 'under' : ''}">${!r.thru ? '' : c.format === 'stableford' ? r.pts + ' pts' : toParTxt(r.toPar)}</b>`;
+  const drivesTxt = (c, r) => { const min = (c.minDrives || 0) * (r.rounds ? r.rounds.length : 1); return r.t.p.map((p, i) => `${prenom(p.name)} ${r.drives[i]}${min && r.drives[i] < min ? '⚠' : ''}`).join(' · '); };
+  const sumHtml = (c, r) => `<span>${r.thru ? `Après ${r.thru} trou${r.thru > 1 ? 's' : ''}` : 'Aucun score'}</span><b class="${eff(c) !== 'stableford' && r.toPar < 0 ? 'under' : ''}">${!r.thru ? '' : eff(c) === 'stableford' ? r.pts + ' pts' : toParTxt(r.toPar)}</b>`;
+
+  // ---------- Coupe Ryder : deux camps, sessions de matchs ----------
+  const RY_TYPES = { quatre: 'Quatre balles (meilleure balle, 2 contre 2)', alterne: 'Coups alternés (une balle, 2 contre 2)', simple: 'Simples (1 contre 1)' };
+  const RY_COURT = { quatre: 'Quatre balles', alterne: 'Coups alternés', simple: 'Simples' };
+  const ryPlayer = (c, id) => { for (const s of c.ryder.sides) { const p = s.p.find(x => x.id === id); if (p) return p; } return { name: '?', index: '' }; };
+  function ryMatch(c, m, type) {
+    const A = m.a.map(id => ryPlayer(c, id)), B = m.b.map(id => ryPlayer(c, id));
+    return { m, A, B, ...playMatch(c.course, compTee(c), A, B, (c.scores || {})[m.id], type) };
+  }
+  function ryTotals(c) {
+    const tot = [0, 0], all = []; let n = 0;
+    (c.ryder.sessions || []).forEach(s => s.matches.forEach(m => { const r = ryMatch(c, m, s.type); all.push({ s, r }); n++; tot[0] += r.pts[0]; tot[1] += r.pts[1]; }));
+    return { tot, all, n, gagner: n / 2 + 0.5 };
+  }
+  // Paires par défaut d'une session : joueurs dans l'ordre (1-2 contre 1-2, 3-4 contre 3-4…), ou un contre un
+  function ryAutoMatches(c, type) {
+    const [A, B] = c.ryder.sides.map(s => s.p.map(p => p.id)), k = type === 'simple' ? 1 : 2, n = Math.floor(Math.min(A.length, B.length) / k);
+    return Array.from({ length: n }, (_, i) => ({ id: uid6(), a: A.slice(i * k, i * k + k), b: B.slice(i * k, i * k + k) }));
+  }
+
+  // ---------- Tableau à élimination ----------
+  // Ordre des têtes de série dans un tableau de taille 2^k (1 contre 16, 8 contre 9, …)
+  function seedOrder(n) { let o = [1]; while (o.length < n) { const m = o.length * 2 + 1; o = o.flatMap(x => [x, m - x]); } return o; }
+  const ROUND_NAMES = n => n === 2 ? 'Finale' : n === 4 ? 'Demi-finales' : n === 8 ? 'Quarts de finale' : n === 16 ? 'Huitièmes de finale' : `Ronde de ${n}`;
+  function tbSeeds(c) {
+    const T = c.tableau, E = T.entrants.filter(e => e.name);
+    if (T.seeding === 'index') return [...E].sort((a, b) => (parseIdx(a.index) ?? 99) - (parseIdx(b.index) ?? 99));
+    if (T.seeding === 'tirage') { const ord = T.order || []; return [...E].sort((a, b) => (ord.indexOf(a.id) + 1 || 999) - (ord.indexOf(b.id) + 1 || 999)); }
+    return E;
+  }
+  // Résultat d'un match du tableau : pointage trou par trou (match play net, 100 %) ou gagnant indiqué à la main
+  function tbResult(c, key, a, b) {
+    const man = ((c.tableau.manual || {})[key]) || null;
+    const r = playMatch(c.course, compTee(c), [a], [b], (c.scores || {})[key], 'simple');
+    if (man && man.w) return { ...r, winner: man.w === 'a' ? a : b, loser: man.w === 'a' ? b : a, txt: man.txt || 'Gagné', manual: true };
+    if (r.done && r.d !== 0) return { ...r, winner: r.d > 0 ? a : b, loser: r.d > 0 ? b : a };
+    return { ...r, winner: null, egal: r.done && r.d === 0 };
+  }
+  // Tableau à partir des places de la première ronde : joueur, null (exempté) ou PEND (pas encore connu)
+  const PEND = { pend: true };
+  function tbBuildSlots(c, slots, prefix) {
+    const rounds = [];
+    for (let n = slots.length, r = 0; n >= 2; n /= 2, r++) {
+      const ms = [];
+      for (let i = 0; i < slots.length; i += 2) {
+        const key = `${prefix}${r}-${i / 2}`, a = slots[i], b = slots[i + 1];
+        const res = a === PEND || b === PEND ? { pend: true, winner: null } : !a || !b ? { bye: true, winner: a || b || null } : tbResult(c, key, a, b);
+        ms.push({ key, a: a === PEND ? null : a, b: b === PEND ? null : b, pendA: a === PEND, pendB: b === PEND, res });
+      }
+      rounds.push({ name: ROUND_NAMES(n), ms });
+      slots = ms.map(m => m.res.bye ? m.res.winner : m.res.winner || PEND);
+    }
+    return { rounds, champion: rounds.length ? rounds[rounds.length - 1].ms[0].res.winner || null : null };
+  }
+  function tbBrackets(c) {
+    const seeds = tbSeeds(c), size = Math.max(2, 2 ** Math.ceil(Math.log2(Math.max(2, seeds.length))));
+    const main = tbBuildSlots(c, seedOrder(size).map(k => seeds[k - 1] || null), 'T');
+    let conso = null;
+    // Consolation : les perdants de la première ronde, chacun à la place de son match (un match d'exempté laisse une place vide)
+    if (c.tableau.consolation && main.rounds[0].ms.length >= 2) {
+      const sl = main.rounds[0].ms.filter(m => !m.res.bye).map(m => m.res.loser || PEND);
+      if (sl.length >= 2) { while (sl.length & (sl.length - 1)) sl.push(null); conso = tbBuildSlots(c, sl, 'C'); }
+    }
+    return { seeds, main, conso };
+  }
+  const tbName = (c, p, pend) => { if (pend) return '<i class="tb-tbd">à déterminer</i>'; if (!p) return '<i class="tb-tbd">—</i>'; const s = tbSeeds(c).indexOf(p) + 1; return `${s ? `<small class="tb-seed">${s}</small>` : ''}${esc(p.name)}`; };
+
+  // ---------- Ordre du mérite : points selon la position, cumulés sur la saison ----------
+  const MERIT_PTS = [100, 80, 65, 55, 50, 45, 40, 36, 32, 29, 26, 24, 22, 20, 18, 16, 14, 12, 10, 8];
+  // Une compétition compte dans l'ordre du mérite seulement une fois terminée
+  function compFinie(c) {
+    if (c.format === 'ryder') { const T = ryTotals(c); return T.n > 0 && T.all.every(x => x.r.done); }
+    if (c.format === 'tableau') return !!tbBrackets(c).main.champion;
+    if (eff(c) === 'match') return compFlights(c, 0).every(f => compStandings(c, f).M.every(m => m.done));
+    return (c.teams || []).length > 0 && (c.teams || []).every(t => compTeamTotal(c, t).thru >= 18 * nRounds(c));
+  }
+  function compMerit(c) {
+    const out = []; const add = (name, pts) => { if (name) out.push({ name, pts }); };
+    if (!compFinie(c)) return out;
+    if (c.format === 'ryder') { const T = ryTotals(c), w = T.tot[0] === T.tot[1] ? -1 : T.tot[0] > T.tot[1] ? 0 : 1; c.ryder.sides.forEach((s, i) => s.p.forEach(p => add(p.name, w === -1 ? 45 : w === i ? 60 : 30))); return out; }
+    if (c.format === 'tableau') {
+      const { main } = tbBrackets(c), R = main.rounds.length, reach = {};
+      main.rounds.forEach((rd, r) => rd.ms.forEach(m => [m.a, m.b].forEach(p => { if (p) reach[p.id] = Math.max(reach[p.id] || 0, r); })));
+      Object.entries(reach).forEach(([id, r]) => { const p = c.tableau.entrants.find(x => x.id === id); const champ = main.champion && main.champion.id === id;
+        add(p && p.name, champ ? 100 : r === R - 1 ? 80 : r === R - 2 ? 65 : r === R - 3 ? 50 : 30); });
+      return out;
+    }
+    if (eff(c) === 'match') { compFlights(c, 0).forEach(f => compStandings(c, f).T.forEach(x => x.r.t.p.forEach(p => add(p.name, MERIT_PTS[x.pos - 1] || 5)))); return out; }
+    compFlights(c).forEach(f => f.teams.forEach(x => { if (x.pos) x.t.p.forEach(p => add(p.name, MERIT_PTS[x.pos - 1] || 5)); }));
+    return out;
+  }
+  function meritTable(list, year) {
+    const m = {};
+    list.filter(c => (c.date || '').startsWith(String(year))).forEach(c => compMerit(c).forEach(x => { const k = L.norm(x.name); m[k] = m[k] || { name: x.name, pts: 0, n: 0 }; m[k].pts += x.pts; m[k].n++; }));
+    const rows = Object.values(m).sort((a, b) => b.pts - a.pts || a.name.localeCompare(b.name, 'fr'));
+    rows.forEach((x, i) => { x.pos = i && x.pts === rows[i - 1].pts ? rows[i - 1].pos : i + 1; });
+    return rows;
+  }
 
   // Formats de compétition (comme la banque de jeux) ; ready = on peut la créer dans l'app
   const COMP_INFO = [
     { f: 'match', ready: true, name: 'Membre-membre en match play', who: 'Équipes de 2, réparties en classes selon le handicap d’équipe',
-      rules: ['Dans chaque classe, chaque équipe affronte toutes les autres (ronde).', 'Chaque match se joue en meilleure balle nette sur 18 trous : l’équipe au meilleur score net gagne le trou.', 'Les coups se donnent à partir du plus bas handicap de jeu des quatre joueurs du match ; allocation recommandée : 90 %.'],
+      rules: ['Dans chaque classe, chaque équipe affronte toutes les autres (ronde).', 'Chaque match se joue en meilleure balle nette sur 18 trous : l’équipe au meilleur score net gagne le trou.', 'Allocation recommandée : 90 % du handicap de parcours ; les coups se donnent à partir du plus bas des quatre joueurs.'],
       score: ['Match gagné : 1 point ; nul : ½ ; perdu : 0.', 'Égalité de points : on départage par les trous gagnés.', 'Le classement de chaque classe se met à jour en direct.'] },
     { f: 'stableford', ready: true, name: 'Membre-membre Stableford', who: 'Équipes de 2, réparties en classes selon le handicap d’équipe',
-      rules: ['À chaque trou, le meilleur score net de l’équipe compte (meilleure balle).', 'Points : normale nette 2, oiselet net 3, aigle net 4, boguey net 1, double boguey ou pire 0.', 'Allocation recommandée : 85 % du handicap de parcours.'],
-      score: ['Le plus de points sur 18 trous gagne la classe.', 'Un mauvais trou ne coûte que 0 point : idéal pour les handicaps élevés.'] },
+      rules: ['À chaque trou, le meilleur score net de l’équipe compte (meilleure balle).', 'Points : normale nette 2, oiselet net 3, aigle net 4, boguey net 1, double boguey ou pire 0.', 'Allocation recommandée : 85 % du handicap de parcours.', 'Possible sur plusieurs rondes : les points s’additionnent.'],
+      score: ['Le plus de points gagne la classe.', 'Un mauvais trou ne coûte que 0 point : idéal pour les handicaps élevés.'] },
     { f: 'coups', ready: true, name: 'Membre-membre en coups', who: 'Équipes de 2, réparties en classes selon le handicap d’équipe',
-      rules: ['À chaque trou, le meilleur score net de l’équipe compte (meilleure balle).', 'On additionne les 18 trous ; le total se lit par rapport à la normale (−5, Par, +2).', 'Allocation recommandée : 85 % du handicap de parcours.'],
+      rules: ['À chaque trou, le meilleur score net de l’équipe compte (meilleure balle).', 'On additionne les trous ; le total se lit par rapport à la normale (−5, Par, +2).', 'Allocation recommandée : 85 % du handicap de parcours.', 'Possible sur plusieurs rondes : les totaux s’additionnent.'],
       score: ['Le plus bas total net gagne la classe.'] },
+    { f: 'invite', ready: true, name: 'Membre-invité', who: 'Un membre et son invité, en équipe de 2',
+      rules: ['Comme le membre-membre, mais chaque équipe compte un invité de l’extérieur du groupe.', 'Au choix : match play (chaque équipe contre toutes celles de sa classe), Stableford ou en coups, meilleure balle nette.', 'Classes selon le handicap d’équipe.'],
+      score: ['Match play : 1 point par match gagné, ½ par nul.', 'Stableford ou coups : le meilleur total de la classe gagne.'] },
     { f: 'texas', ready: true, name: 'Texas scramble', who: 'Équipes de 4 (ou de 2 ou 3), avec ou sans classes',
-      rules: ['Les joueurs de l’équipe frappent tous ; on choisit la meilleure balle et tout le monde rejoue de là, jusqu’au trou.', 'Chaque joueur doit fournir un nombre minimum de coups de départ (souvent 3 ou 4 sur 18 trous).', 'Handicap d’équipe : 25 % du plus bas handicap de parcours, 20 % du 2e, 15 % du 3e, 10 % du 4e (2 joueurs : 35 % et 15 %).'],
+      rules: ['Les joueurs de l’équipe frappent tous ; on choisit la meilleure balle et tout le monde rejoue de là, jusqu’au trou.', 'Chaque joueur doit fournir un nombre minimum de coups de départ (souvent 3 à 4 balles).', 'Handicap d’équipe : 25-20-15-10 % des handicaps de parcours, du plus bas au plus haut.'],
       score: ['Un seul score par équipe et par trou ; le plus bas total net gagne.', 'L’app compte les départs de chaque joueur et signale ceux qui manquent.'] },
-    { f: 'invite', ready: false, name: 'Membre-invité', who: 'Un membre et son invité, en équipe de 2',
-      rules: ['Comme le membre-membre, mais chaque équipe compte un invité de l’extérieur du club.', 'Souvent en match play ou en Stableford, avec classes.'], score: ['Bientôt dans l’app.'] },
-    { f: 'scramble', ready: false, name: 'Scramble à 4', who: 'Équipes de 4',
-      rules: ['Les 4 joueurs frappent ; l’équipe choisit la meilleure balle et tout le monde rejoue de là, jusqu’au trou.', 'Handicap d’équipe : un pourcentage des handicaps (souvent 25 %, 20 %, 15 %, 10 %).'], score: ['Le plus bas total net gagne. Bientôt dans l’app.'] },
-    { f: 'ryder', ready: false, name: 'Coupe Ryder du groupe', who: 'Deux camps (Rouges contre Bleus)',
-      rules: ['Plusieurs rondes de matchs : quatre balles, deux balles alternées, puis simples.', 'Chaque match gagné rapporte un point à son camp.'], score: ['Le premier camp à la majorité des points gagne la coupe. Bientôt dans l’app.'] },
+    { f: 'scramble', ready: true, name: 'Scramble à 4', who: 'Équipes de 4',
+      rules: ['Les 4 joueurs frappent ; l’équipe choisit la meilleure balle et tout le monde rejoue de là, jusqu’au trou.', 'Aucun minimum de départs par joueur.', 'Handicap d’équipe : 25 %, 20 %, 15 % et 10 % des handicaps de parcours, du plus bas au plus haut.'],
+      score: ['Un seul score par équipe ; le plus bas total net gagne.'] },
+    { f: 'ryder', ready: true, name: 'Coupe Ryder du groupe', who: 'Deux camps (Rouges contre Bleus)',
+      rules: ['Plusieurs sessions de matchs : quatre balles (meilleure balle à 2 contre 2), coups alternés (une balle à 2 contre 2) et simples.', 'Chaque match se joue en match play net : 90 % du handicap en quatre balles, 50 % de la somme des deux joueurs en coups alternés, 100 % en simple, à partir du plus bas handicap du match.'],
+      score: ['Match gagné : 1 point pour son camp ; nul : ½.', 'Le premier camp à dépasser la moitié des points gagne la coupe.'] },
+    { f: 'tableau', ready: true, name: 'Tableau à élimination', who: 'Joueurs en match play, un contre un',
+      rules: ['Têtes de série selon l’index (le plus bas est no 1), par tirage au sort ou dans l’ordre entré ; les meilleures têtes de série sont exemptées s’il manque des joueurs.', 'Chaque match se joue en match play net, 100 % de l’écart des handicaps.', 'Le gagnant passe à la ronde suivante ; un tableau de consolation est possible pour les perdants de la première ronde.'],
+      score: ['Le pointage trou par trou décide le match ; l’organisateur peut aussi indiquer le gagnant (trous supplémentaires, forfait).'] },
   ];
+  const fmtName = f => (COMP_INFO.find(x => x.f === (f || 'match')) || {}).name || '';
+  const compSub = c => c.format === 'ryder' ? `${c.ryder.sides[0].name} contre ${c.ryder.sides[1].name}` : c.format === 'tableau' ? `${c.tableau.entrants.filter(e => e.name).length} joueurs` : `${(c.teams || []).length} équipes${nRounds(c) > 1 ? ` · ${nRounds(c)} rondes` : ''}`;
+  const compItem = c => `<button class="item" data-comp="${esc(c.id)}"><b>${esc(c.name)}</b><span>${esc(dateLong(c.date))} · ${esc(fmtName(c.format))} · ${esc(c.course.name)} · ${esc(compSub(c))}</span></button>`;
+
   function vComps() {
     $('#barTitle').textContent = S.compLive ? 'Compétitions en cours' : 'Compétitions';
     if (S.compList == null) { Store.listComps().then(l => { S.compList = l; if (S.view === 'comps') render(); }); return '<p class="note">Chargement…</p>'; }
-    const fmtName = f => (COMP_INFO.find(x => x.f === (f || 'match')) || {}).name || '';
-    const dayTxt = c => c.date ? new Date(c.date + 'T12:00').toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
     if (S.compLive) {
-      // En cours : aujourd'hui et à venir (et la veille, pour finir d'entrer les scores)
+      // En cours : aujourd'hui et à venir (et la veille, pour finir d'entrer les scores) ; une compétition sur plusieurs rondes reste jusqu'à sa dernière
       const from = new Date(Date.now() - 864e5).toISOString().slice(0, 10), today = new Date().toISOString().slice(0, 10);
-      const l = S.compList.filter(c => (c.date || '') >= from).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      const fin = c => [c.date, ...(c.rounds || []).map(r => r.date)].filter(Boolean).sort().pop() || '';
+      const l = S.compList.filter(c => fin(c) >= from || c.format === 'tableau' && !(tbBrackets(c).main.champion)).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
       return `<p class="note">Touchez une compétition pour voir son classement en direct et entrer les scores de votre équipe.</p>
-        <div class="list">${l.map(c => `<button class="item" data-comp="${esc(c.id)}"><b>${esc(c.name)}${c.date === today ? ' <span class="live-tag">Aujourd’hui</span>' : ''}</b><span>${esc(dayTxt(c))} · ${esc(fmtName(c.format))} · ${esc(c.course.name)} · ${(c.teams || []).length} équipes</span></button>`).join('')
-          || `<p class="note">Aucune compétition en cours.</p>`}</div>
+        <div class="list">${l.map(c => compItem(c).replace('</b>', c.date === today ? ' <span class="live-tag">Aujourd’hui</span></b>' : '</b>')).join('') || `<p class="note">Aucune compétition en cours.</p>`}</div>
         <button class="btn ghost" data-go="comps" type="button">Voir la Banque de compétitions</button>`;
     }
+    const year = S.meritYear || new Date().getFullYear(), merit = meritTable(S.compList, year);
     return `<p class="note">Les formats de compétition, leurs règles et leur pointage. Tout se compte au net, avec le handicap de chacun.</p>
       <div class="jeux">${COMP_INFO.map(x => `<details class="card jeu"><summary><b>${esc(x.name)}${x.ready ? '' : ' <span class="soon-tag">Bientôt</span>'}</b><span>${esc(x.who)}</span></summary>
         <h3>Règles</h3><ul>${x.rules.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
         <h3>Le classement</h3><ul>${x.score.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
         ${x.ready && canOrganize() ? `<button class="btn small" data-compnew="${x.f}" type="button">Créer dans ce format</button>` : ''}</details>`).join('')}</div>
       <h2 class="jeux-h">Compétitions du groupe</h2>
-      <div class="list">${S.compList.map(c => `<button class="item" data-comp="${esc(c.id)}"><b>${esc(c.name)}</b><span>${esc(c.date ? new Date(c.date + 'T12:00').toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' }) : '')} · ${esc(fmtName(c.format))} · ${esc(c.course.name)} · ${(c.teams || []).length} équipes</span></button>`).join('') || '<p class="note">Aucune compétition pour l’instant.</p>'}</div>
-      ${canOrganize() ? '<button class="btn" data-compnew="match" type="button">Nouvelle compétition</button>' : ''}`;
+      <div class="list">${S.compList.map(compItem).join('') || '<p class="note">Aucune compétition pour l’instant.</p>'}</div>
+      ${canOrganize() ? '<button class="btn" data-compnew="match" type="button">Nouvelle compétition</button>' : ''}
+      <h2 class="jeux-h">Ordre du mérite ${year}</h2>
+      <p class="note">Points de saison selon la position dans chaque compétition : 1re place 100, 2e 80, 3e 65, 4e 55, 5e 50, puis en baissant. Coupe Ryder : 60 par joueur du camp gagnant, 30 pour l’autre camp. Tableau : champion 100, finaliste 80, demi-finale 65, quart 50. Seules les compétitions terminées comptent.</p>
+      ${merit.length ? `<section class="card"><table class="cm-lb merit"><thead><tr><th>Pos.</th><th>Joueur</th><th>Comp.</th><th>Pts</th></tr></thead><tbody>${merit.map(x => `<tr class="${x.pos === 1 ? 'lead' : ''}"><td>${x.pos}</td><td>${esc(x.name)}</td><td>${x.n}</td><td class="tp">${x.pts}</td></tr>`).join('')}</tbody></table></section>` : `<p class="note">Aucun point cette saison : les points apparaissent dès qu’une compétition de ${year} est terminée.</p>`}
+      <div class="row"><button class="btn ghost small" data-merit="${year - 1}" type="button">‹ ${year - 1}</button>${year < new Date().getFullYear() ? `<button class="btn ghost small" data-merit="${year + 1}" type="button">${year + 1} ›</button>` : ''}</div>`;
   }
 
-  function newCompDraft() {
-    const c0 = S.courses[0] || { id: '', tees: [] };
-    return { name: 'Membre-membre ' + new Date().getFullYear(), date: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10), courseId: c0.id, tee: (c0.tees[0] || {}).name, allowance: 90, flights: 2, format: 'match',
-      teams: [0, 1, 2, 3].map(() => ({ id: Math.random().toString(36).slice(2, 8), p: [{ name: '', index: '' }, { name: '', index: '' }] })) };
+  // ---------- Création et modification ----------
+  const blankTeam = n => ({ id: uid6(), dep: '', p: Array.from({ length: n }, () => ({ name: '', index: '' })) });
+  const teamSizeOf = d => ['texas', 'scramble'].includes(d.format) ? (d.format === 'scramble' ? 4 : d.teamSize || 4) : 2;
+  function newCompDraft(format) {
+    const c0 = S.courses[0] || { id: '', tees: [] }, y = new Date().getFullYear();
+    const d = { format, jeu: 'match', name: '', date: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10), courseId: c0.id, tee: (c0.tees[0] || {}).name, allowance: 90, flights: 2, rounds: [], teams: [] };
+    d.name = { match: 'Membre-membre', stableford: 'Membre-membre Stableford', coups: 'Membre-membre en coups', invite: 'Membre-invité', texas: 'Texas scramble', scramble: 'Scramble à 4', ryder: 'Coupe Ryder', tableau: 'Championnat du groupe' }[format] + ' ' + y;
+    d.allowance = format === 'match' || format === 'invite' ? 90 : ['texas', 'scramble'].includes(format) ? 100 : 85;
+    if (format === 'texas') { d.teamSize = 4; d.minDrives = 3; d.flights = 1; }
+    if (format === 'scramble') { d.teamSize = 4; d.minDrives = 0; d.flights = 1; }
+    if (format === 'ryder') { d.flights = 1; d.ryder = { sides: [{ name: 'Rouges', p: [] }, { name: 'Bleus', p: [] }], sessions: [] }; for (let i = 0; i < 4; i++) d.ryder.sides.forEach(s => s.p.push({ id: uid6(), name: '', index: '' })); }
+    else if (format === 'tableau') { d.flights = 1; d.tableau = { entrants: Array.from({ length: 8 }, () => ({ id: uid6(), name: '', index: '' })), seeding: 'index', consolation: false, manual: {} }; }
+    else d.teams = [0, 1, 2, 3].map(() => blankTeam(teamSizeOf(d)));
+    return d;
   }
+  const courseOpts = id => S.courses.map(x => `<option value="${esc(x.id)}" ${x.id === id ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+  const teeOpts = (cid, tee) => ((S.courses.find(x => x.id === cid) || S.courses[0] || {}).tees || []).map(t => `<option ${t.name === tee ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
+  const pRow = (pre, id, p, ph) => `<div class="cm-p"><input data-${pre}n="${id}" type="text" list="cmNames" placeholder="${esc(ph)}" value="${esc(p.name)}" autocapitalize="words"><input data-${pre}i="${id}" type="text" inputmode="decimal" placeholder="Index" value="${esc(p.index)}"></div>`;
   function vCompEdit() {
     const d = S.compDraft; $('#barTitle').textContent = d.id ? 'Modifier la compétition' : 'Nouvelle compétition';
-    const course = S.courses.find(x => x.id === d.courseId) || S.courses[0];
-    return `<section class="card"><h2>La compétition</h2>
+    if (!S.courses.length) return `<p class="note">Ajoutez d’abord un terrain dans la banque de terrains.</p><button class="btn" data-go="courses" type="button">Ajouter un terrain</button>`;
+    const f = d.format, stroke = ['coups', 'stableford', 'texas', 'scramble'].includes(f) || f === 'invite' && d.jeu !== 'match';
+    const fmtSel = `<select id="cmFmt">${COMP_INFO.map(x => `<option value="${x.f}" ${x.f === f ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>`;
+    const base = `<section class="card"><h2>La compétition</h2>
+        <label>Format${fmtSel}</label>
+        ${f === 'invite' ? `<label>Jeu<select id="cmJeu">${[['match', 'Match play (chaque équipe contre toutes celles de sa classe)'], ['stableford', 'Stableford, meilleure balle'], ['coups', 'En coups, meilleure balle']].map(([k, l]) => `<option value="${k}" ${k === (d.jeu || 'match') ? 'selected' : ''}>${l}</option>`).join('')}</select></label>` : ''}
         <label>Nom<input id="cmName" type="text" value="${esc(d.name)}"></label>
-        <label>Date<input id="cmDate" type="date" value="${esc(d.date)}"></label>
-        <label>Terrain<select id="cmCourse">${S.courses.map(x => `<option value="${esc(x.id)}" ${x.id === d.courseId ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
-        <label>Tertre<select id="cmTee">${(course.tees || []).map(t => `<option ${t.name === d.tee ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
-        <label>Format<select id="cmFmt"><option value="match" ${d.format !== 'coups' ? 'selected' : ''}>Match play : chaque équipe contre toutes les autres de sa classe</option><option value="coups" ${d.format === 'coups' ? 'selected' : ''}>Meilleure balle en coups : le plus bas total net</option><option value="stableford" ${d.format === 'stableford' ? 'selected' : ''}>Stableford : le plus de points (meilleure balle)</option><option value="texas" ${d.format === 'texas' ? 'selected' : ''}>Texas scramble : une balle par équipe, départs minimums</option></select></label>
-        ${d.format === 'texas' ? `<div class="row"><label style="flex:1">Joueurs par équipe<select id="cmSize">${[2, 3, 4].map(n => `<option ${n === (d.teamSize || 4) ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
-          <label style="flex:1">Départs minimums par joueur<select id="cmMinDr">${[0, 1, 2, 3, 4, 5, 6].map(n => `<option value="${n}" ${n === (d.minDrives == null ? 3 : d.minDrives) ? 'selected' : ''}>${n || 'Aucun'}</option>`).join('')}</select></label>
-          <label style="flex:1">Nombre de classes<select id="cmFl">${[1, 2, 3, 4].map(n => `<option ${n === d.flights ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div><input type="hidden" id="cmAllow" value="100">` : `
-        <div class="row"><label style="flex:1">Allocation du handicap<select id="cmAllow">${[85, 90, 100].map(a => `<option value="${a}" ${a === d.allowance ? 'selected' : ''}>${a} %${a === (d.format === 'match' ? 90 : 85) ? ' (recommandé)' : ''}</option>`).join('')}</select></label>
-        <label style="flex:1">Nombre de classes<select id="cmFl">${[1, 2, 3, 4].map(n => `<option ${n === d.flights ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>`}
-        <p class="note">${d.format === 'texas'
-          ? `Texas scramble : une seule balle par équipe ; chaque joueur fournit au moins ${d.minDrives == null ? 3 : d.minDrives} départ(s). Handicap d’équipe : 25-20-15-10 % des handicaps de parcours (2 joueurs : 35-15 %), donné trou par trou selon la difficulté.`
-          : `${d.format === 'coups' ? 'Meilleure balle nette en coups : chaque joueur reçoit' : d.format === 'stableford' ? 'Stableford, meilleure balle nette (normale nette 2 points, oiselet 3, boguey 1) : chaque joueur reçoit' : 'Match play, meilleure balle nette : match gagné 1 point, nul ½. Chaque joueur reçoit'} ${d.allowance} % de son handicap de parcours${d.format === 'match' ? ', et les coups se donnent à partir du plus bas des quatre joueurs du match' : ''}.`} Les équipes sont réparties dans les classes selon leur handicap d’équipe.</p></section>
-      <section class="card"><h2>Les équipes (${d.teams.length})</h2>
-        <datalist id="cmNames">${(S.players || []).map(p => `<option value="${esc(p.name)}">`).join('')}</datalist>
+        <div class="row"><label style="flex:1">${stroke && (d.rounds || []).length ? 'Ronde 1 : date' : 'Date'}<input id="cmDate" type="date" value="${esc(d.date)}"></label></div>
+        <label>Terrain<select id="cmCourse">${courseOpts(d.courseId)}</select></label>
+        <label>Tertre<select id="cmTee">${teeOpts(d.courseId, d.tee)}</select></label>
+        ${stroke ? `${(d.rounds || []).map((r, i) => `<div class="cm-round"><b>Ronde ${i + 2}</b><button class="linkbtn" data-rdel="${i}" type="button">Retirer</button>
+          <div class="row"><label style="flex:1">Date<input data-rdate="${i}" type="date" value="${esc(r.date || '')}"></label></div>
+          <div class="row"><label style="flex:1">Terrain<select data-rcourse="${i}">${courseOpts(r.courseId)}</select></label><label style="flex:1">Tertre<select data-rtee="${i}">${teeOpts(r.courseId, r.tee)}</select></label></div></div>`).join('')}
+          ${(d.rounds || []).length < 3 ? '<button class="btn ghost small" id="cmRoundAdd" type="button">+ Ajouter une ronde</button>' : ''}
+          ${(d.rounds || []).length ? '<p class="note">Plusieurs rondes : le classement additionne les rondes, et chaque ronde a aussi le sien.</p>' : ''}` : ''}
+        ${['texas', 'scramble'].includes(f) ? `<div class="row">${f === 'texas' ? `<label style="flex:1">Joueurs par équipe<select id="cmSize">${[2, 3, 4].map(n => `<option ${n === (d.teamSize || 4) ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+          <label style="flex:1">Départs minimums par joueur<select id="cmMinDr">${[0, 1, 2, 3, 4, 5, 6].map(n => `<option value="${n}" ${n === (d.minDrives == null ? 3 : d.minDrives) ? 'selected' : ''}>${n || 'Aucun'}</option>`).join('')}</select></label>` : ''}
+          <label style="flex:1">Nombre de classes<select id="cmFl">${[1, 2, 3, 4].map(n => `<option ${n === d.flights ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div><input type="hidden" id="cmAllow" value="100">`
+        : ['ryder', 'tableau'].includes(f) ? '' : `<div class="row"><label style="flex:1">Allocation du handicap<select id="cmAllow">${[85, 90, 100].map(a => `<option value="${a}" ${a === d.allowance ? 'selected' : ''}>${a} %${a === (eff(d) === 'match' ? 90 : 85) ? ' (recommandé)' : ''}</option>`).join('')}</select></label>
+          <label style="flex:1">Nombre de classes<select id="cmFl">${[1, 2, 3, 4].map(n => `<option ${n === d.flights ? 'selected' : ''}>${n}</option>`).join('')}</select></label></div>`}
+        <p class="note">${esc((COMP_INFO.find(x => x.f === f) || COMP_INFO[0]).rules.join(' '))}</p></section>
+      <datalist id="cmNames">${(S.players || []).map(p => `<option value="${esc(p.name)}">`).join('')}</datalist>`;
+    let body = '';
+    if (f === 'ryder') {
+      const R = d.ryder;
+      body = `<section class="card"><h2>Les camps</h2><div class="ry-sides">${R.sides.map((s, k) => `<div class="ry-side ry-${k}"><input class="ry-name" data-ryname="${k}" type="text" value="${esc(s.name)}" aria-label="Nom du camp ${k + 1}">
+          ${s.p.map((p, j) => pRow('ry', k + '.' + j, p, 'Joueur ' + (j + 1))).join('')}
+          <div class="row"><button class="linkbtn" data-ryadd="${k}" type="button">+ Joueur</button>${s.p.length > 1 ? `<button class="linkbtn" data-rypop="${k}" type="button">− Retirer le dernier</button>` : ''}</div></div>`).join('')}</div>
+          <button class="btn ghost small" data-balance="ryder" type="button">⚖ Répartir des joueurs en deux camps équilibrés</button></section>
+        <section class="card"><h2>Les sessions (${R.sessions.length})</h2>
+          ${R.sessions.map((s, si) => `<div class="ry-sess"><div class="cm-th"><b>${esc(s.name || RY_COURT[s.type])}</b><button class="linkbtn" data-sdel="${si}" type="button">Retirer</button></div>
+            ${s.matches.map((m, mi) => `<div class="ry-m"><span>${m.a.map((id, q) => `<select data-msel="${si}.${mi}.a.${q}">${R.sides[0].p.filter(p => p.name).map(p => `<option value="${p.id}" ${p.id === id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>`).join('')}</span><i>contre</i>
+              <span>${m.b.map((id, q) => `<select data-msel="${si}.${mi}.b.${q}">${R.sides[1].p.filter(p => p.name).map(p => `<option value="${p.id}" ${p.id === id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>`).join('')}</span></div>`).join('') || '<p class="note">Pas assez de joueurs nommés dans chaque camp.</p>'}
+            <button class="linkbtn" data-sregen="${si}" type="button">Refaire les paires dans l’ordre des camps</button></div>`).join('')}
+          <div class="row"><select id="rySessType">${Object.entries(RY_TYPES).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select><button class="btn ghost small" id="rySessAdd" type="button">+ Ajouter la session</button></div>
+          <p class="note">Les paires suivent l’ordre des joueurs dans chaque camp ; changez-les dans les listes. Nommez les joueurs avant d’ajouter les sessions.</p></section>`;
+    } else if (f === 'tableau') {
+      const T = d.tableau;
+      body = `<section class="card"><h2>Les joueurs (${T.entrants.filter(e => e.name).length})</h2>
+          <div class="cm-team">${T.entrants.map((p, j) => pRow('tb', j, p, 'Joueur ' + (j + 1))).join('')}</div>
+          <div class="row"><button class="btn ghost small" id="tbAdd" type="button">+ 4 joueurs</button><button class="btn ghost small" data-balance="tableau" type="button">Prendre les joueurs du groupe</button></div>
+          <label>Têtes de série<select id="tbSeed"><option value="index" ${T.seeding === 'index' ? 'selected' : ''}>Selon l’index (le plus bas est no 1)</option><option value="tirage" ${T.seeding === 'tirage' ? 'selected' : ''}>Tirage au sort</option><option value="ordre" ${T.seeding === 'ordre' ? 'selected' : ''}>Dans l’ordre de la liste</option></select></label>
+          <label class="chk"><input id="tbConso" type="checkbox" ${T.consolation ? 'checked' : ''}> Tableau de consolation pour les perdants de la première ronde</label>
+          <p class="note">Il faut au moins 3 joueurs. S’il en manque pour remplir le tableau (8, 16, 32), les meilleures têtes de série sont exemptées de la première ronde.</p></section>`;
+    } else {
+      const n = teamSizeOf(d), ph = j => f === 'invite' ? (j === 0 ? 'Membre' : 'Invité') : 'Joueur ' + (j + 1);
+      body = `<section class="card"><h2>Les équipes (${d.teams.length})</h2>
+        <button class="btn ghost small" data-balance="teams" type="button">⚖ Former les équipes : équilibrées (A-B-C-D) ou tirage au sort</button>
         <div class="cm-teams">${d.teams.map((t, i) => `<div class="cm-team"><div class="cm-th"><b>Équipe ${i + 1}</b><button class="linkbtn" data-cmdel="${i}" type="button">Retirer</button></div>
-          ${t.p.map((p, j) => `<div class="cm-p"><input data-cmn="${i}.${j}" type="text" list="cmNames" placeholder="Joueur ${j + 1}" value="${esc(p.name)}" autocapitalize="words"><input data-cmi="${i}.${j}" type="text" inputmode="decimal" placeholder="Index" value="${esc(p.index)}"></div>`).join('')}</div>`).join('')}</div>
-        <button class="btn ghost small" id="cmAdd" type="button">+ Ajouter une équipe</button></section>
-      <div class="row"><button class="btn" id="cmSave" type="button">${d.id ? 'Enregistrer' : 'Créer la compétition'}</button><button class="btn ghost" id="cmCancel" type="button">Annuler</button></div>`;
+          ${t.p.slice(0, n).map((p, j) => pRow('cm', i + '.' + j, p, ph(j))).join('')}
+          <input class="cm-dep" data-cmdep="${i}" type="text" placeholder="Départ (ex. 8 h 10 ou trou 5)" value="${esc(t.dep || '')}"></div>`).join('')}</div>
+        <button class="btn ghost small" id="cmAdd" type="button">+ Ajouter une équipe</button></section>`;
+    }
+    return base + body + `<div class="row"><button class="btn" id="cmSave" type="button">${d.id ? 'Enregistrer' : 'Créer la compétition'}</button><button class="btn ghost" id="cmCancel" type="button">Annuler</button></div>`;
+  }
+
+  // Former les équipes : joueurs du groupe cochés, avec leur index ; équilibrées (A-B-C-D en serpentin) ou tirage au sort
+  function balanceSheet(kind) {
+    const d = S.compDraft, last = ls.get('pelland.lastPlayers', []) || [];
+    const idxOf = n => { const x = last.find(p => p && L.norm(p.name || '') === L.norm(n)); return x && x.index != null ? String(x.index) : ''; };
+    const size = kind === 'teams' ? teamSizeOf(d) : 1;
+    openSheet(`<h3>${kind === 'ryder' ? 'Deux camps équilibrés' : kind === 'tableau' ? 'Joueurs du tableau' : 'Former les équipes'}</h3>
+      <p class="note">${kind === 'teams' ? `Cochez les joueurs (équipes de ${size}). Équilibrées : les joueurs sont classés par index et répartis en groupes A, B, C, D ; chaque équipe reçoit un joueur de chaque groupe, en serpentin, pour des handicaps d’équipe semblables.` : kind === 'ryder' ? 'Cochez les joueurs : ils sont classés par index et répartis en serpentin entre les deux camps.' : 'Cochez les joueurs du tableau.'}</p>
+      <div class="bal-list">${(S.players || []).map((p, i) => `<label class="bal-row"><input type="checkbox" data-bk="${i}" checked><span>${esc(p.name)}</span><input data-bi="${i}" type="text" inputmode="decimal" placeholder="Index" value="${esc(idxOf(p.name))}"></label>`).join('') || '<p class="note">Aucun joueur dans le groupe.</p>'}</div>
+      ${kind === 'teams' ? '<div class="seg bal-mode"><button class="on" data-bm="eq" type="button">Équilibrées</button><button data-bm="tirage" type="button">Tirage au sort</button></div>' : ''}
+      <div class="sheet-actions"><button class="btn" id="balGo" type="button">${kind === 'teams' ? 'Former les équipes' : kind === 'ryder' ? 'Répartir' : 'Ajouter au tableau'}</button><button class="btn ghost" data-close type="button">Annuler</button></div>`, sh => {
+      let mode = 'eq';
+      sh.querySelector('[data-close]').onclick = closeSheet;
+      sh.querySelectorAll('[data-bm]').forEach(b => b.onclick = () => { mode = b.dataset.bm; sh.querySelectorAll('[data-bm]').forEach(x => x.classList.toggle('on', x === b)); });
+      sh.querySelector('#balGo').onclick = () => {
+        const chosen = (S.players || []).map((p, i) => ({ name: p.name, index: sh.querySelector(`[data-bi="${i}"]`).value.trim(), on: sh.querySelector(`[data-bk="${i}"]`).checked })).filter(x => x.on);
+        if (chosen.length < 2) return toast('Cochez au moins deux joueurs.');
+        const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+        const byIdx = l => [...l].sort((a, b) => (parseIdx(a.index) ?? 54) - (parseIdx(b.index) ?? 54));
+        if (kind === 'tableau') { d.tableau.entrants = [...d.tableau.entrants.filter(e => e.name), ...chosen.map(p => ({ id: uid6(), name: p.name, index: p.index }))]; closeSheet(); return render(); }
+        if (kind === 'ryder') { const s = byIdx(chosen); d.ryder.sides.forEach(x => { x.p = []; }); s.forEach((p, i) => d.ryder.sides[[0, 1, 1, 0][i % 4]].p.push({ id: uid6(), name: p.name, index: p.index })); d.ryder.sessions = []; closeSheet(); toast('Camps formés : ajoutez maintenant les sessions.'); return render(); }
+        const nT = Math.floor(chosen.length / size); if (!nT) return toast(`Il faut au moins ${size} joueurs.`);
+        let teams = Array.from({ length: nT }, () => []);
+        if (mode === 'tirage') { shuffle(chosen).slice(0, nT * size).forEach((p, i) => teams[i % nT].push(p)); }
+        else {
+          const s = byIdx(chosen).slice(0, nT * size);
+          for (let k = 0; k < size; k++) { const pot = shuffle(s.slice(k * nT, (k + 1) * nT)).sort((a, b) => (parseIdx(a.index) ?? 54) - (parseIdx(b.index) ?? 54)); (k % 2 ? pot.reverse() : pot).forEach((p, i) => teams[i].push(p)); }
+        }
+        const out = chosen.length - nT * size;
+        d.teams = teams.map(ps => ({ id: uid6(), dep: '', p: ps.map(p => ({ name: p.name, index: p.index })) }));
+        closeSheet(); toast(`${nT} équipes formées${out ? ` ; ${out} joueur${out > 1 ? 's' : ''} sans équipe` : ''}.`); render();
+      };
+    });
+  }
+
+  // ---------- Affichage d'une compétition ----------
+  function compHead(c) {
+    const info = c.format === 'ryder' ? 'Coupe Ryder · match play net' : c.format === 'tableau' ? `Tableau à élimination · match play net, 100 % de l’écart` : eff(c) === 'texas' ? `${c.format === 'scramble' ? 'Scramble à 4' : 'Texas scramble'} · équipes de ${c.teamSize || 4}${c.minDrives ? ` · ${c.minDrives} départ(s) minimum par joueur` : ''}` : `${c.format === 'invite' ? 'Membre-invité · ' : ''}${eff(c) === 'coups' ? 'Meilleure balle nette en coups' : eff(c) === 'stableford' ? 'Stableford, meilleure balle nette' : 'Match play, meilleure balle nette'} · ${c.allowance} % du handicap`;
+    const rounds = nRounds(c) > 1 ? ` · ${nRounds(c)} rondes` : '';
+    return `<div class="cm-head"><span>${esc(dateLong(c.date))}</span><span>${esc(c.course.name)} · tertre ${esc(c.tee)}</span><span>${esc(info + rounds)}</span></div>`;
+  }
+  const tabsHtml = (tab, list) => `<div class="seg cm-tabs">${list.map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-ctab="${k}" type="button">${l}</button>`).join('')}</div>`;
+  const outilsHtml = () => `<div class="row cm-outils"><button class="btn ghost small" data-tv type="button">📺 Écran télé</button><button class="btn ghost small" data-print="cartes" type="button">🖨 Cartes de pointage</button><button class="btn ghost small" data-print="affiches" type="button">🖨 Affiches de voiturette</button></div>`;
+  const orgHtml = () => canOrganize() ? `<div class="row"><button class="btn ghost small" data-cedit type="button">Modifier</button>${S.confirmDelComp ? '<button class="btn small" data-cdelok type="button" style="background:var(--red)">Confirmer l’effacement</button>' : '<button class="btn ghost small" data-cdel type="button">Effacer la compétition</button>'}</div>` : '';
+  function boardHtml(c, r) {
+    const fl = compFlights(c, r), stb = eff(c) === 'stableford', multi = nRounds(c) > 1 && r == null;
+    return fl.map(f => `<section class="card cm-board"><h3>${esc(f.name)}</h3>
+        <table class="cm-lb"><thead><tr><th>Pos.</th><th>Équipe</th>${multi ? Array.from({ length: nRounds(c) }, (_, i) => `<th>R${i + 1}</th>`).join('') : ''}<th>Trous</th><th>${stb ? 'Pts' : 'Total'}</th></tr></thead>
+        <tbody>${f.teams.map(x => `<tr class="${x.pos === 1 ? 'lead' : ''}"><td>${x.pos ? (x.tie ? 'É' : '') + x.pos : '—'}</td><td>${teamLabel(x.t)}<small>Hcp d’équipe ${x.ph}${stb && x.thru ? ' · ' + toParTxt(x.toPar) : ''}${eff(c) === 'texas' ? (x.thru ? ' · brut ' + x.gross : '') + ' · départs : ' + drivesTxt(c, x) : ''}</small></td>
+          ${multi ? x.rounds.map(y => `<td class="rd">${!y.thru ? '—' : stb ? y.pts : toParTxt(y.toPar)}</td>`).join('') : ''}<td>${x.thru === 18 * (multi ? nRounds(c) : 1) ? 'F' : x.thru || '—'}</td><td class="tp ${!stb && x.toPar < 0 ? 'under' : ''}">${!x.thru ? '—' : stb ? x.pts : toParTxt(x.toPar)}</td></tr>`).join('')}</tbody></table></section>`).join('');
+  }
+  function matchBoardHtml(c) {
+    return compFlights(c, 0).map(f => { const st = compStandings(c, f); return `<section class="card cm-board"><h3>${esc(f.name)}</h3>
+        <table class="cm-lb"><thead><tr><th>Pos.</th><th>Équipe</th><th>G-N-P</th><th>Pts</th></tr></thead>
+        <tbody>${st.T.map(x => `<tr class="${x.pos === 1 && x.pts ? 'lead' : ''}"><td>${x.pos}</td><td>${teamLabel(x.r.t)}<small>Hcp d’équipe ${x.r.ph} · trous ${x.diff > 0 ? '+' : x.diff < 0 ? '−' : ''}${Math.abs(x.diff)}</small></td><td>${x.w}-${x.h}-${x.l}</td><td class="tp">${fmtPt(x.pts)}</td></tr>`).join('')}</tbody></table>
+        <h4 class="cm-mh">Les matchs</h4><ul class="cm-matches">${st.M.map(m => `<li class="${m.done ? 'done' : ''}"><span>${teamLabel(m.A)} <i>contre</i> ${teamLabel(m.B)}</span><b>${m.lead ? `${esc(m.lead.p.map(p => (p.name || '?').split(' ')[0]).join(' et '))} : ` : ''}${esc(m.txt)}</b></li>`).join('')}</ul></section>`; }).join('');
+  }
+  function ryderBoardHtml(c, big) {
+    const T = ryTotals(c), S0 = c.ryder.sides, gagne = T.tot[0] >= T.gagner ? 0 : T.tot[1] >= T.gagner ? 1 : -1;
+    return `<section class="card ry-score${big ? ' big' : ''}"><div class="ry-tot"><div class="ry-0"><span>${esc(S0[0].name)}</span><b>${fmtPt(T.tot[0])}</b></div><div class="ry-1"><span>${esc(S0[1].name)}</span><b>${fmtPt(T.tot[1])}</b></div></div>
+        <p class="note">${T.n ? (gagne >= 0 ? `<b>${esc(S0[gagne].name)} remportent la coupe.</b>` : `${fmtPt(T.gagner)} points pour gagner, sur ${T.n} matchs.`) : 'Ajoutez des sessions de matchs.'}</p></section>
+      ${(c.ryder.sessions || []).map(s => `<section class="card cm-board"><h3>${esc(s.name || RY_COURT[s.type])}</h3><ul class="cm-matches ry-list">${s.matches.map(m => { const r = ryMatch(c, m, s.type), side = r.d > 0 ? 0 : r.d < 0 ? 1 : -1;
+        return `<li class="${r.done ? 'done' : ''}"><span><b class="ry-c0">${r.A.map(p => esc(p.name)).join(' et ')}</b> <i>contre</i> <b class="ry-c1">${r.B.map(p => esc(p.name)).join(' et ')}</b></span><b class="${side >= 0 ? 'ry-c' + side : ''}">${side >= 0 ? esc(S0[side].name) + ' : ' : ''}${esc(r.txt)}</b>${big ? '' : `<button class="linkbtn" data-mscore="${m.id}" type="button">Pointage</button>`}</li>`; }).join('')}</ul></section>`).join('')}`;
+  }
+  function bracketHtml(c, B, title, big) {
+    return `<section class="card cm-board tb"><h3>${esc(title)}</h3><div class="tb-rounds">${B.rounds.map(rd => `<div class="tb-round"><h4>${esc(rd.name)}</h4>${rd.ms.map(m => `<div class="tb-m ${m.res.winner ? 'done' : ''}">
+        <div class="${m.res.winner && m.res.winner === m.a ? 'win' : ''}">${tbName(c, m.a, m.pendA)}</div><div class="${m.res.winner && m.res.winner === m.b ? 'win' : ''}">${tbName(c, m.b, m.pendB)}</div>
+        <small>${m.res.bye ? (m.a || m.b ? 'Exempté' : '') : m.res.pend ? 'En attente' : m.res.winner ? esc(m.res.txt) : m.res.egal ? 'Égalité : indiquez le gagnant' : m.res.played ? esc(m.res.txt) : 'À jouer'}</small>
+        ${!big && m.a && m.b && !m.res.bye && !m.res.pend ? `<div class="tb-act"><button class="linkbtn" data-mscore="${m.key}" type="button">Pointage</button>${canOrganize() ? `<select data-tbw="${m.key}" aria-label="Gagnant"><option value="">Gagnant…</option><option value="a" ${((c.tableau.manual || {})[m.key] || {}).w === 'a' ? 'selected' : ''}>${esc(m.a.name)}</option><option value="b" ${((c.tableau.manual || {})[m.key] || {}).w === 'b' ? 'selected' : ''}>${esc(m.b.name)}</option></select>` : ''}</div>` : ''}</div>`).join('')}</div>`).join('')}</div>
+      ${B.champion ? `<p class="tb-champ">🏆 ${esc(B.champion.name)}</p>` : ''}</section>`;
+  }
+  // Pointage d'un match (Coupe Ryder ou tableau) : scores bruts de chaque joueur, coups reçus en points
+  function matchScoreHtml(c, key) {
+    let A, B, type, title;
+    if (c.format === 'ryder') { for (const s of c.ryder.sessions) { const m = s.matches.find(x => x.id === key); if (m) { A = m.a.map(id => ryPlayer(c, id)); B = m.b.map(id => ryPlayer(c, id)); type = s.type; title = s.name || RY_COURT[s.type]; } } }
+    else { const { main, conso } = tbBrackets(c); for (const Bk of [main, conso].filter(Boolean)) for (const rd of Bk.rounds) for (const m of rd.ms) if (m.key === key) { A = [m.a]; B = [m.b]; type = 'simple'; title = rd.name; } }
+    if (!A || !B || !A[0] || !B[0]) return '<p class="note">Match introuvable.</p>';
+    const r = playMatch(c.course, compTee(c), A, B, (c.scores || {})[key], type);
+    const cols = type === 'alterne' ? [{ n: A.map(p => p.name.split(' ')[0]).join('-'), k: r.ha[0], side: 0 }, { n: B.map(p => p.name.split(' ')[0]).join('-'), k: r.hb[0], side: 1 }]
+      : [...A.map((p, i) => ({ n: p.name.split(' ')[0], k: r.ha[i], side: 0 })), ...B.map((p, i) => ({ n: p.name.split(' ')[0], k: r.hb[i], side: 1 }))];
+    return `<button class="linkbtn" data-mback type="button">‹ Retour</button>
+      <h3 class="ms-t">${esc(title)} : ${A.map(p => esc(p.name)).join(' et ')} <i>contre</i> ${B.map(p => esc(p.name)).join(' et ')}</h3>
+      <div class="cm-sum"><span>${esc(RY_COURT[type])}</span><b class="${r.d > 0 ? 'ry-c0' : r.d < 0 ? 'ry-c1' : ''}">${r.d ? esc((r.d > 0 ? A : B).map(p => p.name.split(' ')[0]).join(' et ')) + ' : ' : ''}${esc(r.txt)}</b></div>
+      <div class="card-scroll"><table class="sc cm-sc"><thead><tr><th>Trou</th><th>Norm.</th><th>Hcp</th>${cols.map(x => `<th class="ry-c${x.side}">${esc(x.n)}<small>${x.k}</small></th>`).join('')}<th>Match</th></tr></thead>
+      <tbody>${r.holes.map(hh => `<tr><td>${hh.h}</td><td>${hh.par}</td><td>${hh.si}</td>${cols.map((x, i) => { const k = L.strokesOnHole(x.k, hh.si); return `<td class="cm-in">${k > 0 ? `<i class="dots">${'•'.repeat(Math.min(k, 3))}</i>` : ''}<input data-ms="${key}.${hh.h}.${i}" type="text" inputmode="numeric" maxlength="2" value="${hh.s[i] == null ? '' : esc(hh.s[i])}" aria-label="Trou ${hh.h}, ${esc(x.n)}"></td>`; }).join('')}<td class="cm-best ${hh.d > 0 ? 'ry-c0' : hh.d < 0 ? 'ry-c1' : ''}">${hh.d == null ? '' : hh.d === 0 ? 'É' : Math.abs(hh.d) + ' UP'}</td></tr>`).join('')}</tbody></table></div>
+      <p class="note">Entrez les scores bruts. Les points (•) sont les coups reçus dans ce match${type === 'alterne' ? ' (50 % de la somme des deux joueurs)' : type === 'quatre' ? ' (90 % du handicap)' : ''}, à partir du plus bas handicap.</p>`;
   }
 
   function vComp() {
     const c = S.comp; if (!c) return '<p class="note">Chargement…</p>';
     $('#barTitle').textContent = c.name;
-    const tab = S.compTab || 'class', fl = compFlights(c);
-    const head = `<div class="cm-head"><span>${esc(c.date ? new Date(c.date + 'T12:00').toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' }) : '')}</span><span>${esc(c.course.name)} · tertre ${esc(c.tee)}</span><span>${c.format === 'texas' ? `Texas scramble · équipes de ${c.teamSize || 4} · ${c.minDrives || 0} départ(s) minimum par joueur` : `${c.format === 'coups' ? 'Meilleure balle nette en coups' : c.format === 'stableford' ? 'Stableford, meilleure balle nette' : 'Match play, meilleure balle nette'} · ${c.allowance} % du handicap`}</span></div>
-      <div class="seg cm-tabs">${[['class', 'Classement'], ['score', 'Pointage'], ['teams', 'Équipes']].map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-ctab="${k}" type="button">${l}</button>`).join('')}</div>`;
-    if (tab === 'class' && (c.format || 'match') === 'match') return head + fl.map(f => { const st = compStandings(c, f); return `<section class="card cm-board"><h3>${esc(f.name)}</h3>
-        <table class="cm-lb"><thead><tr><th>Pos.</th><th>Équipe</th><th>G-N-P</th><th>Pts</th></tr></thead>
-        <tbody>${st.T.map(x => `<tr class="${x.pos === 1 && x.pts ? 'lead' : ''}"><td>${x.pos}</td><td>${teamLabel(x.r.t)}<small>Hcp d’équipe ${x.r.ph} · trous ${x.diff > 0 ? '+' : x.diff < 0 ? '−' : ''}${Math.abs(x.diff)}</small></td><td>${x.w}-${x.h}-${x.l}</td><td class="tp">${fmtPt(x.pts)}</td></tr>`).join('')}</tbody></table>
-        <h4 class="cm-mh">Les matchs</h4><ul class="cm-matches">${st.M.map(m => `<li class="${m.done ? 'done' : ''}"><span>${teamLabel(m.A)} <i>contre</i> ${teamLabel(m.B)}</span><b>${m.lead ? `${esc(m.lead.p.map(p => (p.name || '?').split(' ')[0]).join(' et '))} : ` : ''}${esc(m.txt)}</b></li>`).join('')}</ul></section>`; }).join('') +
-      '<p class="note">Chaque équipe affronte toutes les équipes de sa classe en match play, meilleure balle nette. Match gagné : 1 point ; nul : ½. G-N-P = gagnés, nuls, perdus. Égalité de points : on départage par les trous gagnés. Les coups se donnent à partir du plus bas handicap de jeu des quatre joueurs du match.</p>';
-    if (tab === 'class') return head + fl.map(f => `<section class="card cm-board"><h3>${esc(f.name)}</h3>
-        <table class="cm-lb"><thead><tr><th>Pos.</th><th>Équipe</th><th>Trous</th><th>${c.format === 'stableford' ? 'Pts' : 'Total'}</th></tr></thead>
-        <tbody>${f.teams.map(r => `<tr class="${r.pos === 1 ? 'lead' : ''}"><td>${r.pos ? (r.tie ? 'É' : '') + r.pos : '—'}</td><td>${teamLabel(r.t)}<small>Hcp d’équipe ${r.ph}${c.format === 'stableford' && r.thru ? ' · ' + toParTxt(r.toPar) : ''}${c.format === 'texas' ? (r.thru ? ' · brut ' + r.gross : '') + ' · départs : ' + drivesTxt(c, r) : ''}</small></td><td>${r.thru === 18 ? 'F' : r.thru || '—'}</td><td class="tp ${c.format !== 'stableford' && r.toPar < 0 ? 'under' : ''}">${!r.thru ? '—' : c.format === 'stableford' ? r.pts : toParTxt(r.toPar)}</td></tr>`).join('')}</tbody></table></section>`).join('') +
-      `<p class="note">${c.format === 'stableford' ? 'Stableford, meilleure balle nette : à chaque trou, le meilleur joueur de l’équipe compte. Normale nette 2 points, oiselet net 3, aigle net 4, boguey net 1, double boguey ou pire 0. Le plus de points gagne. ' : ''}É = égalité. F = parcours terminé. Le classement se met à jour en direct pendant que les équipes entrent leurs scores.</p>`;
-    if (tab === 'teams') return head + `<div class="list">${fl.map(f => f.teams.map(r => `<div class="item"><b>${teamLabel(r.t)}</b><span>${esc(f.name)} · ${c.format === 'texas' ? `hcp d’équipe ${r.ph} · ` + r.t.p.map(p => `${esc(p.name)} : index ${String(p.index).replace('.', ',')}`).join(' · ') : r.ps.map(p => `${esc(p.name)} : index ${String(p.index).replace('.', ',')}, hcp de jeu ${p.ph}`).join(' · ')}</span></div>`).join('')).join('')}</div>
-      ${canOrganize() ? `<div class="row"><button class="btn ghost small" data-cedit type="button">Modifier les équipes</button>${S.confirmDelComp ? '<button class="btn small" data-cdelok type="button" style="background:var(--red)">Confirmer l’effacement</button>' : '<button class="btn ghost small" data-cdel type="button">Effacer la compétition</button>'}</div>` : ''}`;
-    // Pointage d'une équipe
-    const teams = (c.teams || []), tid = S.compTeam && teams.find(t => t.id === S.compTeam) ? S.compTeam : (teams[0] || {}).id, t = teams.find(x => x.id === tid);
-    if (!t) return head + '<p class="note">Aucune équipe.</p>';
-    const r = compTeamResult(c, t);
-    if (c.format === 'texas') return head + `<label>Équipe<select id="cmTeamSel">${teams.map(x => `<option value="${esc(x.id)}" ${x.id === tid ? 'selected' : ''}>${teamLabel(x)}</option>`).join('')}</select></label>
-      <div class="cm-sum">${sumHtml(c, r)}</div>
+    const head = compHead(c);
+    if (c.format === 'ryder' || c.format === 'tableau') {
+      if (S.compMatch) return head + matchScoreHtml(c, S.compMatch);
+      const tab = ['class', 'teams'].includes(S.compTab) ? S.compTab : 'class';
+      const t = tabsHtml(tab, [['class', c.format === 'ryder' ? 'Pointage de la coupe' : 'Tableau'], ['teams', c.format === 'ryder' ? 'Camps' : 'Joueurs']]);
+      if (tab === 'class') {
+        if (c.format === 'ryder') return head + t + ryderBoardHtml(c) + outilsHtml();
+        const { main, conso } = tbBrackets(c);
+        return head + t + bracketHtml(c, main, 'Tableau principal') + (conso ? bracketHtml(c, conso, 'Consolation') : '') + '<p class="note">Touchez « Pointage » pour entrer un match trou par trou ; l’organisateur peut aussi choisir le gagnant (trous supplémentaires, forfait).</p>' + outilsHtml();
+      }
+      if (c.format === 'ryder') return head + t + `<div class="ry-sides">${c.ryder.sides.map((s, k) => `<div class="card ry-side ry-${k}"><h3>${esc(s.name)}</h3>${s.p.filter(p => p.name).map(p => `<div>${esc(p.name)} <small>index ${String(p.index).replace('.', ',')}</small></div>`).join('')}</div>`).join('')}</div>` + orgHtml();
+      return head + t + `<div class="list">${tbSeeds(c).map((p, i) => `<div class="item"><b>${i + 1}. ${esc(p.name)}</b><span>index ${String(p.index).replace('.', ',')}</span></div>`).join('')}</div>` + orgHtml();
+    }
+    const tab = S.compTab || 'class', R = Math.min(S.compRound || 0, nRounds(c) - 1);
+    const rsel = nRounds(c) > 1 ? `<div class="seg cm-rounds">${tab === 'class' ? `<button class="${S.compRound == null || S.compRound === 'total' ? 'on' : ''}" data-cround="total" type="button">Cumul</button>` : ''}${Array.from({ length: nRounds(c) }, (_, i) => `<button class="${(tab === 'class' ? S.compRound === i : R === i) ? 'on' : ''}" data-cround="${i}" type="button">Ronde ${i + 1}</button>`).join('')}</div>` : '';
+    const t = tabsHtml(tab, [['class', 'Classement'], ['score', 'Pointage'], ['teams', 'Équipes']]);
+    if (tab === 'class' && eff(c) === 'match') return head + t + matchBoardHtml(c) +
+      '<p class="note">Chaque équipe affronte toutes les équipes de sa classe en match play, meilleure balle nette. Match gagné : 1 point ; nul : ½. G-N-P = gagnés, nuls, perdus. Égalité de points : on départage par les trous gagnés. Les coups se donnent à partir du plus bas handicap de jeu des quatre joueurs du match.</p>' + outilsHtml();
+    if (tab === 'class') return head + t + rsel + boardHtml(c, typeof S.compRound === 'number' ? Math.min(S.compRound, nRounds(c) - 1) : null) +
+      `<p class="note">${eff(c) === 'stableford' ? 'Stableford, meilleure balle nette : à chaque trou, le meilleur joueur de l’équipe compte. Normale nette 2 points, oiselet net 3, aigle net 4, boguey net 1, double boguey ou pire 0. Le plus de points gagne. ' : ''}É = égalité. F = parcours terminé. Le classement se met à jour en direct pendant que les équipes entrent leurs scores.</p>` + outilsHtml();
+    const fl = compFlights(c, R);
+    if (tab === 'teams') return head + t + `<div class="list">${fl.map(f => f.teams.map(x => `<div class="item"><b>${teamLabel(x.t)}</b><span>${esc(f.name)}${x.t.dep ? ' · départ ' + esc(x.t.dep) : ''} · ${eff(c) === 'texas' ? `hcp d’équipe ${x.ph} · ` + x.t.p.map(p => `${esc(p.name)} : index ${String(p.index).replace('.', ',')}`).join(' · ') : x.ps.map(p => `${esc(p.name)} : index ${String(p.index).replace('.', ',')}, hcp de jeu ${p.ph}`).join(' · ')}</span></div>`).join('')).join('')}</div>` + orgHtml();
+    // Pointage d'une équipe, pour la ronde choisie
+    const teams = (c.teams || []), tid = S.compTeam && teams.find(x => x.id === S.compTeam) ? S.compTeam : (teams[0] || {}).id, tm = teams.find(x => x.id === tid);
+    if (!tm) return head + t + '<p class="note">Aucune équipe.</p>';
+    const r = compTeamResult(c, tm, R), sel = `<label>Équipe<select id="cmTeamSel">${teams.map(x => `<option value="${esc(x.id)}" ${x.id === tid ? 'selected' : ''}>${teamLabel(x)}</option>`).join('')}</select></label>`;
+    if (eff(c) === 'texas') return head + t + rsel + sel + `<div class="cm-sum">${sumHtml(c, r)}</div>
       <p class="note tx-drv">Départs : ${drivesTxt(c, r)}${c.minDrives ? ` (minimum ${c.minDrives} chacun)` : ''}</p>
       <div class="card-scroll"><table class="sc cm-sc tx"><thead><tr><th>Trou</th><th>Norm.</th><th>Hcp</th><th>Score de l’équipe</th><th>Départ de</th><th>Net</th></tr></thead>
       <tbody>${r.holes.map(hh => { const k = L.strokesOnHole(r.ph, hh.si); return `<tr><td>${hh.h}</td><td>${hh.par}</td><td>${hh.si}</td>
         <td class="cm-in">${k > 0 ? `<i class="dots">${'•'.repeat(Math.min(k, 3))}</i>` : ''}<input data-tx="${hh.h}" type="text" inputmode="numeric" maxlength="2" value="${hh.g == null ? '' : hh.g}" aria-label="Trou ${hh.h}, score de l’équipe"></td>
-        <td><select data-td="${hh.h}" aria-label="Trou ${hh.h}, départ de"><option value="">—</option>${t.p.map((p, i) => `<option value="${i}" ${hh.dv === i ? 'selected' : ''}>${esc((p.name || '?').split(' ')[0])}</option>`).join('')}</select></td>
+        <td><select data-td="${hh.h}" aria-label="Trou ${hh.h}, départ de"><option value="">—</option>${tm.p.map((p, i) => `<option value="${i}" ${hh.dv === i ? 'selected' : ''}>${prenom(p.name)}</option>`).join('')}</select></td>
         <td class="cm-best ${hh.best != null && hh.best < hh.par ? 'under' : ''}">${hh.best == null ? '' : hh.best}</td></tr>`; }).join('')}</tbody></table></div>
       <p class="note">Entrez le score de l’équipe (une seule balle) et le joueur dont le départ a été choisi. Les points (•) sont les coups reçus par l’équipe.</p>`;
-    return head + `<label>Équipe<select id="cmTeamSel">${teams.map(x => `<option value="${esc(x.id)}" ${x.id === tid ? 'selected' : ''}>${teamLabel(x)}</option>`).join('')}</select></label>
-      <div class="cm-sum">${sumHtml(c, r)}</div>
-      <div class="card-scroll"><table class="sc cm-sc"><thead><tr><th>Trou</th><th>Norm.</th><th>Hcp</th>${r.ps.map(p => `<th>${esc((p.name || '?').split(' ')[0])}<small>${p.ph}</small></th>`).join('')}<th>Équipe</th></tr></thead>
-      <tbody>${r.holes.map(hh => `<tr><td>${hh.h}</td><td>${hh.par}</td><td>${hh.si}</td>${r.ps.map((p, i) => { const k = L.strokesOnHole(p.ph, hh.si); return `<td class="cm-in">${k > 0 ? `<i class="dots">${'•'.repeat(Math.min(k, 3))}</i>` : ''}<input data-cms="${hh.h}.${i}" type="text" inputmode="numeric" maxlength="2" value="${hh.s[i] == null ? '' : esc(hh.s[i])}" aria-label="Trou ${hh.h}, ${esc(p.name)}"></td>`; }).join('')}<td class="cm-best ${hh.best != null && hh.best < hh.par ? 'under' : ''}">${hh.best == null ? '' : hh.best}${c.format === 'stableford' && hh.sp != null ? `<small>${hh.sp} pt${hh.sp > 1 ? 's' : ''}</small>` : ''}</td></tr>`).join('')}</tbody></table></div>
-      <p class="note">Entrez les scores bruts. Les points (•) sont les coups reçus avec le plein handicap de jeu ; la colonne Équipe montre le meilleur score net du trou.${c.format !== 'match' ? '' : ' En match play, l’app recalcule les coups de chaque match à partir du plus bas handicap des quatre joueurs.'}</p>`;
+    return head + t + rsel + sel + `<div class="cm-sum">${sumHtml(c, r)}</div>
+      <div class="card-scroll"><table class="sc cm-sc"><thead><tr><th>Trou</th><th>Norm.</th><th>Hcp</th>${r.ps.map(p => `<th>${prenom(p.name)}<small>${p.ph}</small></th>`).join('')}<th>Équipe</th></tr></thead>
+      <tbody>${r.holes.map(hh => `<tr><td>${hh.h}</td><td>${hh.par}</td><td>${hh.si}</td>${r.ps.map((p, i) => { const k = L.strokesOnHole(p.ph, hh.si); return `<td class="cm-in">${k > 0 ? `<i class="dots">${'•'.repeat(Math.min(k, 3))}</i>` : ''}<input data-cms="${hh.h}.${i}" type="text" inputmode="numeric" maxlength="2" value="${hh.s[i] == null ? '' : esc(hh.s[i])}" aria-label="Trou ${hh.h}, ${esc(p.name)}"></td>`; }).join('')}<td class="cm-best ${hh.best != null && hh.best < hh.par ? 'under' : ''}">${hh.best == null ? '' : hh.best}${eff(c) === 'stableford' && hh.sp != null ? `<small>${hh.sp} pt${hh.sp > 1 ? 's' : ''}</small>` : ''}</td></tr>`).join('')}</tbody></table></div>
+      <p class="note">Entrez les scores bruts. Les points (•) sont les coups reçus avec le plein handicap de jeu ; la colonne Équipe montre le meilleur score net du trou.${eff(c) !== 'match' ? '' : ' En match play, l’app recalcule les coups de chaque match à partir du plus bas handicap des quatre joueurs.'}</p>`;
+  }
+
+  // ---------- Écran télé : classement plein écran, en direct, les classes défilent ----------
+  function vCompTv() {
+    const c = S.comp; if (!c) return '<p class="note">Chargement…</p>';
+    $('#barTitle').textContent = c.name;
+    let inner;
+    if (c.format === 'ryder') inner = ryderBoardHtml(c, true);
+    else if (c.format === 'tableau') { const { main, conso } = tbBrackets(c); inner = bracketHtml(c, main, 'Tableau principal', true) + (conso ? bracketHtml(c, conso, 'Consolation', true) : ''); }
+    else if (eff(c) === 'match') inner = matchBoardHtml(c);
+    else inner = boardHtml(c, null);
+    return `<div class="tv"><div class="tv-top"><h1>${esc(c.name)}</h1><span>${esc(c.course.name)} · ${esc(dateLong(c.date))}</span><span class="tv-live">● En direct</span><button class="btn ghost small" data-tvquit type="button">Fermer</button></div><div class="tv-body">${inner}</div></div>`;
+  }
+
+  // ---------- Impressions : cartes de pointage et affiches de voiturette ----------
+  function imprimer(c, kind) {
+    const tee = compTee(c), holes = c.course.holes, par = h => L.holePar(c.course, tee, h);
+    const units = c.format === 'ryder' ? c.ryder.sessions.flatMap(s => s.matches.map(m => ({ titre: `${s.name || RY_COURT[s.type]}`, ps: [...m.a.map(id => ({ ...ryPlayer(c, id), camp: c.ryder.sides[0].name })), ...m.b.map(id => ({ ...ryPlayer(c, id), camp: c.ryder.sides[1].name }))], ph: null, dep: '' })))
+      : c.format === 'tableau' ? (() => { const { main } = tbBrackets(c); const rd = main.rounds.find(r => r.ms.some(m => m.a && m.b && !m.res.winner)) || main.rounds[0]; return rd.ms.filter(m => m.a && m.b).map(m => ({ titre: rd.name, ps: [m.a, m.b], dep: '' })); })()
+      : (c.teams || []).map((t, i) => { const r = compTeamResult(c, t, 0); return { titre: 'Équipe ' + (i + 1), ps: eff(c) === 'texas' ? t.p.map(p => ({ ...p, ph: null })) : r.ps, teamPh: eff(c) === 'texas' ? r.ph : null, dep: t.dep || '' }; });
+    const fmt = esc(fmtName(c.format)) + (c.format === 'invite' ? ' · ' + ({ match: 'match play', stableford: 'Stableford', coups: 'en coups' })[c.jeu || 'match'] : '');
+    const carte = u => {
+      const row = (lab, f) => `<tr><th>${lab}</th>${holes.slice(0, 9).map((_, i) => `<td>${f(i + 1)}</td>`).join('')}<td class="s">${''}</td>${holes.slice(9).map((_, i) => `<td>${f(i + 10)}</td>`).join('')}<td class="s"></td><td class="s"></td></tr>`;
+      const pts = (ph, h) => { const k = ph == null ? 0 : L.strokesOnHole(ph, holes[h - 1].si); return k ? '•'.repeat(Math.min(k, 3)) : ''; };
+      return `<section class="carte"><header><b>${esc(c.name)}</b><span>${esc(u.titre)}${u.dep ? ' · départ ' + esc(u.dep) : ''}</span><span>${esc(c.course.name)} · tertre ${esc(c.tee)} · ${esc(dateLong(c.date))}</span><span>${fmt}${u.teamPh != null ? ' · hcp d’équipe ' + u.teamPh : ''}</span></header>
+        <table><thead><tr><th>Trou</th>${holes.slice(0, 9).map((_, i) => `<th>${i + 1}</th>`).join('')}<th class="s">Aller</th>${holes.slice(9).map((_, i) => `<th>${i + 10}</th>`).join('')}<th class="s">Ret.</th><th class="s">Total</th></tr></thead><tbody>
+        ${row('Normale', par)}${row('Hcp', h => holes[h - 1].si)}
+        ${u.ps.map(p => row(`${esc(p.name)}${p.camp ? ` <small>${esc(p.camp)}</small>` : ''}${p.ph != null ? ` <small>(${p.ph})</small>` : ''}`, h => `<i>${pts(p.ph, h)}</i>`)).join('')}
+        ${eff(c) === 'texas' && c.format !== 'ryder' && c.format !== 'tableau' ? row('Équipe', h => `<i>${pts(u.teamPh, h)}</i>`) + row('Départ de', () => '') : ''}
+        </tbody></table><footer>Marqueur : ____________________ Joueur : ____________________ · Les points (•) sont les coups reçus.</footer></section>`;
+    };
+    const affiche = u => `<section class="affiche"><small>${esc(c.name)}</small><h1>${u.ps.map(p => esc(p.name)).join('<br>')}</h1><p>${esc(u.titre)}${u.dep ? ' · départ ' + esc(u.dep) : ''}</p><small>${esc(c.course.name)} · ${esc(dateLong(c.date))}</small></section>`;
+    const css = `@page{size:${kind === 'affiches' ? 'letter landscape' : 'letter'};margin:12mm}body{font-family:Inter,Arial,sans-serif;color:#111;margin:0}
+      .carte{page-break-inside:avoid;border:1.5px solid #222;border-radius:6px;padding:8px;margin:0 0 10mm}.carte header{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11px;margin-bottom:6px}.carte header b{font-size:14px;width:100%}
+      .carte table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed}.carte thead th:first-child,.carte tbody th{width:24%}.carte th,.carte td{border:1px solid #999;text-align:center;height:22px;padding:0 2px}.carte tbody th{text-align:left;white-space:nowrap;padding:0 4px;max-width:120px}.carte .s{background:#eee;width:30px}.carte i{font-style:normal;font-size:9px;vertical-align:top;float:right}.carte small{font-weight:400;color:#555}.carte footer{font-size:10px;margin-top:6px;color:#444}
+      .affiche{page-break-after:always;height:170mm;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;border:3px solid #0d4a2e;border-radius:14px}.affiche h1{font-size:44px;line-height:1.15;margin:12px 0}.affiche p{font-size:22px;margin:0 0 10px}.affiche small{font-size:16px;color:#333}`;
+    const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${esc(c.name)} · ${kind === 'affiches' ? 'Affiches' : 'Cartes de pointage'}</title><style>${css}</style></head><body>${units.map(kind === 'affiches' ? affiche : carte).join('')}<script>onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`;
+    const w = window.open('', '_blank'); if (!w) return toast('Permettez les fenêtres surgissantes pour imprimer.');
+    w.document.open(); w.document.write(html); w.document.close();
   }
 
   function openComp(id) {
     if (S.unwatchComp) { S.unwatchComp(); S.unwatchComp = null; }
-    S.comp = null; S.compTab = S.compTab || 'class'; S.confirmDelComp = false;
+    S.comp = null; S.compTab = S.compTab || 'class'; S.confirmDelComp = false; S.compMatch = null; S.compRound = null;
     go('comp');
     // Pendant qu'on entre des scores, l'écran ne se redessine pas (on garderait la case active) ; le classement, lui, suit en direct
-    S.unwatchComp = Store.watchComp(id, c => { const first = !S.comp; S.comp = c; if (S.view !== 'comp') return; if (!first && (S.compTab || 'class') === 'score') return; render(); });
+    S.unwatchComp = Store.watchComp(id, c => { const first = !S.comp; S.comp = c; if (!['comp', 'compTv'].includes(S.view)) return; if (!first && S.view === 'comp' && ((S.compTab || 'class') === 'score' || S.compMatch)) return; render(); });
   }
+  const draftOf = c => ({ id: c.id, format: c.format || 'match', jeu: c.jeu || 'match', teamSize: c.teamSize, minDrives: c.minDrives, name: c.name, date: c.date, courseId: c.courseId, tee: c.tee, allowance: c.allowance, flights: c.flights,
+    teams: JSON.parse(JSON.stringify(c.teams || [])), rounds: (c.rounds || []).map(r => ({ date: r.date, courseId: r.courseId, tee: r.tee })), ryder: c.ryder ? JSON.parse(JSON.stringify(c.ryder)) : undefined, tableau: c.tableau ? JSON.parse(JSON.stringify(c.tableau)) : undefined });
 
   Object.assign(bind, {
     comps(v) {
       v.querySelectorAll('[data-comp]').forEach(b => b.onclick = () => openComp(b.dataset.comp));
       v.querySelectorAll('[data-go="comps"]').forEach(b => b.onclick = () => go('comps', { compLive: false }));
-      v.querySelectorAll('[data-compnew]').forEach(n => n.onclick = () => {
-        const d = newCompDraft(); d.format = n.dataset.compnew || 'match'; d.allowance = d.format === 'match' ? 90 : d.format === 'texas' ? 100 : 85;
-        if (d.format === 'texas') { d.teamSize = 4; d.minDrives = 3; d.flights = 1; d.name = 'Texas scramble ' + new Date().getFullYear(); d.teams.forEach(t => { while (t.p.length < 4) t.p.push({ name: '', index: '' }); }); }
-        go('compEdit', { compDraft: d });
-      });
+      v.querySelectorAll('[data-merit]').forEach(b => b.onclick = () => { S.meritYear = +b.dataset.merit; render(); });
+      v.querySelectorAll('[data-compnew]').forEach(n => n.onclick = () => go('compEdit', { compDraft: newCompDraft(n.dataset.compnew || 'match') }));
     },
     compEdit(v) {
-      const d = S.compDraft;
+      const d = S.compDraft; if (!d || !$('#cmFmt')) return;
+      const val = s => { const e = $(s); return e ? e.value : null; };
       const sync = () => {
-        d.format = $('#cmFmt').value; d.name = $('#cmName').value;
-        if ($('#cmSize')) d.teamSize = +$('#cmSize').value; if ($('#cmMinDr')) d.minDrives = +$('#cmMinDr').value; d.date = $('#cmDate').value; d.allowance = +$('#cmAllow').value; d.flights = +$('#cmFl').value; d.tee = $('#cmTee').value;
+        d.name = val('#cmName'); d.date = val('#cmDate'); d.tee = val('#cmTee');
+        if ($('#cmJeu')) d.jeu = val('#cmJeu');
+        if ($('#cmSize')) d.teamSize = +val('#cmSize'); if ($('#cmMinDr')) d.minDrives = +val('#cmMinDr');
+        if ($('#cmAllow')) d.allowance = +val('#cmAllow'); if ($('#cmFl')) d.flights = +val('#cmFl');
+        v.querySelectorAll('[data-rdate]').forEach(i => { d.rounds[+i.dataset.rdate].date = i.value; });
+        v.querySelectorAll('[data-rtee]').forEach(i => { d.rounds[+i.dataset.rtee].tee = i.value; });
         v.querySelectorAll('[data-cmn]').forEach(i => { const [a, b] = i.dataset.cmn.split('.'); d.teams[a].p[b].name = i.value.trim(); });
         v.querySelectorAll('[data-cmi]').forEach(i => { const [a, b] = i.dataset.cmi.split('.'); d.teams[a].p[b].index = i.value.trim(); });
+        v.querySelectorAll('[data-cmdep]').forEach(i => { d.teams[+i.dataset.cmdep].dep = i.value.trim(); });
+        v.querySelectorAll('[data-ryname]').forEach(i => { d.ryder.sides[+i.dataset.ryname].name = i.value.trim() || ['Rouges', 'Bleus'][+i.dataset.ryname]; });
+        v.querySelectorAll('[data-ryn]').forEach(i => { const [k, j] = i.dataset.ryn.split('.'); d.ryder.sides[k].p[j].name = i.value.trim(); });
+        v.querySelectorAll('[data-ryi]').forEach(i => { const [k, j] = i.dataset.ryi.split('.'); d.ryder.sides[k].p[j].index = i.value.trim(); });
+        v.querySelectorAll('[data-msel]').forEach(i => { const [si, mi, side, q] = i.dataset.msel.split('.'); d.ryder.sessions[si].matches[mi][side][q] = i.value; });
+        v.querySelectorAll('[data-tbn]').forEach(i => { d.tableau.entrants[+i.dataset.tbn].name = i.value.trim(); });
+        v.querySelectorAll('[data-tbi]').forEach(i => { d.tableau.entrants[+i.dataset.tbi].index = i.value.trim(); });
+        if ($('#tbSeed')) d.tableau.seeding = val('#tbSeed'); if ($('#tbConso')) d.tableau.consolation = $('#tbConso').checked;
       };
       // Nom choisi dans la liste du groupe : on reprend le dernier index connu de ce joueur
-      v.querySelectorAll('[data-cmn]').forEach(i => i.onchange = () => { const last = (ls.get('pelland.lastPlayers', []) || []).find(p => p && L.norm(p.name || '') === L.norm(i.value)); const ix = v.querySelector(`[data-cmi="${i.dataset.cmn}"]`); if (last && last.index && ix && !ix.value) ix.value = last.index; });
-      $('#cmCourse').onchange = e => { sync(); d.courseId = e.target.value; const c = S.courses.find(x => x.id === d.courseId); d.tee = ((c && c.tees[0]) || {}).name; render(); };
-      $('#cmAllow').onchange = () => { sync(); render(); };
+      v.querySelectorAll('[data-cmn],[data-ryn],[data-tbn]').forEach(i => i.addEventListener('change', () => { const last = (ls.get('pelland.lastPlayers', []) || []).find(p => p && L.norm(p.name || '') === L.norm(i.value)); const ix = i.nextElementSibling; if (last && last.index && ix && !ix.value) ix.value = last.index; }));
+      $('#cmFmt').onchange = () => { sync(); const keep = { id: d.id, name: d.name, date: d.date, courseId: d.courseId, tee: d.tee }; const n = newCompDraft($('#cmFmt').value);
+        const people = [...(d.teams || []).flatMap(t => t.p), ...((d.ryder || {}).sides || []).flatMap(s => s.p), ...((d.tableau || {}).entrants || [])].filter(p => p.name);
+        Object.assign(d, n, keep, { name: n.name }); if (keep.id) d.name = keep.name;
+        if (people.length && !['ryder', 'tableau'].includes(d.format)) { const k = teamSizeOf(d); d.teams = []; for (let i = 0; i < people.length; i += k) d.teams.push({ id: uid6(), dep: '', p: Array.from({ length: k }, (_, j) => people[i + j] ? { name: people[i + j].name, index: people[i + j].index } : { name: '', index: '' }) }); }
+        if (people.length && d.format === 'tableau') d.tableau.entrants = people.map(p => ({ id: uid6(), name: p.name, index: p.index }));
+        render(); };
+      if ($('#cmJeu')) $('#cmJeu').onchange = () => { sync(); d.allowance = d.jeu === 'match' ? 90 : 85; if (d.jeu === 'match') d.rounds = []; render(); };
+      $('#cmCourse').onchange = e => { sync(); d.courseId = e.target.value; const cc = S.courses.find(x => x.id === d.courseId); d.tee = ((cc && cc.tees[0]) || {}).name; render(); };
+      v.querySelectorAll('[data-rcourse]').forEach(s => s.onchange = () => { sync(); const r = d.rounds[+s.dataset.rcourse]; r.courseId = s.value; const cc = S.courses.find(x => x.id === r.courseId); r.tee = ((cc && cc.tees[0]) || {}).name; render(); });
+      if ($('#cmRoundAdd')) $('#cmRoundAdd').onclick = () => { sync(); const prev = d.rounds.length ? d.rounds[d.rounds.length - 1] : { date: d.date, courseId: d.courseId, tee: d.tee }; const nd = prev.date ? new Date(new Date(prev.date + 'T12:00').getTime() + 864e5).toISOString().slice(0, 10) : ''; d.rounds.push({ date: nd, courseId: prev.courseId, tee: prev.tee }); render(); };
+      v.querySelectorAll('[data-rdel]').forEach(b => b.onclick = () => { sync(); d.rounds.splice(+b.dataset.rdel, 1); render(); });
+      if ($('#cmAllow')) $('#cmAllow').onchange = () => { sync(); render(); };
       const resize = n => d.teams.forEach(t => { while (t.p.length < n) t.p.push({ name: '', index: '' }); t.p.length = n; });
-      $('#cmFmt').onchange = () => { sync(); d.allowance = d.format === 'match' ? 90 : d.format === 'texas' ? 100 : 85; if (d.format === 'texas') { d.teamSize = d.teamSize || 4; if (d.minDrives == null) d.minDrives = 3; } resize(d.format === 'texas' ? d.teamSize : 2); render(); };
       if ($('#cmSize')) $('#cmSize').onchange = () => { sync(); resize(d.teamSize); render(); };
-      $('#cmAdd').onclick = () => { sync(); d.teams.push({ id: Math.random().toString(36).slice(2, 8), p: Array.from({ length: d.format === 'texas' ? (d.teamSize || 4) : 2 }, () => ({ name: '', index: '' })) }); render(); };
+      if ($('#cmAdd')) $('#cmAdd').onclick = () => { sync(); d.teams.push(blankTeam(teamSizeOf(d))); render(); };
       v.querySelectorAll('[data-cmdel]').forEach(b => b.onclick = () => { sync(); d.teams.splice(+b.dataset.cmdel, 1); render(); });
+      v.querySelectorAll('[data-balance]').forEach(b => b.onclick = () => { sync(); balanceSheet(b.dataset.balance); });
+      // Coupe Ryder
+      v.querySelectorAll('[data-ryadd]').forEach(b => b.onclick = () => { sync(); d.ryder.sides[+b.dataset.ryadd].p.push({ id: uid6(), name: '', index: '' }); render(); });
+      v.querySelectorAll('[data-rypop]').forEach(b => b.onclick = () => { sync(); const s = d.ryder.sides[+b.dataset.rypop], gone = s.p.pop(); d.ryder.sessions.forEach(x => x.matches = x.matches.filter(m => ![...m.a, ...m.b].includes(gone.id))); render(); });
+      if ($('#rySessAdd')) $('#rySessAdd').onclick = () => { sync(); const type = val('#rySessType'), named = { ...d, ryder: { ...d.ryder, sides: d.ryder.sides.map(s => ({ ...s, p: s.p.filter(p => p.name) })) } };
+        const ms = ryAutoMatches(named, type); if (!ms.length) return toast(type === 'simple' ? 'Nommez au moins un joueur dans chaque camp.' : 'Nommez au moins deux joueurs dans chaque camp.');
+        const nType = d.ryder.sessions.filter(s => s.type === type).length; d.ryder.sessions.push({ id: uid6(), type, name: RY_COURT[type] + (nType ? ' ' + (nType + 1) : ''), matches: ms }); render(); };
+      v.querySelectorAll('[data-sdel]').forEach(b => b.onclick = () => { sync(); d.ryder.sessions.splice(+b.dataset.sdel, 1); render(); });
+      v.querySelectorAll('[data-sregen]').forEach(b => b.onclick = () => { sync(); const s = d.ryder.sessions[+b.dataset.sregen]; s.matches = ryAutoMatches({ ...d, ryder: { ...d.ryder, sides: d.ryder.sides.map(x => ({ ...x, p: x.p.filter(p => p.name) })) } }, s.type); render(); });
+      // Tableau
+      if ($('#tbAdd')) $('#tbAdd').onclick = () => { sync(); for (let i = 0; i < 4; i++) d.tableau.entrants.push({ id: uid6(), name: '', index: '' }); render(); };
       $('#cmCancel').onclick = () => d.id ? openComp(d.id) : go('comps', { compList: null });
       $('#cmSave').onclick = async () => {
         sync();
         if (!d.name.trim()) return toast('Donnez un nom à la compétition.');
-        const teams = d.teams.filter(t => t.p.some(p => p.name));
-        for (const t of teams) for (const p of t.p) {
-          if (!p.name) return toast(`Chaque équipe a besoin de ${t.p.length} joueurs.`);
-          if (parseIdx(p.index) == null) return toast(`Entrez l’index de ${p.name} (ex. 12,4).`);
-        }
-        if (teams.length < 2) return toast('Il faut au moins deux équipes.');
         const course = S.courses.find(x => x.id === d.courseId) || S.courses[0];
         if (!course) return toast('Ajoutez d’abord un terrain dans Terrains.');
-        const c = { ...(d.id ? S.comp : {}), id: d.id || Date.now().toString(36), groupId: Store.gid, kind: 'membre-membre', format: d.format || 'match', name: d.name.trim(), date: d.date, courseId: course.id,
-          course: JSON.parse(JSON.stringify(course)), tee: d.tee, allowance: d.allowance, flights: d.flights, teams, teamSize: d.format === 'texas' ? (d.teamSize || 4) : 2, minDrives: d.format === 'texas' ? (d.minDrives == null ? 3 : d.minDrives) : null, by: ls.get('pelland.me', '') || '', createdAt: (S.comp && d.id && S.comp.createdAt) || Date.now() };
+        const needIdx = p => parseIdx(p.index) == null ? toast(`Entrez l’index de ${p.name} (ex. 12,4).`) || true : false;
+        let extra = {};
+        if (d.format === 'ryder') {
+          const sides = d.ryder.sides.map(s => ({ name: s.name, p: s.p.filter(p => p.name) }));
+          if (sides.some(s => !s.p.length)) return toast('Chaque camp a besoin d’au moins un joueur.');
+          for (const s of sides) for (const p of s.p) if (needIdx(p)) return;
+          extra = { ryder: { sides, sessions: d.ryder.sessions.map(s => ({ ...s, matches: s.matches.filter(m => [...m.a, ...m.b].every(id => sides.some(x => x.p.some(p => p.id === id)))) })) }, teams: [] };
+        } else if (d.format === 'tableau') {
+          const E = d.tableau.entrants.filter(e => e.name);
+          if (E.length < 3) return toast('Il faut au moins 3 joueurs dans le tableau.');
+          for (const p of E) if (needIdx(p)) return;
+          const old = S.comp && d.id ? S.comp.tableau || {} : {};
+          const order = d.tableau.seeding === 'tirage' ? ((old.order || []).length && E.every(e => (old.order || []).includes(e.id)) ? old.order : E.map(e => e.id).sort(() => Math.random() - 0.5)) : null;
+          extra = { tableau: { entrants: E, seeding: d.tableau.seeding, consolation: !!d.tableau.consolation, manual: old.manual || {}, ...(order ? { order } : {}) }, teams: [] };
+        } else {
+          const teams = d.teams.filter(t => t.p.some(p => p.name));
+          for (const t of teams) for (const p of t.p) { if (!p.name) return toast(`Chaque équipe a besoin de ${t.p.length} joueurs.`); if (needIdx(p)) return; }
+          if (teams.length < 2) return toast('Il faut au moins deux équipes.');
+          const rounds = (['coups', 'stableford', 'texas', 'scramble'].includes(d.format) || d.format === 'invite' && d.jeu !== 'match') ? d.rounds.map(r => { const cc = S.courses.find(x => x.id === r.courseId) || course; return { date: r.date || d.date, courseId: cc.id, course: JSON.parse(JSON.stringify(cc)), tee: r.tee || (cc.tees[0] || {}).name }; }) : [];
+          extra = { teams, rounds };
+        }
+        const c = { ...(d.id ? S.comp : {}), id: d.id || Date.now().toString(36), groupId: Store.gid, kind: d.format === 'invite' ? 'membre-invite' : d.format === 'ryder' ? 'ryder' : d.format === 'tableau' ? 'tableau' : 'membre-membre', format: d.format || 'match',
+          jeu: d.format === 'invite' ? (d.jeu || 'match') : null, name: d.name.trim(), date: d.date, courseId: course.id, course: JSON.parse(JSON.stringify(course)), tee: d.tee, allowance: d.allowance, flights: d.flights,
+          teamSize: ['texas', 'scramble'].includes(d.format) ? (d.format === 'scramble' ? 4 : d.teamSize || 4) : 2, minDrives: d.format === 'texas' ? (d.minDrives == null ? 3 : d.minDrives) : d.format === 'scramble' ? 0 : null,
+          by: ls.get('pelland.me', '') || '', createdAt: (S.comp && d.id && S.comp.createdAt) || Date.now(), ...extra };
         try { await Store.saveComp(c); S.compList = null; openComp(c.id); toast(d.id ? 'Compétition modifiée.' : 'Compétition créée.');
-          if (!d.id) Push.notify({ title: 'Nouvelle compétition : ' + c.name, body: `${c.course.name}, ${new Date(c.date + 'T12:00').toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' })}. Suivez le classement en direct.`, url: './', tag: 'comp-' + c.id }); } catch (e) { toast('Enregistrement impossible : ' + e.message); }
+          if (!d.id) Push.notify({ title: 'Nouvelle compétition : ' + c.name, body: `${c.course.name}, ${dateLong(c.date)}. Suivez le classement en direct.`, url: './', tag: 'comp-' + c.id }); } catch (e) { toast('Enregistrement impossible : ' + e.message); }
       };
     },
     comp(v) {
-      v.querySelectorAll('[data-ctab]').forEach(b => b.onclick = () => { S.compTab = b.dataset.ctab; render(); });
+      v.querySelectorAll('[data-ctab]').forEach(b => b.onclick = () => { S.compTab = b.dataset.ctab; S.compMatch = null; render(); });
+      v.querySelectorAll('[data-cround]').forEach(b => b.onclick = () => { S.compRound = b.dataset.cround === 'total' ? null : +b.dataset.cround; render(); });
       const sel = v.querySelector('#cmTeamSel'); if (sel) sel.onchange = () => { S.compTeam = sel.value; render(); };
-      const ed = v.querySelector('[data-cedit]'); if (ed) ed.onclick = () => { const c = S.comp; go('compEdit', { compDraft: { id: c.id, format: c.format || 'match', teamSize: c.teamSize, minDrives: c.minDrives, name: c.name, date: c.date, courseId: c.courseId, tee: c.tee, allowance: c.allowance, flights: c.flights, teams: JSON.parse(JSON.stringify(c.teams)) } }); };
+      const ed = v.querySelector('[data-cedit]'); if (ed) ed.onclick = () => go('compEdit', { compDraft: draftOf(S.comp) });
       const dl = v.querySelector('[data-cdel]'); if (dl) dl.onclick = () => { S.confirmDelComp = true; render(); };
       const dok = v.querySelector('[data-cdelok]'); if (dok) dok.onclick = async () => { try { await Store.deleteComp(S.comp.id); if (S.unwatchComp) { S.unwatchComp(); S.unwatchComp = null; } go('comps', { compList: null }); toast('Compétition effacée.'); } catch (e) { toast('Impossible : ' + e.message); } };
+      const tv = v.querySelector('[data-tv]'); if (tv) tv.onclick = () => { go('compTv'); try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen().catch(() => { }); } catch (e) { } };
+      v.querySelectorAll('[data-print]').forEach(b => b.onclick = () => imprimer(S.comp, b.dataset.print));
+      v.querySelectorAll('[data-mscore]').forEach(b => b.onclick = () => { S.compMatch = b.dataset.mscore; render(); window.scrollTo(0, 0); });
+      const mb = v.querySelector('[data-mback]'); if (mb) mb.onclick = () => { S.compMatch = null; render(); };
+      // Gagnant d'un match du tableau indiqué par l'organisateur
+      v.querySelectorAll('[data-tbw]').forEach(s => s.onchange = async () => {
+        const c = S.comp, k = s.dataset.tbw, man = { ...(c.tableau.manual || {}) };
+        if (s.value) man[k] = { w: s.value, txt: 'Gagné' }; else delete man[k];
+        c.tableau = { ...c.tableau, manual: man }; render();
+        try { await Store.setCompField(c.id, 'tableau.manual', man); } catch (e) { toast('Non enregistré : ' + e.message); }
+      });
+      // Pointage d'un match (Coupe Ryder, tableau) : [scores des joueurs], mis à jour sur place
+      const msAll = [...v.querySelectorAll('[data-ms]')];
+      msAll.forEach((inp, k) => inp.addEventListener('input', () => { const x = inp.value.trim(); if ((x.length === 1 && x !== '1') || x.length === 2) { const nx = msAll[k + 1]; if (nx) nx.focus(); } }));
+      msAll.forEach(inp => inp.onchange = async () => {
+        const [key, h, i] = inp.dataset.ms.split('.'), c = S.comp, raw = inp.value.trim(), val = raw === '' ? null : parseInt(raw, 10);
+        if (raw !== '' && !(val >= 1 && val <= 15)) { toast('Score invalide.'); inp.value = ''; return; }
+        const n = v.querySelectorAll(`[data-ms^="${key}.${h}."]`).length, cur = ((c.scores || {})[key] || {})[h] || [], arr = Array.from({ length: n }, (_, j) => cur[j] == null ? null : cur[j]); arr[+i] = val;
+        c.scores = c.scores || {}; c.scores[key] = c.scores[key] || {}; c.scores[key][h] = arr;
+        const sm = v.querySelector('.cm-sum b'); const keep = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.ms : null;
+        try { await Store.setCompScore(c.id, key, +h, arr); } catch (e) { toast('Score non enregistré : ' + e.message); }
+        render(); if (keep) { const el = document.querySelector(`[data-ms="${keep}"]`); if (el) el.focus(); }
+        void sm;
+      });
       // Texas scramble : score de l'équipe et départ choisi, enregistrés ensemble [score, joueur]
+      const R = () => Math.min(S.compRound || 0, nRounds(S.comp) - 1);
+      const tidOf = c => S.compTeam && c.teams.find(t => t.id === S.compTeam) ? S.compTeam : c.teams[0].id;
       const txSave = async h => {
-        const c = S.comp, tid = S.compTeam && c.teams.find(t => t.id === S.compTeam) ? S.compTeam : c.teams[0].id;
+        const c = S.comp, tid = tidOf(c), t = c.teams.find(x => x.id === tid), key = skey(t, R());
         const gi = v.querySelector(`[data-tx="${h}"]`), di = v.querySelector(`[data-td="${h}"]`), raw = gi.value.trim(), g = raw === '' ? null : parseInt(raw, 10);
         if (raw !== '' && !(g >= 1 && g <= 15)) { toast('Score invalide.'); gi.value = ''; return; }
         const arr = [g, di.value === '' ? null : +di.value];
-        c.scores = c.scores || {}; c.scores[tid] = c.scores[tid] || {}; c.scores[tid][h] = arr;
-        const t = c.teams.find(x => x.id === tid), r = compTeamResult(c, t), hh = r.holes[h - 1];
+        c.scores = c.scores || {}; c.scores[key] = c.scores[key] || {}; c.scores[key][h] = arr;
+        const r = compTeamResult(c, t, R()), hh = r.holes[h - 1];
         const cell = gi.closest('tr').querySelector('.cm-best'); cell.textContent = hh.best == null ? '' : hh.best; cell.classList.toggle('under', hh.best != null && hh.best < hh.par);
         const sm = v.querySelector('.cm-sum'); if (sm) sm.innerHTML = sumHtml(c, r);
         const dr = v.querySelector('.tx-drv'); if (dr) dr.innerHTML = 'Départs : ' + drivesTxt(c, r) + (c.minDrives ? ` (minimum ${c.minDrives} chacun)` : '');
-        try { await Store.setCompScore(c.id, tid, h, arr); } catch (e) { toast('Score non enregistré : ' + e.message); }
+        try { await Store.setCompScore(c.id, key, h, arr); } catch (e) { toast('Score non enregistré : ' + e.message); }
       };
-      v.querySelectorAll('[data-tx]').forEach(i => { i.onchange = () => txSave(+i.dataset.tx); i.addEventListener('input', () => { const x = i.value.trim(); if ((x.length === 1 && x !== '1') || x.length === 2) { const sel = v.querySelector(`[data-td="${i.dataset.tx}"]`); if (sel) sel.focus(); } }); });
-      v.querySelectorAll('[data-td]').forEach(sel => sel.onchange = () => { txSave(+sel.dataset.td); const nx = v.querySelector(`[data-tx="${+sel.dataset.td + 1}"]`); if (nx) nx.focus(); });
+      v.querySelectorAll('[data-tx]').forEach(i => { i.onchange = () => txSave(+i.dataset.tx); i.addEventListener('input', () => { const x = i.value.trim(); if ((x.length === 1 && x !== '1') || x.length === 2) { const s2 = v.querySelector(`[data-td="${i.dataset.tx}"]`); if (s2) s2.focus(); } }); });
+      v.querySelectorAll('[data-td]').forEach(s2 => s2.onchange = () => { txSave(+s2.dataset.td); const nx = v.querySelector(`[data-tx="${+s2.dataset.td + 1}"]`); if (nx) nx.focus(); });
       const all = [...v.querySelectorAll('[data-cms]')];
       all.forEach((inp, k) => inp.addEventListener('input', () => { const x = inp.value.trim(); if ((x.length === 1 && x !== '1') || x.length === 2) { const nx = all[k + 1]; if (nx) nx.focus(); } }));
-      v.querySelectorAll('[data-cms]').forEach(inp => {
+      all.forEach(inp => {
         inp.onchange = async () => {
-          const [h, i] = inp.dataset.cms.split('.').map(Number), c = S.comp, tid = S.compTeam && c.teams.find(t => t.id === S.compTeam) ? S.compTeam : c.teams[0].id;
+          const [h, i] = inp.dataset.cms.split('.').map(Number), c = S.comp, tid = tidOf(c), t = c.teams.find(x => x.id === tid), key = skey(t, R());
           const raw = inp.value.trim(), val = raw === '' ? null : parseInt(raw, 10);
           if (raw !== '' && !(val >= 1 && val <= 15)) { toast('Score invalide.'); inp.value = ''; return; }
-          const cur = ((c.scores || {})[tid] || {})[h] || [null, null], arr = [cur[0] == null ? null : cur[0], cur[1] == null ? null : cur[1]]; arr[i] = val;
-          c.scores = c.scores || {}; c.scores[tid] = c.scores[tid] || {}; c.scores[tid][h] = arr;
+          const cur = ((c.scores || {})[key] || {})[h] || [null, null], arr = [cur[0] == null ? null : cur[0], cur[1] == null ? null : cur[1]]; arr[i] = val;
+          c.scores = c.scores || {}; c.scores[key] = c.scores[key] || {}; c.scores[key][h] = arr;
           // Mise à jour sur place (sans redessiner l'écran, pour ne pas perdre la case où l'on tape)
-          const t = c.teams.find(x => x.id === tid), r = compTeamResult(c, t), hh = r.holes[h - 1];
+          const r = compTeamResult(c, t, R()), hh = r.holes[h - 1];
           const cell = inp.closest('tr').querySelector('.cm-best'); cell.textContent = hh.best == null ? '' : hh.best; cell.classList.toggle('under', hh.best != null && hh.best < hh.par);
-          if (c.format === 'stableford') cell.innerHTML = hh.best == null ? '' : `${hh.best}<small>${hh.sp} pt${hh.sp > 1 ? 's' : ''}</small>`;
+          if (eff(c) === 'stableford') cell.innerHTML = hh.best == null ? '' : `${hh.best}<small>${hh.sp} pt${hh.sp > 1 ? 's' : ''}</small>`;
           const sm = v.querySelector('.cm-sum'); if (sm) sm.innerHTML = sumHtml(c, r);
-          try { await Store.setCompScore(c.id, tid, h, arr); } catch (e) { toast('Score non enregistré : ' + e.message); }
+          try { await Store.setCompScore(c.id, key, h, arr); } catch (e) { toast('Score non enregistré : ' + e.message); }
         };
       });
+    },
+    compTv(v) {
+      const q = v.querySelector('[data-tvquit]'); if (q) q.onclick = () => { try { document.fullscreenElement && document.exitFullscreen(); } catch (e) { } go('comp'); };
+      // Les classes défilent toutes les 12 secondes si elles dépassent l'écran
+      clearInterval(S.tvTimer); const body = v.querySelector('.tv-body');
+      S.tvTimer = setInterval(() => { if (S.view !== 'compTv') return clearInterval(S.tvTimer); if (!body || body.scrollHeight <= body.clientHeight + 4) return; body.scrollTop = body.scrollTop + body.clientHeight >= body.scrollHeight - 4 ? 0 : body.scrollTop + body.clientHeight * 0.85; }, 12000);
     }
   });
 
@@ -3963,7 +4388,7 @@
 
   // ---------------- Léo, le caddie en personne : visage dans le coin, salut à l'arrivée, visite guidée ----------------
   let leo = null;
-  const LEO_CACHE = ['game', 'setup', 'compEdit', 'comp', 'offre', 'login', 'join', 'jeuEdit', 'course'];   // écrans de saisie : on ne cache rien
+  const LEO_CACHE = ['game', 'setup', 'compEdit', 'comp', 'compTv', 'offre', 'login', 'join', 'jeuEdit', 'course'];   // écrans de saisie : on ne cache rien
   const ssGet = k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } };
   const ssSet = k => { try { sessionStorage.setItem(k, '1'); } catch (e) { } };
   const visiteKey = () => 'fanion.leo.visite.' + (Store.uid || meId() || '');
@@ -4004,7 +4429,7 @@
         { puce: 'Étape 1', titre: 'Inviter des joueurs', texte: 'Le nom et le cellulaire de chacun : l’invitation part par texto. Chaque joueur crée son compte une fois, pour tous ses groupes.' },
         { puce: 'Étape 2', titre: 'Parties à préparer', texte: 'Offrez quelques dates. Chacun coche les siennes, et je forme les quatuors à la date butoir.' },
         { puce: 'Étapes 3 et 4', titre: 'Créer une partie, la suivre en direct', texte: 'Terrain, équipes, jeu et montants. Un joueur entre les scores ; les autres suivent la partie sur leur téléphone.' },
-        { puce: 'Étapes 5 et 6', titre: 'Compétitions et résultats', texte: 'Membre-membre ou Texas scramble, avec le classement en direct. À la fin, je dis qui doit quoi à qui.' },
+        { puce: 'Étapes 5 et 6', titre: 'Compétitions et résultats', texte: 'Membre-membre, membre-invité, scrambles, Coupe Ryder ou tableau à élimination, avec le classement en direct. À la fin, je dis qui doit quoi à qui.' },
         { puce: 'Les banques', titre: 'Joueurs, terrains, jeux, compétitions', texte: 'Tout ce que le groupe bâtit reste là pour la prochaine saison : vos terrains, vos jeux maison, vos formats.' },
       ],
       fin: { titre: 'Une question ? Je suis dans le coin.', texte: 'Touchez mon visage en bas à droite, n’importe quand. On commence par inviter vos joueurs ?', bouton: (S.players || []).length < 4 ? 'Inviter des joueurs' : 'C’est parti', action: () => { if ((S.players || []).length < 4) go('players', { pMode: 'banque' }); } },
@@ -4196,6 +4621,8 @@
   $('#back').onclick = () => {
     if (S.view === 'course') go(S.editCourse && S.editCourse.web ? 'clubs' : S.draft ? 'setup' : 'courses', { editCourse: null });
     else if (S.view === 'clubs') go('courses');
+    else if (S.view === 'compTv') go('comp');
+    else if (S.view === 'comp' && S.compMatch) { S.compMatch = null; render(); }
     else if (S.view === 'comp') go('comps');
     else if (S.view === 'compEdit') { if (S.compDraft && S.compDraft.id) openComp(S.compDraft.id); else go('comps'); }
     else go('home');
