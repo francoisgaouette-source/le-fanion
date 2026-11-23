@@ -352,8 +352,9 @@
       await this.ensureSeed();
       return gr;
     },
-    async listPlayers(all) {
-      const mine = p => all || (p.groupId || 'pelland') === this.gid;
+    // Membres du groupe (par défaut) ; avec bank = true, toute la banque de joueurs du groupe (membres et non-membres)
+    async listPlayers(all, bank) {
+      const mine = p => (all || (p.groupId || 'pelland') === this.gid) && (bank || all || p.membre !== false);
       if (this.mode === 'firebase') {
         const snap = await this.db.collection('players').get();
         const list = snap.docs.filter(d => !d.id.startsWith('_')).map(d => ({ ...d.data(), id: d.id })).filter(mine);
@@ -446,8 +447,15 @@
     // Compteur de joueurs du groupe (players/_groupe_<g>.nPlayers) : il change dans la même écriture que le joueur,
     // et les règles Firestore refusent un joueur de plus que le forfait (4 en Gratuit, 16 en Groupe).
     incr(n, fallback) { const FV = firebase.firestore.FieldValue; return FV && FV.increment ? FV.increment(n) : fallback; },
-    async savePlayer(name, count) {
-      const p = { id: slug(name) + '-' + Math.random().toString(36).slice(2, 6), name: name.trim(), groupId: this.gid, updatedAt: Date.now() };
+    async listBank() { return this.listPlayers(false, true); },
+    // Membre du groupe ou seulement dans la banque (choisi par l'organisateur parmi les joueurs confirmés)
+    async setMembre(id, on) {
+      if (this.mode === 'firebase') { await this.db.collection('players').doc(id).set({ membre: !!on, updatedAt: Date.now() }, { merge: true }); return; }
+      ls.set('pelland.players', ls.get('pelland.players', []).map(x => x.id === id ? { ...x, membre: !!on } : x));
+    },
+    // Ajout à la banque de joueurs : pas encore membre du groupe (il le devient une fois confirmé, quand l'organisateur le choisit)
+    async savePlayer(name, count, membre = false) {
+      const p = { id: slug(name) + '-' + Math.random().toString(36).slice(2, 6), name: name.trim(), groupId: this.gid, membre: !!membre, updatedAt: Date.now() };
       if (this.mode === 'firebase') {
         const b = this.db.batch();
         b.set(this.db.collection('players').doc(p.id), p);
@@ -863,12 +871,13 @@
         return Store.needLogin ? '' : `<span class="hero-liens">${autres ? `<button class="btn ghost small" id="switchGroup" type="button">Changer (${autres})</button>` : ''}<button class="btn ghost small" data-viral type="button">+ Ajouter un groupe</button></span>`; })()}</div>
       <h1>${canOrganize() ? `<button class="hero-nom" id="renameGroup" type="button" title="Toucher pour changer le nom du groupe" aria-label="Changer le nom du groupe : ${esc(groupName())}">${esc(groupName())}</button>` : esc(groupName())}</h1></div>
       ${Store.needLogin ? '' : groupInfo(true)}
+      ${!Store.needLogin && Store.mode === 'firebase' && S.players && S.players.length && !meId() ? `<div class="warn">Vous êtes dans la banque de joueurs de ce groupe, mais pas encore membre : l’organisateur vous ajoutera au groupe quand il y aura une place.</div>` : ''}
       ${retourCarte()}
       ${P.admin && P.todo.length ? `<button class="warn approve-band" data-go="courses" type="button">🏌️ ${P.todo.length} terrain${P.todo.length > 1 ? 's' : ''} à approuver pour la banque · Voir</button>` : ''}
       ${curGroup().archived ? `<div class="warn archived-band">Ce groupe est archivé.${meId() && meId() === ownerId() ? ' <button class="linkbtn" data-go="compte" type="button">Le rétablir dans Mon compte</button>' : ' Son propriétaire peut le rétablir.'}</div>` : ''}
       <h3 class="home-h">Les étapes</h3>
       ${lockTiles(`<div class="tiles steps">
-        <button class="tile" data-go="players" data-pmode="inviter"><span class="pin step-n">1</span><div><strong>Inviter des joueurs</strong><span>Ajoutez vos joueurs et leur cellulaire : ils reçoivent l’invitation par texto</span></div></button>
+        <button class="tile" data-go="players" data-pmode="inviter"><span class="pin step-n">1</span><div><strong>Inviter des joueurs</strong><span>Choisissez les membres du groupe parmi les joueurs confirmés de la banque</span></div></button>
         <button class="tile" data-go="quatuors"><span class="pin step-n">2</span><div><strong>Parties à préparer</strong><span>Offrez des dates ; les joueurs répondent et l’app forme les quatuors</span></div></button>
         <button class="tile" data-typepartie type="button"><span class="pin step-n">3</span><div><strong>Créer une partie</strong><span>Terrain, joueurs, jeu et montants</span></div></button>
         <button class="tile" data-go="live"><span class="pin step-n">4</span><div><strong>Parties en cours</strong><span>Suivez les parties en direct</span></div></button>
@@ -2117,38 +2126,48 @@
           btn.textContent = `Ajout… ${ok + 1}/${todo.length}`;
           try { const np = await Store.savePlayer(x.name, S.players.length + ok); ok++; if (x.phone && x.phone.length >= 10) { try { await Store.setPhone(np, x.phone); } catch (e) { phErr++; } } } catch (e) { }
         }
-        S.players = await Store.listPlayers(); closeSheet(); render();
+        S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); closeSheet(); render();
         toast(`${ok} joueur${ok > 1 ? 's' : ''} ajouté${ok > 1 ? 's' : ''}${phErr ? ` · ${phErr} numéro${phErr > 1 ? 's' : ''} à refaire` : ''}.`);
       };
     };
     openSheet('', sh => draw(sh));
   }
   // Peut être retiré en lot : ni le propriétaire, ni soi-même
-  const canRemove = p => isProprio() && p.id !== ownerId() && p.id !== meId();
+  // Banque de joueurs hors du groupe : confirmés (compte créé) que l'organisateur peut ajouter au groupe, et en attente de confirmation
+  function banqueHtml() {
+    if (!canOrganize() || !S.bank) return '';
+    const hors = S.bank.filter(p => p.membre === false), conf = hors.filter(hasAccepted), att = hors.filter(p => !hasAccepted(p)), room = roomLeft();
+    const ligne = (p, act) => `<div class="item pl-row bank-row"><div><b>${esc(p.name)}</b><span>${hasAccepted(p) ? '<span class="pl-st ok">✓ Confirmé</span>' : '<span class="pl-st wait">En attente de confirmation</span>'}${p.phone ? ' · ☎ ' + esc(fmtPhone(p.phone)) : ''}</span></div><span class="row" style="flex-wrap:nowrap;flex:none">${act}</span></div>`;
+    return `<h3 class="acct-h">Banque de joueurs : hors du groupe (${hors.length})</h3>
+      <p class="note"><b>Banque : ${S.bank.length} / ${BANQUE_MAX} joueurs.</b> Le groupe compte ${S.players.length} / ${planOf().max} membres. ${room > 0 ? `Ajoutez au groupe les joueurs confirmés (il reste ${room} place${room > 1 ? 's' : ''}).` : 'Le groupe est complet.'}</p>
+      ${conf.length ? `<div class="list">${conf.map(p => ligne(p, `<button class="btn small" data-membre="${esc(p.id)}" type="button">Ajouter au groupe</button>${isProprio() && p.id !== ownerId() ? `<button class="btn ghost small" data-bankdel="${esc(p.id)}" type="button" aria-label="Enlever ${esc(p.name)} de la banque">✕</button>` : ''}`)).join('')}</div>` : '<p class="note">Aucun joueur confirmé hors du groupe.</p>'}
+      ${att.length ? `<h4 class="bank-h">En attente de confirmation (${att.length})</h4><p class="note">Ils doivent créer leur compte avec le texto d’invitation avant d’entrer dans le groupe.</p>
+        <div class="list">${att.map(p => ligne(p, `${p.phone && isProprio() ? `<button class="btn ghost small" data-reinv="${esc(p.id)}" type="button">Texto</button>` : ''}${isProprio() ? `<button class="btn ghost small" data-bankdel="${esc(p.id)}" type="button" aria-label="Enlever ${esc(p.name)} de la banque">✕</button>` : ''}`)).join('')}</div>` : ''}`;
+  }
+  const canRemove = p => canOrganize() && p.id !== ownerId() && p.id !== meId();
   function vPlayers() {
     const inviter = S.pMode === 'inviter';
     $('#barTitle').textContent = inviter ? 'Inviter des joueurs' : 'Banque de joueurs';
     // Seul le propriétaire du groupe ajoute des joueurs (nom, cellulaire, import Excel, remettre un retiré)
-    const proprio = isProprio();
-    return `${inviter && proprio ? '<p class="note">Entrez le nom et le cellulaire : un texto d’invitation est prêt à envoyer. La personne crée ensuite son compte avec son cellulaire.</p>' : ''}${!proprio ? `<p class="note">Seul le propriétaire du groupe${(S.players.find(p => p.id === ownerId()) || {}).name ? ' (' + esc(S.players.find(p => p.id === ownerId()).name) + ')' : ''} peut ajouter des joueurs.</p>` : `<section class="card"><h2>${inviter ? 'Inviter un joueur' : 'Ajouter un joueur'}</h2>
-        ${roomLeft() <= 0 ? `<div class="full-box"><b>Le groupe est complet : ${S.players.length} / ${planOf().max} joueurs.</b>
-          <p>${planOf().paid ? `Le forfait ${planOf().name} permet ${planOf().max} joueurs. Retirez un joueur pour en ajouter un autre, ou écrivez à bonjour@fanion.ai pour une ligue.` : `Le forfait Gratuit permet ${planOf().max} joueurs. Passez au forfait Groupe pour en inviter jusqu’à 16.`}</p>
-          ${!planOf().paid ? (meId() && meId() === ownerId() ? `<a class="btn small" href="${buyUrl()}" target="_blank" rel="noopener">Passer au forfait Groupe</a>` : `<p class="note">Seul le propriétaire peut changer de forfait.</p>`) : ''}</div>`
-        : `${!planOf().paid ? `<p class="note room-left">Forfait Gratuit : il reste <b>${roomLeft()}</b> place${roomLeft() > 1 ? 's' : ''} sur ${planOf().max}.</p>` : ''}        <input id="newPlayer" type="text" placeholder="Prénom et nom" autocapitalize="words">
+    const proprio = isProprio(), banque = (S.bank || S.players).length;
+    return `${inviter ? `<p class="note"><b>Choisissez les membres du groupe parmi les joueurs confirmés de la banque.</b> Un joueur est confirmé quand il a créé son compte avec le texto d’invitation.</p>` + banqueHtml() : ''}${!proprio ? `<p class="note">Seul le propriétaire du groupe${(S.players.find(p => p.id === ownerId()) || {}).name ? ' (' + esc(S.players.find(p => p.id === ownerId()).name) + ')' : ''} peut ajouter des joueurs à la banque.</p>` : `<section class="card"><h2>Ajouter un joueur à la banque</h2>
+        ${banque >= BANQUE_MAX ? `<div class="full-box"><b>La banque de joueurs est pleine : ${banque} / ${BANQUE_MAX}.</b><p>Enlevez un joueur de la banque pour en ajouter un autre.</p></div>`
+        : `<p class="note">Entrez le nom et le cellulaire : un texto d’invitation est prêt à envoyer. Une fois son compte créé, le joueur est confirmé et peut être ajouté au groupe.</p>        <input id="newPlayer" type="text" placeholder="Prénom et nom" autocapitalize="words">
         <div class="row" style="flex-wrap:nowrap"><input id="newPhone" type="tel" inputmode="tel" placeholder="Cellulaire" style="flex:1;min-width:0"><button class="btn small" id="addPlayer" type="button">Ajouter</button></div>
-        ${canOrganize() ? `<div class="import-row"><label class="btn ghost small" for="xlsFile">Importer un fichier Excel</label><input id="xlsFile" type="file" accept=".xlsx,.xls,.csv,.ods" hidden><span class="note">Deux colonnes : le nom et le cellulaire.</span></div>` : ''}`}
+        <div class="import-row"><label class="btn ghost small" for="xlsFile">Importer un fichier Excel</label><input id="xlsFile" type="file" accept=".xlsx,.xls,.csv,.ods" hidden><span class="note">Deux colonnes : le nom et le cellulaire.</span></div>`}
         </section>`}
       ${canOrganize() && S.notifs ? (() => { const sans = S.players.filter(p => hasAccepted(p) && p.id !== meId() && (S.notifs[p.id] || 'a_activer') !== 'actif'); const bl = sans.filter(p => ['bloque', 'non_supporte'].includes(S.notifs[p.id]));
         return sans.length ? `<div class="warn notif-warn"><b>${sans.length} joueur${sans.length > 1 ? 's ne reçoivent' : ' ne reçoit'} pas les notifications :</b> ${sans.map(p => esc(p.name) + ' (' + NOTIF[S.notifs[p.id] || 'a_activer'][1].replace(/^🔕 /, '').toLowerCase() + ')').join(', ')}.
           ${bl.length ? 'Ils ne verront ni les dates, ni les rappels, ni les parties : parlez-leur, ou retirez-les du groupe.' : 'Rappelez-leur d’ouvrir l’app et d’accepter les notifications.'}</div>` : ''; })() : ''}
       ${(() => { const dups = duplicateMap(S.players); const nd = Object.keys(dups).length; return nd ? `<div class="warn">${nd} joueurs semblent en double. Vérifiez les noms marqués « Doublon ? » et retirez celui de trop.</div>` : ''; })()}
       ${!ownerId() && S.players.length ? `<div class="warn">Le groupe n’a pas encore de propriétaire (la personne qui l’administre et paie l’abonnement). <button class="linkbtn" id="claimOwner" type="button">C’est moi</button></div>` : ''}
-      ${S.players.length ? `<div class="row pl-head"><p class="pl-count"><b>${S.players.length}</b> joueur${S.players.length > 1 ? 's' : ''} dans le groupe</p>${isProprio() ? `<button class="btn ghost small" data-selmode type="button">${S.selMode ? 'Terminer' : 'Sélectionner'}</button>` : ''}</div>` : ''}
+      ${S.players.length ? `<div class="row pl-head"><p class="pl-count"><b>${S.players.length}</b> joueur${S.players.length > 1 ? 's' : ''} dans le groupe</p>${canOrganize() ? `<button class="btn ghost small" data-selmode type="button">${S.selMode ? 'Terminer' : 'Sélectionner'}</button>` : ''}</div>` : ''}
       ${S.selMode ? (() => { const sel = S.sel || [], removable = S.players.filter(p => canRemove(p)); return `<div class="sel-bar"><button class="linkbtn" data-selall type="button">${sel.length === removable.length && removable.length ? 'Tout désélectionner' : 'Tout sélectionner'}</button><span class="note">${sel.length} sélectionné${sel.length > 1 ? 's' : ''}</span>${sel.length ? (S.confirmBulk ? `<button class="btn small" data-bulkdel type="button" style="background:var(--red)">Confirmer : retirer ${sel.length}</button><button class="btn ghost small" data-bulkcancel type="button">Annuler</button>` : `<button class="btn small" data-bulkask type="button" style="background:var(--red)">Retirer (${sel.length})</button>`) : ''}</div>`; })() : ''}
       <div class="list">${S.players.length ? (() => { const dups = duplicateMap(S.players); return S.players.map((p, n) => S.selMode ? `<label class="item pl-row sel-row ${dups[p.id] ? 'dup' : ''}">${canRemove(p) ? `<input type="checkbox" data-selp="${esc(p.id)}" ${(S.sel || []).includes(p.id) ? 'checked' : ''}>` : '<span class="sel-lock" title="Ne peut pas être retiré">—</span>'}<b><span class="pl-n">${n + 1}.</span> ${esc(p.name)}${p.id === ownerId() ? ' <span class="owner-tag">Propriétaire</span>' : ''}${p.id === meId() ? ' <span class="note">(vous)</span>' : ''}</b></label>` : `<div class="item pl-row ${dups[p.id] ? 'dup' : ''}"><b><span class="pl-n">${n + 1}.</span> ${canOrganize() || p.id === meId() ? `<button class="name-btn" data-rename="${esc(p.id)}" type="button">${esc(p.name)}</button>` : esc(p.name)}${p.id === ownerId() ? ' <span class="owner-tag">Propriétaire</span>' : !ownerId() ? '' : meId() === ownerId() ? ` <button class="role-chip ${isOrganizer(p.id) ? 'on' : ''}" data-org="${esc(p.id)}" type="button" ${!isOrganizer(p.id) && !hasAccepted(p) ? 'disabled title="Invitation pas encore acceptée"' : ''}>${isOrganizer(p.id) ? 'Organisateur ✓' : '+ Organisateur'}</button>` : isOrganizer(p.id) ? ' <span class="org-tag">Organisateur</span>' : ''}${dups[p.id] ? ` <span class="dup-flag" title="Ressemble à ${esc(dups[p.id].join(', '))}">Doublon ?</span>` : ''}${plStatus(p)}</b>${S.confirmDel === p.id
         ? `<span class="row"><button class="btn small" data-delp="${esc(p.id)}" type="button" style="background:var(--red)">Confirmer</button><button class="btn ghost small" data-canceldel type="button">Annuler</button></span>`
-        : `<span class="row" style="flex-wrap:nowrap;flex:none"><button class="btn ghost small" data-phone="${esc(p.id)}" type="button">${p.phone ? '☎ ' + esc(fmtPhone(p.phone)) : p.authEmail ? '☎ ••' + esc(p.phoneHint || '') : '+ Téléphone'}</button>${p.id === ownerId() || !isProprio() ? '' : `<button class="btn ghost small" data-askdel="${esc(p.id)}" type="button">Retirer</button>`}</span>`}</div>`).join(''); })() : '<p class="note">Aucun joueur pour l\'instant.</p>'}</div>
-      ${isProprio() && (S.retiredPl || []).length ? `<h3 class="acct-h">Retirés du groupe (${S.retiredPl.length})</h3><p class="note"><b>Banque : ${S.players.length + S.retiredPl.length} / ${BANQUE_MAX} joueurs</b> (groupe et retirés ; au-delà, les plus anciens retirés sont oubliés). Ils ne font plus partie du groupe : plus de notifications ni d’accès. Leur nom et leur cellulaire restent ici pour les remettre en un geste.</p>
+        : `<span class="row" style="flex-wrap:nowrap;flex:none"><button class="btn ghost small" data-phone="${esc(p.id)}" type="button">${p.phone ? '☎ ' + esc(fmtPhone(p.phone)) : p.authEmail ? '☎ ••' + esc(p.phoneHint || '') : '+ Téléphone'}</button>${p.id === ownerId() || !canOrganize() ? '' : `<button class="btn ghost small" data-askdel="${esc(p.id)}" type="button">Retirer</button>`}</span>`}</div>`).join(''); })() : '<p class="note">Aucun joueur pour l\'instant.</p>'}</div>
+      ${inviter ? '' : banqueHtml()}
+      ${isProprio() && (S.retiredPl || []).length ? `<h3 class="acct-h">Anciens joueurs (${S.retiredPl.length})</h3><p class="note"><b>Banque : ${S.players.length + S.retiredPl.length} / ${BANQUE_MAX} joueurs</b> (groupe et retirés ; au-delà, les plus anciens retirés sont oubliés). Ils ne font plus partie du groupe : plus de notifications ni d’accès. Leur nom et leur cellulaire restent ici pour les remettre en un geste.</p>
         <div class="list">${S.retiredPl.map((x, i) => `<div class="item pl-row retire-row"><div><b>${esc(x.name)}</b><span>${x.phone ? '☎ ' + esc(fmtPhone(x.phone)) + ' · ' : ''}retiré le ${new Date(x.retireLe).toLocaleDateString('fr-CA', { day: 'numeric', month: 'long' })}</span></div>
           <span class="row" style="flex-wrap:nowrap;flex:none"><button class="btn small" data-remettre="${i}" type="button">Remettre</button><button class="btn ghost small" data-oublier="${i}" type="button" aria-label="Enlever ${esc(x.name)} de la banque">✕</button></span></div>`).join('')}</div>` : ''}`;
   }
@@ -2717,13 +2736,29 @@
         if (near && S.confirmAdd !== n) { S.confirmAdd = n; return toast(`Ressemble à ${near.join(', ')}. Touchez Ajouter de nouveau pour confirmer.`); }
         S.confirmAdd = null;
         if (roomLeft() <= 0) return limitSheet();
-        try { const np = await Store.savePlayer(n, S.players.length); const ph = $('#newPhone').value.trim(); if (ph) await Store.setPhone(np, ph); S.players = await Store.listPlayers(); render(); if (ph) inviteText(n, ph, np.id); else setTimeout(() => $('#newPlayer') && $('#newPlayer').focus(), 50); }
+        if ((S.bank || S.players).length >= BANQUE_MAX) return toast(`La banque de joueurs est pleine (${BANQUE_MAX}).`);
+        try { const np = await Store.savePlayer(n, (S.bank || S.players).length); const ph = $('#newPhone').value.trim(); if (ph) await Store.setPhone(np, ph); S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); render(); if (ph) inviteText(n, ph, np.id); else setTimeout(() => $('#newPlayer') && $('#newPlayer').focus(), 50); }
         catch (e) { toast('Ajout impossible : ' + e.message); }
       };
       if ($('#addPlayer')) $('#addPlayer').onclick = add;
       const xf = $('#xlsFile'); if (xf) xf.onchange = async () => { const f = xf.files[0]; xf.value = ''; if (f) importPlayersFile(f); };
       if ($('#newPlayer')) $('#newPlayer').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); add(); } };
       v.querySelectorAll('[data-askdel]').forEach(b => b.onclick = () => { S.confirmDel = b.dataset.askdel; render(); });
+      if (canOrganize() && !S.bankAt) { S.bankAt = 1; Store.listBank().then(l => { S.bank = l; if (S.view === 'players') render(); }).catch(() => { }); }
+      v.querySelectorAll('[data-membre]').forEach(b => b.onclick = async () => {
+        if (roomLeft() <= 0) return limitSheet(S.players.length + 1);
+        b.disabled = true; const p = (S.bank || []).find(x => x.id === b.dataset.membre);
+        try { await Store.setMembre(b.dataset.membre, true); S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); toast(`${p ? p.name : 'Le joueur'} est dans le groupe.`); render(); }
+        catch (e) { b.disabled = false; toast('Impossible : ' + e.message); }
+      });
+      v.querySelectorAll('[data-bankdel]').forEach(b => b.onclick = async () => {
+        const p = (S.bank || []).find(x => x.id === b.dataset.bankdel); if (!p) return;
+        if (S.confirmBankDel !== p.id) { S.confirmBankDel = p.id; b.textContent = 'Enlever ?'; b.classList.add('danger-txt'); return; }
+        b.disabled = true;
+        try { await Store.deletePlayer(p.id, (S.bank || []).length); S.bank = await Store.listBank(); S.confirmBankDel = null; toast(`${p.name} est enlevé de la banque.`); render(); }
+        catch (e) { b.disabled = false; toast('Impossible : ' + e.message); }
+      });
+      v.querySelectorAll('[data-reinv]').forEach(b => b.onclick = () => { const p = (S.bank || []).find(x => x.id === b.dataset.reinv); if (p) inviteText(p.name, p.phone, p.id); });
       if (canOrganize() && !S.retiredPlAt) { S.retiredPlAt = 1; Store.retiredPlayers().then(l => { S.retiredPl = l; if (l.length && S.view === 'players') render(); }).catch(() => { }); }
       v.querySelectorAll('[data-remettre]').forEach(b => b.onclick = async () => {
         const x = S.retiredPl[+b.dataset.remettre]; if (!x) return;
@@ -2733,7 +2768,7 @@
           const np = await Store.savePlayer(x.name, S.players.length);
           if (x.phone && x.phone.length >= 10) { try { await Store.setPhone(np, x.phone); } catch (e) { } }
           S.retiredPl = S.retiredPl.filter(y => y !== x); await Store.setRetiredPlayers(S.retiredPl);
-          S.players = await Store.listPlayers(); toast(`${x.name} est de retour dans le groupe.`); render();
+          S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); toast(`${x.name} est de retour dans le groupe.`); render();
           if (x.phone) inviteText(x.name, x.phone, np && np.id);
         } catch (e) { b.disabled = false; toast('Impossible : ' + e.message); }
       });
@@ -2751,7 +2786,7 @@
           <div class="row"><button class="btn small" id="phSave" type="button">Enregistrer</button><button class="btn ghost small" data-close type="button">Annuler</button></div>`, sh => {
           sh.querySelector('[data-close]').onclick = closeSheet;
           sh.querySelector('#phSave').onclick = async () => {
-            try { const first = !pl.authEmail, ph = sh.querySelector('#phIn').value; await Store.setPhone(pl, ph); closeSheet(); S.players = await Store.listPlayers(); toast('Téléphone enregistré.'); render(); if (first) inviteText(pl.name, ph, pl.id); }
+            try { const first = !pl.authEmail, ph = sh.querySelector('#phIn').value; await Store.setPhone(pl, ph); closeSheet(); S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); toast('Téléphone enregistré.'); render(); if (first) inviteText(pl.name, ph, pl.id); }
             catch (e) { toast(e.message.includes('auth/') ? 'Impossible : vérifiez que Email/Password est activé dans Firebase.' : e.message); }
           };
           setTimeout(() => { const i = sh.querySelector('#phIn'); if (i) { i.focus(); i.select(); } }, 50);
@@ -2768,7 +2803,7 @@
             const nm = sh.querySelector('#rnIn').value.trim().replace(/\s+/g, ' ');
             if (!nm) return toast('Entrez un nom.');
             if (S.players.some(x => x.id !== pl.id && L.norm(x.name) === L.norm(nm))) return toast('Ce nom est déjà dans le groupe.');
-            try { const self = pl.id === meId(); await Store.renamePlayer(pl.id, nm); if (self) ls.set('pelland.me', nm); closeSheet(); S.players = await Store.listPlayers(); toast('Nom modifié.'); render(); }
+            try { const self = pl.id === meId(); await Store.renamePlayer(pl.id, nm); if (self) ls.set('pelland.me', nm); closeSheet(); S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); toast('Nom modifié.'); render(); }
             catch (e) { toast('Impossible : ' + e.message); }
           };
           setTimeout(() => { const i = sh.querySelector('#rnIn'); if (i) { i.focus(); i.select(); } }, 50);
@@ -2781,15 +2816,14 @@
       const bc = v.querySelector('[data-bulkcancel]'); if (bc) bc.onclick = () => { S.confirmBulk = false; render(); };
       const bd = v.querySelector('[data-bulkdel]'); if (bd) bd.onclick = async () => {
         const ids = (S.sel || []).slice(); let ok = 0;
-        for (const id of ids) { const p = S.players.find(x => x.id === id); try { await Store.deletePlayer(id, S.players.length - ok); ok++; try { await Store.keepInBank(p); } catch (e) { } } catch (e) { } }
-        S.retiredPl = await Store.retiredPlayers().catch(() => []);
-        S.players = await Store.listPlayers(); S.sel = []; S.confirmBulk = false; S.selMode = false;
+        for (const id of ids) { try { await Store.setMembre(id, false); ok++; } catch (e) { } }
+        S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); S.sel = []; S.confirmBulk = false; S.selMode = false;
         toast(ok === ids.length ? `${ok} joueur${ok > 1 ? 's' : ''} retiré${ok > 1 ? 's' : ''}.` : `${ok} sur ${ids.length} retirés : réessayez pour les autres.`); render();
       };
       v.querySelectorAll('[data-canceldel]').forEach(b => b.onclick = () => { S.confirmDel = null; render(); });
       v.querySelectorAll('[data-delp]').forEach(b => b.onclick = async () => {
         const p = S.players.find(x => x.id === b.dataset.delp);
-        try { await Store.deletePlayer(b.dataset.delp, S.players.length); try { await Store.keepInBank(p); } catch (e) { } S.players = await Store.listPlayers(); S.retiredPl = await Store.retiredPlayers().catch(() => []); S.confirmDel = null; toast(`${p ? p.name : 'Le joueur'} est retiré du groupe ; il reste dans la banque.`); render(); } catch (e) { toast('Retrait impossible : ' + e.message); }
+        try { await Store.setMembre(b.dataset.delp, false); S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); S.confirmDel = null; toast(`${p ? p.name : 'Le joueur'} est retiré du groupe ; il reste dans la banque.`); render(); } catch (e) { toast('Retrait impossible : ' + e.message); }
       });
     },
     home(v) {

@@ -53,7 +53,8 @@ service cloud.firestore {
     function ajoutCompte(g) {
       return exists(grp(g)) && 'nPlayers' in get(grp(g)).data
         && getAfter(grp(g)).data.nPlayers == get(grp(g)).data.nPlayers + 1
-        && getAfter(grp(g)).data.nPlayers <= maxJoueurs(get(grp(g)).data);
+        // banque de joueurs : 64 au plus (les membres du groupe, limités par le forfait, sont choisis dans l'app)
+        && getAfter(grp(g)).data.nPlayers <= 64;
     }
     // Un joueur retiré : le compteur descend de 1 dans la même écriture
     function retraitCompte(g) {
