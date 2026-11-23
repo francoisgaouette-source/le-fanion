@@ -159,6 +159,7 @@ L'APP
 - Handicap de parcours = index × slope ÷ 113 + (évaluation − normale), arrondi. Les coups vont d'abord aux trous les plus difficiles.
 - Plusieurs groupes : même compte, même mot de passe ; « Changer de groupe » sur l'accueil. Créer son propre groupe : « Créer mon groupe ».
 - Parrainage : le propriétaire partage son lien depuis l'accueil ; chaque groupe parrainé qui passe au forfait Groupe lui donne 5 $ de rabais sur sa prochaine saison (les rabais s'additionnent).
+- Installation obligatoire sur téléphone : ouverte dans le navigateur d'un cellulaire, Fanion affiche « Installez Fanion » et reste bloquée tant qu'elle n'est pas ouverte depuis son icône (iPhone : Safari → Partager → Sur l'écran d'accueil → Ajouter ; Android : Chrome → menu ⋮ → Installer l'application). Dans Messenger, Facebook ou un autre navigateur intégré, il faut d'abord ouvrir le lien dans Safari ou Chrome. Sur ordinateur, elle s'ouvre normalement.
 
 FORFAITS (par saison de 12 mois, pas d'abonnement automatique)
 - Gratuit : 1 groupe, jusqu'à 4 joueurs, tous les jeux.
