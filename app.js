@@ -737,6 +737,8 @@
   function curGroup() { return (S.groups || []).find(x => x.id === Store.gid) || { id: Store.gid, name: 'La gang à Pelland' }; }
   function groupName() { return curGroup().name; }
   const ownerId = () => curGroup().owner || null;
+  // Banques (joueurs, terrains, compétitions) : seul le propriétaire du groupe ajoute ou enlève
+  const isProprio = () => !ownerId() || (!!meId() && meId() === ownerId());
   const meId = () => ((S.players || []).find(p => L.norm(p.name) === L.norm(ls.get('pelland.me', '') || '')) || {}).id;
   const isOrganizer = id => !ownerId() || id === ownerId() || (curGroup().organizers || []).includes(id);
   // Qui peut organiser : le propriétaire et les organisateurs qu'il nomme (tout le monde tant qu'il n'y a pas de propriétaire)
@@ -1209,7 +1211,7 @@
     retourApi({ action: 'sondage', note: n, raison: raison || null, groupe: groupName() }).catch(() => { });
     if (raison) envoyerIdee({ type: n >= 9 ? 'aime' : n <= 6 ? 'probleme' : 'idee', texte: raison, source: 'sondage' }).catch(() => { });
     render();
-    if (n >= 9) openSheet(`<h3>Merci, ça fait vraiment plaisir !</h3><p>Vous connaissez un autre groupe de golf qui court après ses joueurs ? Envoyez-lui votre lien : c’est gratuit pour un quatuor${meId() === ownerId() ? ', et votre prochaine saison est offerte s’il passe au forfait Groupe' : ''}.</p>
+    if (n >= 9) openSheet(`<h3>Merci, ça fait vraiment plaisir !</h3><p>Vous connaissez un autre groupe de golf qui court après ses joueurs ? Envoyez-lui votre lien : c’est gratuit pour un quatuor${meId() === ownerId() ? ', et vous obtenez 5 $ de rabais sur votre prochaine saison s’il passe au forfait Groupe' : ''}.</p>
       <div class="sheet-actions"><button class="btn" data-refshare type="button">Partager mon lien</button><button class="btn ghost" data-close type="button">Plus tard</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; sh.querySelector('[data-refshare]').addEventListener('click', () => setTimeout(closeSheet, 300)); });
     else toast('Merci ! Votre réponse est bien reçue. L’équipe la lit.');
   }
@@ -1271,7 +1273,7 @@
     if (Store.needLogin || !meId() || meId() !== ownerId()) return '';
     const mine = (S.groups || []).filter(g => g.ref === Store.gid), paid = mine.filter(g => planOf(g).paid && g.id !== 'pelland').length;
     return `<section class="card referral"><h3>Parrainez un autre groupe</h3>
-      <p>Pour chaque groupe qui s’inscrit avec votre lien et passe au forfait Groupe, <b>votre prochaine saison est offerte</b>.</p>
+      <p>Pour chaque groupe qui s’inscrit avec votre lien et passe au forfait Groupe, <b>vous obtenez 5 $ de rabais sur votre prochaine saison</b>. Les rabais s’additionnent.</p>
       <div class="ref-stats"><span><b>${mine.length}</b> groupe${mine.length > 1 ? 's' : ''} inscrit${mine.length > 1 ? 's' : ''}</span><span><b>${paid}</b> au forfait Groupe</span></div>
       <div class="row"><button class="btn small" data-refshare type="button">Partager mon lien</button><button class="btn ghost small" data-refcopy type="button">Copier</button></div></section>`;
   }
@@ -2122,29 +2124,31 @@
     openSheet('', sh => draw(sh));
   }
   // Peut être retiré en lot : ni le propriétaire, ni soi-même
-  const canRemove = p => p.id !== ownerId() && p.id !== meId();
+  const canRemove = p => isProprio() && p.id !== ownerId() && p.id !== meId();
   function vPlayers() {
     const inviter = S.pMode === 'inviter';
     $('#barTitle').textContent = inviter ? 'Inviter des joueurs' : 'Banque de joueurs';
-    return `${inviter ? '<p class="note">Entrez le nom et le cellulaire : un texto d’invitation est prêt à envoyer. La personne crée ensuite son compte avec son cellulaire.</p>' : groupInfo()}<section class="card"><h2>${inviter ? 'Inviter un joueur' : 'Ajouter un joueur'}</h2>
+    // Seul le propriétaire du groupe ajoute des joueurs (nom, cellulaire, import Excel, remettre un retiré)
+    const proprio = isProprio();
+    return `${inviter && proprio ? '<p class="note">Entrez le nom et le cellulaire : un texto d’invitation est prêt à envoyer. La personne crée ensuite son compte avec son cellulaire.</p>' : ''}${!proprio ? `<p class="note">Seul le propriétaire du groupe${(S.players.find(p => p.id === ownerId()) || {}).name ? ' (' + esc(S.players.find(p => p.id === ownerId()).name) + ')' : ''} peut ajouter des joueurs.</p>` : `<section class="card"><h2>${inviter ? 'Inviter un joueur' : 'Ajouter un joueur'}</h2>
         ${roomLeft() <= 0 ? `<div class="full-box"><b>Le groupe est complet : ${S.players.length} / ${planOf().max} joueurs.</b>
           <p>${planOf().paid ? `Le forfait ${planOf().name} permet ${planOf().max} joueurs. Retirez un joueur pour en ajouter un autre, ou écrivez à bonjour@fanion.ai pour une ligue.` : `Le forfait Gratuit permet ${planOf().max} joueurs. Passez au forfait Groupe pour en inviter jusqu’à 16.`}</p>
           ${!planOf().paid ? (meId() && meId() === ownerId() ? `<a class="btn small" href="${buyUrl()}" target="_blank" rel="noopener">Passer au forfait Groupe</a>` : `<p class="note">Seul le propriétaire peut changer de forfait.</p>`) : ''}</div>`
         : `${!planOf().paid ? `<p class="note room-left">Forfait Gratuit : il reste <b>${roomLeft()}</b> place${roomLeft() > 1 ? 's' : ''} sur ${planOf().max}.</p>` : ''}        <input id="newPlayer" type="text" placeholder="Prénom et nom" autocapitalize="words">
         <div class="row" style="flex-wrap:nowrap"><input id="newPhone" type="tel" inputmode="tel" placeholder="Cellulaire" style="flex:1;min-width:0"><button class="btn small" id="addPlayer" type="button">Ajouter</button></div>
         ${canOrganize() ? `<div class="import-row"><label class="btn ghost small" for="xlsFile">Importer un fichier Excel</label><input id="xlsFile" type="file" accept=".xlsx,.xls,.csv,.ods" hidden><span class="note">Deux colonnes : le nom et le cellulaire.</span></div>` : ''}`}
-        </section>
+        </section>`}
       ${canOrganize() && S.notifs ? (() => { const sans = S.players.filter(p => hasAccepted(p) && p.id !== meId() && (S.notifs[p.id] || 'a_activer') !== 'actif'); const bl = sans.filter(p => ['bloque', 'non_supporte'].includes(S.notifs[p.id]));
         return sans.length ? `<div class="warn notif-warn"><b>${sans.length} joueur${sans.length > 1 ? 's ne reçoivent' : ' ne reçoit'} pas les notifications :</b> ${sans.map(p => esc(p.name) + ' (' + NOTIF[S.notifs[p.id] || 'a_activer'][1].replace(/^🔕 /, '').toLowerCase() + ')').join(', ')}.
           ${bl.length ? 'Ils ne verront ni les dates, ni les rappels, ni les parties : parlez-leur, ou retirez-les du groupe.' : 'Rappelez-leur d’ouvrir l’app et d’accepter les notifications.'}</div>` : ''; })() : ''}
       ${(() => { const dups = duplicateMap(S.players); const nd = Object.keys(dups).length; return nd ? `<div class="warn">${nd} joueurs semblent en double. Vérifiez les noms marqués « Doublon ? » et retirez celui de trop.</div>` : ''; })()}
       ${!ownerId() && S.players.length ? `<div class="warn">Le groupe n’a pas encore de propriétaire (la personne qui l’administre et paie l’abonnement). <button class="linkbtn" id="claimOwner" type="button">C’est moi</button></div>` : ''}
-      ${S.players.length ? `<div class="row pl-head"><p class="pl-count"><b>${S.players.length}</b> joueur${S.players.length > 1 ? 's' : ''} dans le groupe</p>${canOrganize() ? `<button class="btn ghost small" data-selmode type="button">${S.selMode ? 'Terminer' : 'Sélectionner'}</button>` : ''}</div>` : ''}
+      ${S.players.length ? `<div class="row pl-head"><p class="pl-count"><b>${S.players.length}</b> joueur${S.players.length > 1 ? 's' : ''} dans le groupe</p>${isProprio() ? `<button class="btn ghost small" data-selmode type="button">${S.selMode ? 'Terminer' : 'Sélectionner'}</button>` : ''}</div>` : ''}
       ${S.selMode ? (() => { const sel = S.sel || [], removable = S.players.filter(p => canRemove(p)); return `<div class="sel-bar"><button class="linkbtn" data-selall type="button">${sel.length === removable.length && removable.length ? 'Tout désélectionner' : 'Tout sélectionner'}</button><span class="note">${sel.length} sélectionné${sel.length > 1 ? 's' : ''}</span>${sel.length ? (S.confirmBulk ? `<button class="btn small" data-bulkdel type="button" style="background:var(--red)">Confirmer : retirer ${sel.length}</button><button class="btn ghost small" data-bulkcancel type="button">Annuler</button>` : `<button class="btn small" data-bulkask type="button" style="background:var(--red)">Retirer (${sel.length})</button>`) : ''}</div>`; })() : ''}
       <div class="list">${S.players.length ? (() => { const dups = duplicateMap(S.players); return S.players.map((p, n) => S.selMode ? `<label class="item pl-row sel-row ${dups[p.id] ? 'dup' : ''}">${canRemove(p) ? `<input type="checkbox" data-selp="${esc(p.id)}" ${(S.sel || []).includes(p.id) ? 'checked' : ''}>` : '<span class="sel-lock" title="Ne peut pas être retiré">—</span>'}<b><span class="pl-n">${n + 1}.</span> ${esc(p.name)}${p.id === ownerId() ? ' <span class="owner-tag">Propriétaire</span>' : ''}${p.id === meId() ? ' <span class="note">(vous)</span>' : ''}</b></label>` : `<div class="item pl-row ${dups[p.id] ? 'dup' : ''}"><b><span class="pl-n">${n + 1}.</span> ${canOrganize() || p.id === meId() ? `<button class="name-btn" data-rename="${esc(p.id)}" type="button">${esc(p.name)}</button>` : esc(p.name)}${p.id === ownerId() ? ' <span class="owner-tag">Propriétaire</span>' : !ownerId() ? '' : meId() === ownerId() ? ` <button class="role-chip ${isOrganizer(p.id) ? 'on' : ''}" data-org="${esc(p.id)}" type="button" ${!isOrganizer(p.id) && !hasAccepted(p) ? 'disabled title="Invitation pas encore acceptée"' : ''}>${isOrganizer(p.id) ? 'Organisateur ✓' : '+ Organisateur'}</button>` : isOrganizer(p.id) ? ' <span class="org-tag">Organisateur</span>' : ''}${dups[p.id] ? ` <span class="dup-flag" title="Ressemble à ${esc(dups[p.id].join(', '))}">Doublon ?</span>` : ''}${plStatus(p)}</b>${S.confirmDel === p.id
         ? `<span class="row"><button class="btn small" data-delp="${esc(p.id)}" type="button" style="background:var(--red)">Confirmer</button><button class="btn ghost small" data-canceldel type="button">Annuler</button></span>`
-        : `<span class="row" style="flex-wrap:nowrap;flex:none"><button class="btn ghost small" data-phone="${esc(p.id)}" type="button">${p.phone ? '☎ ' + esc(fmtPhone(p.phone)) : p.authEmail ? '☎ ••' + esc(p.phoneHint || '') : '+ Téléphone'}</button>${p.id === ownerId() ? '' : `<button class="btn ghost small" data-askdel="${esc(p.id)}" type="button">Retirer</button>`}</span>`}</div>`).join(''); })() : '<p class="note">Aucun joueur pour l\'instant.</p>'}</div>
-      ${canOrganize() && (S.retiredPl || []).length ? `<h3 class="acct-h">Retirés du groupe (${S.retiredPl.length})</h3><p class="note"><b>Banque : ${S.players.length + S.retiredPl.length} / ${BANQUE_MAX} joueurs</b> (groupe et retirés ; au-delà, les plus anciens retirés sont oubliés). Ils ne font plus partie du groupe : plus de notifications ni d’accès. Leur nom et leur cellulaire restent ici pour les remettre en un geste.</p>
+        : `<span class="row" style="flex-wrap:nowrap;flex:none"><button class="btn ghost small" data-phone="${esc(p.id)}" type="button">${p.phone ? '☎ ' + esc(fmtPhone(p.phone)) : p.authEmail ? '☎ ••' + esc(p.phoneHint || '') : '+ Téléphone'}</button>${p.id === ownerId() || !isProprio() ? '' : `<button class="btn ghost small" data-askdel="${esc(p.id)}" type="button">Retirer</button>`}</span>`}</div>`).join(''); })() : '<p class="note">Aucun joueur pour l\'instant.</p>'}</div>
+      ${isProprio() && (S.retiredPl || []).length ? `<h3 class="acct-h">Retirés du groupe (${S.retiredPl.length})</h3><p class="note"><b>Banque : ${S.players.length + S.retiredPl.length} / ${BANQUE_MAX} joueurs</b> (groupe et retirés ; au-delà, les plus anciens retirés sont oubliés). Ils ne font plus partie du groupe : plus de notifications ni d’accès. Leur nom et leur cellulaire restent ici pour les remettre en un geste.</p>
         <div class="list">${S.retiredPl.map((x, i) => `<div class="item pl-row retire-row"><div><b>${esc(x.name)}</b><span>${x.phone ? '☎ ' + esc(fmtPhone(x.phone)) + ' · ' : ''}retiré le ${new Date(x.retireLe).toLocaleDateString('fr-CA', { day: 'numeric', month: 'long' })}</span></div>
           <span class="row" style="flex-wrap:nowrap;flex:none"><button class="btn small" data-remettre="${i}" type="button">Remettre</button><button class="btn ghost small" data-oublier="${i}" type="button" aria-label="Enlever ${esc(x.name)} de la banque">✕</button></span></div>`).join('')}</div>` : ''}`;
   }
@@ -2191,7 +2195,7 @@
     const nAtt = aApprouver.filter(p => p.statut === 'propose').length;
     return `<section class="card terr-etape"><h3><span class="terr-n">1</span> Terrain à ajouter</h3>
         <p class="note">Léo cherche les clubs de votre région sur le web et prépare la carte de pointage ; vous pouvez aussi photographier la carte ou l’entrer à la main.</p>
-        <button class="btn" data-addcourse type="button">Ajouter un terrain</button></section>
+        ${isProprio() ? '<button class="btn" data-addcourse type="button">Ajouter un terrain</button>' : '<p class="note"><b>Seul le propriétaire du groupe peut ajouter ou effacer un terrain.</b></p>'}</section>
       <section class="card terr-etape${nAtt && P.admin ? ' approve-card' : ''}"><h3><span class="terr-n">2</span> Terrains à approuver${nAtt ? ' (' + nAtt + ')' : ''}</h3>
         <p class="note">${P.admin ? 'Vérifiez chaque terrain avec sa carte de pointage, puis approuvez-le ou effacez-le.' : 'Chaque nouveau terrain est vérifié par l’équipe Fanion, qui l’approuve ou l’efface.'}</p>
         ${aApprouver.length ? `<div class="list">${aApprouver.map(ligneProp).join('')}</div>` : '<p class="note vide">Aucun terrain en attente.</p>'}</section>
@@ -2199,9 +2203,9 @@
         <p class="note">Ceux marqués « Catalogue Québec » viennent de cartes publiques : vérifiez-les avec la carte du club et corrigez au besoin. « Effacer » enlève le terrain de la banque de votre groupe ; les parties jouées le gardent.</p>
         <div class="list">${S.courses.map(c => `<div class="course-row"><button class="item" data-edit="${esc(c.id)}"><b>${esc(c.name)}</b><span>${c.sim ? 'Simulateur · ' : ''}${c.catalog ? 'Catalogue Québec · ' : ''}${c.source === 'web' ? 'Trouvé sur le web · ' : ''}Normale ${L.teePar(c, c.tees[0])} · ${c.tees.length} tertres${c.city ? ' · ' + esc(c.city) : ''}</span></button>
         ${S.confirmDelCourse === c.id ? `<div class="row del-confirm"><span class="note">Effacer « ${esc(c.name)} » ?</span><button class="btn small" data-delcourse-ok="${esc(c.id)}" type="button" style="background:var(--red)">Effacer</button><button class="btn ghost small" data-delcourse-no type="button">Annuler</button></div>`
-          : `<button class="btn ghost small danger-txt course-del" data-delcourse="${esc(c.id)}" type="button" aria-label="Effacer ${esc(c.name)}">Effacer</button>`}</div>`).join('')}</div></section>
+          : isProprio() ? `<button class="btn ghost small danger-txt course-del" data-delcourse="${esc(c.id)}" type="button" aria-label="Effacer ${esc(c.name)}">Effacer</button>` : ''}</div>`).join('')}</div></section>
       ${(Store.retired || []).length ? `<section class="card"><h3>Terrains effacés</h3><p class="note">Ils n’apparaissent plus dans la banque ni dans Nouvelle partie. Les parties déjà jouées gardent leur terrain.</p>
-        <div class="list">${Store.retired.map(c => `<div class="item"><b>${esc(c.name)}</b><button class="btn ghost small" data-unretire="${esc(c.id)}" type="button">Remettre</button></div>`).join('')}</div></section>` : ''}`;
+        <div class="list">${Store.retired.map(c => `<div class="item"><b>${esc(c.name)}</b>${isProprio() ? `<button class="btn ghost small" data-unretire="${esc(c.id)}" type="button">Remettre</button>` : ''}</div>`).join('')}</div></section>` : ''}`;
   }
   // ---------------- Terrains trouvés sur le web : région → clubs → carte préparée → révision et approbation ----------------
   const TERRAINS_API = 'https://fanion.ai/api/terrains';
@@ -3817,10 +3821,10 @@
       <div class="jeux">${COMP_INFO.map(x => `<details class="card jeu"><summary><b>${esc(x.name)}${x.ready ? '' : ' <span class="soon-tag">Bientôt</span>'}</b><span>${esc(x.who)}</span></summary>
         <h3>Règles</h3><ul>${x.rules.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
         <h3>Le classement</h3><ul>${x.score.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
-        ${x.ready && canOrganize() ? `<button class="btn small" data-compnew="${x.f}" type="button">Créer dans ce format</button>` : ''}</details>`).join('')}</div>
+        ${x.ready && isProprio() ? `<button class="btn small" data-compnew="${x.f}" type="button">Créer dans ce format</button>` : ''}</details>`).join('')}</div>
       <h2 class="jeux-h">Compétitions du groupe</h2>
       <div class="list">${S.compList.map(compItem).join('') || '<p class="note">Aucune compétition pour l’instant.</p>'}</div>
-      ${canOrganize() ? '<button class="btn" data-compnew="match" type="button">Nouvelle compétition</button>' : ''}
+      ${isProprio() ? '<button class="btn" data-compnew="match" type="button">Nouvelle compétition</button>' : canOrganize() ? '<p class="note">Seul le propriétaire du groupe peut créer ou effacer une compétition.</p>' : ''}
       <h2 class="jeux-h">Ordre du mérite ${year}</h2>
       <p class="note">Points de saison selon la position dans chaque compétition : 1re place 100, 2e 80, 3e 65, 4e 55, 5e 50, puis en baissant. Coupe Ryder : 60 par joueur du camp gagnant, 30 pour l’autre camp. Tableau : champion 100, finaliste 80, demi-finale 65, quart 50. Seules les compétitions terminées comptent.</p>
       ${merit.length ? `<section class="card"><table class="cm-lb merit"><thead><tr><th>Pos.</th><th>Joueur</th><th>Comp.</th><th>Pts</th></tr></thead><tbody>${merit.map(x => `<tr class="${x.pos === 1 ? 'lead' : ''}"><td>${x.pos}</td><td>${esc(x.name)}</td><td>${x.n}</td><td class="tp">${x.pts}</td></tr>`).join('')}</tbody></table></section>` : `<p class="note">Aucun point cette saison : les points apparaissent dès qu’une compétition de ${year} est terminée.</p>`}
@@ -3945,7 +3949,7 @@
   }
   const tabsHtml = (tab, list) => `<div class="seg cm-tabs">${list.map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-ctab="${k}" type="button">${l}</button>`).join('')}</div>`;
   const outilsHtml = () => `<div class="row cm-outils"><button class="btn ghost small" data-tv type="button">📺 Écran télé</button><button class="btn ghost small" data-print="cartes" type="button">🖨 Cartes de pointage</button><button class="btn ghost small" data-print="affiches" type="button">🖨 Affiches de voiturette</button></div>`;
-  const orgHtml = () => canOrganize() ? `<div class="row"><button class="btn ghost small" data-cedit type="button">Modifier</button>${S.confirmDelComp ? '<button class="btn small" data-cdelok type="button" style="background:var(--red)">Confirmer l’effacement</button>' : '<button class="btn ghost small" data-cdel type="button">Effacer la compétition</button>'}</div>` : '';
+  const orgHtml = () => canOrganize() ? `<div class="row"><button class="btn ghost small" data-cedit type="button">Modifier</button>${!isProprio() ? '' : S.confirmDelComp ? '<button class="btn small" data-cdelok type="button" style="background:var(--red)">Confirmer l’effacement</button>' : '<button class="btn ghost small" data-cdel type="button">Effacer la compétition</button>'}</div>` : '';
   function boardHtml(c, r) {
     const fl = compFlights(c, r), stb = eff(c) === 'stableford', multi = nRounds(c) > 1 && r == null;
     return fl.map(f => `<section class="card cm-board"><h3>${esc(f.name)}</h3>

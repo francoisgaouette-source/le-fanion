@@ -29,6 +29,10 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/auth/$(request.auth.uid)).data;
     }
     // Le membre connecté fait partie du groupe g
+    // Le membre connecté est le propriétaire du groupe g (seul à ajouter ou enlever dans les banques)
+    function proprio(g) {
+      return get(/databases/$(database)/documents/players/$('_groupe_' + g)).data.owner == lien().playerId;
+    }
     function dansGroupe(g) {
       return membre() && exists(/databases/$(database)/documents/auth/$(request.auth.uid)) && lien().groupId == g;
     }
@@ -73,7 +77,9 @@ service cloud.firestore {
 
       // Fiche d'un joueur (identifiant sans « _ »)
       allow create: if membre() && !id.matches('_.*') && (
-          (dansGroupe(request.resource.data.groupId) && ajoutCompte(request.resource.data.groupId))
+          // seul le propriétaire du groupe ajoute des joueurs
+          (dansGroupe(request.resource.data.groupId) && ajoutCompte(request.resource.data.groupId)
+            && proprio(request.resource.data.groupId))
           // fondateur d'un nouveau groupe : c'est lui le propriétaire et la fiche porte son courriel
           || (get(/databases/$(database)/documents/players/$('_groupe_' + request.resource.data.groupId)).data.owner == id
               && courriel() != '' && request.resource.data.authEmail == courriel()));
@@ -82,7 +88,7 @@ service cloud.firestore {
           // premier membre d'un ancien groupe : il inscrit son propre courriel sur sa fiche
           || (resource.data.get('authEmail', '') == '' && courriel() != '' && request.resource.data.authEmail == courriel()
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['authEmail', 'phoneHint'])));
-      allow delete: if membre() && !id.matches('_.*') && dansGroupe(groupeDe(resource.data)) && retraitCompte(groupeDe(resource.data));
+      allow delete: if membre() && !id.matches('_.*') && dansGroupe(groupeDe(resource.data)) && proprio(groupeDe(resource.data)) && retraitCompte(groupeDe(resource.data));
 
       // Groupe : _groupe_<g>
       // Le forfait (plan, paidUntil) est donné par Fanion après le paiement : jamais modifiable depuis l'app
@@ -197,9 +203,9 @@ service cloud.firestore {
     // ---------- Compétitions (membre-membre) : seulement le groupe ----------
     match /comps/{id} {
       allow get, list: if dansGroupe(resource.data.groupId);
-      allow create: if dansGroupe(request.resource.data.groupId);
+      allow create: if dansGroupe(request.resource.data.groupId) && proprio(request.resource.data.groupId);
       allow update: if dansGroupe(resource.data.groupId) && request.resource.data.groupId == resource.data.groupId;
-      allow delete: if dansGroupe(resource.data.groupId);
+      allow delete: if dansGroupe(resource.data.groupId) && proprio(resource.data.groupId);
     }
 
     // ---------- Abonnements aux notifications : subs/<uid>_<groupe> ----------
