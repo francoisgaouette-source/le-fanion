@@ -741,7 +741,7 @@
     leoApres();
   }
 
-  const APP = 'Fanion';
+  const APP = 'le fanion.ai';
   function curGroup() { return (S.groups || []).find(x => x.id === Store.gid) || { id: Store.gid, name: 'La gang à Pelland' }; }
   function groupName() { return curGroup().name; }
   const ownerId = () => curGroup().owner || null;
@@ -821,7 +821,7 @@
         <span class="wl-strap"></span>
         <div class="wl-card">
           <span class="wl-hole"></span>
-          <div class="wl-brand"><svg width="16" height="19" viewBox="0 0 26 30"><path d="M5 2v26" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="M6 3l15 5.5L6 14z" fill="#e3a90c"/></svg>Fanion</div>
+          <div class="wl-brand"><svg width="16" height="19" viewBox="0 0 26 30"><path d="M5 2v26" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="M6 3l15 5.5L6 14z" fill="#e3a90c"/></svg>le fanion.ai</div>
           <div class="wl-name">${esc(me.name)}</div>
           <div class="wl-grp">${esc(groupName())}</div>
           <div class="wl-role">Participant</div>
@@ -999,9 +999,9 @@
     e.preventDefault();
     if (t.hasAttribute('data-onbhide')) { ls.set('pelland.onb.hide.' + Store.gid, 1); return render(); }
     const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
-    openSheet(`<h3>Fanion sur votre écran d’accueil</h3>
-      <ol class="info-list">${ios ? '<li>Ouvrez Fanion dans <b>Safari</b>.</li><li>Touchez le bouton <b>Partager</b> (le carré avec une flèche vers le haut).</li><li>Choisissez <b>Sur l’écran d’accueil</b>, puis <b>Ajouter</b>.</li>'
-        : '<li>Ouvrez Fanion dans <b>Chrome</b>.</li><li>Touchez le menu <b>⋮</b> en haut à droite.</li><li>Choisissez <b>Ajouter à l’écran d’accueil</b> (ou <b>Installer l’application</b>).</li>'}</ol>
+    openSheet(`<h3>Le fanion.ai sur votre écran d’accueil</h3>
+      <ol class="info-list">${ios ? '<li>Ouvrez le fanion.ai dans <b>Safari</b>.</li><li>Touchez le bouton <b>Partager</b> (le carré avec une flèche vers le haut).</li><li>Choisissez <b>Sur l’écran d’accueil</b>, puis <b>Ajouter</b>.</li>'
+        : '<li>Ouvrez le fanion.ai dans <b>Chrome</b>.</li><li>Touchez le menu <b>⋮</b> en haut à droite.</li><li>Choisissez <b>Ajouter à l’écran d’accueil</b> (ou <b>Installer l’application</b>).</li>'}</ol>
       <p class="note">L’icône du fanion apparaît avec vos autres apps. Partagez ces étapes avec vos joueurs.</p>
       <div class="sheet-actions"><button class="btn" data-ecranok type="button">C’est fait</button><button class="btn ghost" data-close type="button">Plus tard</button></div>`, sh => {
       sh.querySelector('[data-close]').onclick = closeSheet;
@@ -1121,7 +1121,7 @@
     if (st.given || (st.later && Date.now() - st.later < 30 * 864e5)) return '';
     if (where === 'home' && !st.eligible) return '';
     return `<section class="card avis-card"><div class="av-stars" aria-hidden="true">★★★★★</div>
-      <h3>Fanion vous plaît ?</h3><p>Dites-le en une phrase. Avec votre accord, votre commentaire pourra paraître sur fanion.ai pour aider d’autres groupes à se lancer.</p>
+      <h3>Le fanion.ai vous plaît ?</h3><p>Dites-le en une phrase. Avec votre accord, votre commentaire pourra paraître sur fanion.ai pour aider d’autres groupes à se lancer.</p>
       <div class="row"><button class="btn small" data-avis type="button">Donner mon avis</button><button class="btn ghost small" data-avislater type="button">Plus tard</button></div></section>`;
   }
   const shortName = n => { const w = String(n || '').trim().split(/\s+/); return (w[0] || '') + (w.length > 1 ? ' ' + w[w.length - 1][0].toUpperCase() + '.' : ''); };
@@ -1129,11 +1129,11 @@
     const me = (S.players || []).find(p => p.id === meId()) || { name: ls.get('pelland.me', '') };
     const old = await Store.getAvis() || {};
     let stars = old.stars || 0;
-    openSheet(`<div class="avis-sheet"><h3>Votre avis sur Fanion</h3>
+    openSheet(`<div class="avis-sheet"><h3>Votre avis sur le fanion.ai</h3>
       <div class="av-pick" role="radiogroup" aria-label="Note sur 5">${[1, 2, 3, 4, 5].map(n => `<button type="button" role="radio" data-star="${n}" aria-label="${n} étoile${n > 1 ? 's' : ''}">★</button>`).join('')}</div>
-      <label class="fld">En une phrase, qu’est-ce que Fanion change pour votre groupe ?<textarea id="avText" maxlength="280" rows="3" placeholder="ex. Plus besoin de 40 textos pour former les quatuors.">${esc(old.text || '')}</textarea></label>
+      <label class="fld">En une phrase, qu’est-ce que le fanion.ai change pour votre groupe ?<textarea id="avText" maxlength="280" rows="3" placeholder="ex. Plus besoin de 40 textos pour former les quatuors.">${esc(old.text || '')}</textarea></label>
       <p class="note" id="avCount"></p>
-      <label class="av-ok"><input type="checkbox" id="avOk" ${old.ok === false ? '' : 'checked'}><span>J’accepte que Fanion publie ce commentaire sur fanion.ai, signé <b>${esc(shortName(me.name))}</b>, ${esc(groupName())}.</span></label>
+      <label class="av-ok"><input type="checkbox" id="avOk" ${old.ok === false ? '' : 'checked'}><span>J’accepte que le fanion.ai publie ce commentaire sur fanion.ai, signé <b>${esc(shortName(me.name))}</b>, ${esc(groupName())}.</span></label>
       <div class="sheet-actions"><button class="btn" id="avSend" type="button">Envoyer</button><button class="btn ghost" data-close type="button">Annuler</button></div></div>`, sh => {
       const paint = () => { sh.querySelectorAll('[data-star]').forEach(b => { const on = +b.dataset.star <= stars; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(+b.dataset.star === stars)); }); };
       const ta = sh.querySelector('#avText'), cnt = () => { sh.querySelector('#avCount').textContent = `${ta.value.length} / 280`; };
@@ -1206,7 +1206,7 @@
       return `<section class="card retour-carte"><b>✨ Nouveau : ${esc(n.titre)}</b>${n.texte ? `<p>${esc(n.texte)}</p>` : ''}
         <div class="row"><button class="btn small" type="button" data-retour="vu-nv" data-t="${new Date(n.cree).getTime()}">Super</button><button class="btn ghost small" type="button" data-idee>Proposer une idée</button></div></section>`;
     }
-    if (!R.sondage) return `<section class="card retour-carte"><b>Recommanderiez-vous Fanion à un ami golfeur ?</b>
+    if (!R.sondage) return `<section class="card retour-carte"><b>Recommanderiez-vous le fanion.ai à un ami golfeur ?</b>
         <p class="note">0 = pas du tout, 10 = sans hésiter. Une seule question.</p>
         <div class="nps" role="group" aria-label="Note de 0 à 10">${Array.from({ length: 11 }, (_, n) => `<button type="button" class="nps-n" data-note="${n}">${n}</button>`).join('')}</div>
         <div class="row"><button class="linkbtn" type="button" data-retour="sondage-plus-tard">Plus tard</button></div></section>`;
@@ -1238,7 +1238,7 @@
         <p>${esc(i.texte)}</p>${i.reponse ? `<p class="idee-rep"><b>Réponse de l’équipe :</b> ${esc(i.reponse)}</p>` : ''}</li>`;
     }).join('')}</ul>` : '';
     openSheet(`<h3>Une idée ? Un pépin ?</h3>
-      <p class="note">Ça va directement à l’équipe de Fanion. On lit tout, et la réponse s’affiche ici, dans l’app.</p>
+      <p class="note">Ça va directement à l’équipe du fanion.ai. On lit tout, et la réponse s’affiche ici, dans l’app.</p>
       <div class="seg idee-types">${Object.entries(TYPE_IDEE).map(([k, [ic, mot]]) => `<button type="button" data-itype="${k}" aria-pressed="${k === type}"><b>${ic}</b><small>${esc(mot)}</small></button>`).join('')}</div>
       <label class="fld"><span class="sr-only">Votre message</span><textarea id="ideeTexte" rows="4" maxlength="2000" placeholder="${esc(PLACE_IDEE[type])}"></textarea></label>
       <label class="av-ok"><input type="checkbox" id="ideeContact"><span>L’équipe peut me texter pour en parler.</span></label>
@@ -1435,7 +1435,7 @@
         <div class="seg"><button type="button" data-web="1" aria-pressed="${st.web === true}"><b>Oui</b><small>Je donne l’adresse</small></button><button type="button" data-web="0" aria-pressed="${st.web === false}"><b>Non</b><small>Je l’explique</small></button></div>
         ${st.web === true ? `<label>Où ? Adresse de la page (lien)<input id="ngUrl" type="url" inputmode="url" placeholder="https://…" value="${esc(st.url || '')}"></label>` : ''}
         ${st.web === false ? `<label>Expliquez le jeu que vous voulez créer<textarea id="ngTxt" rows="7" placeholder="Combien de joueurs ? En équipes ou chacun pour soi ? Comment on gagne des points à chaque trou ? Comment l’argent se compte ?">${esc(st.txt || '')}</textarea></label>` : ''}
-        ${st.web != null ? '<p class="note">Nous ajoutons le jeu à Fanion et vous avisons dès qu’il est prêt.</p>' : ''}
+        ${st.web != null ? '<p class="note">Nous ajoutons le jeu au fanion.ai et vous avisons dès qu’il est prêt.</p>' : ''}
         <div class="row"><button class="btn small" id="ngSend" type="button" ${st.web == null ? 'disabled' : ''}>Envoyer</button><button class="btn ghost small" data-close type="button">Annuler</button></div>
         <p class="note" style="margin-top:10px">Vous savez déjà comment le compter ? <button class="linkbtn" id="ngSelf" type="button">Le créer moi-même</button></p>`;
       const keep = () => { const n = sh.querySelector('#ngName'), u = sh.querySelector('#ngUrl'), t = sh.querySelector('#ngTxt'); if (n) st.name = n.value; if (u) st.url = u.value; if (t) st.txt = t.value; };
@@ -1449,9 +1449,9 @@
         if (!st.web && String(st.txt || '').trim().length < 20) return toast('Expliquez le jeu en quelques phrases.');
         const req = { name: st.name.trim(), url: st.web ? st.url.trim() : '', text: st.web ? '' : st.txt.trim(), group: groupName(), groupId: Store.gid, by: ls.get('pelland.me', '') || '', at: Date.now() };
         try { await Store.saveGameRequest(req); } catch (e) { }
-        const body = `Nouveau jeu demandé pour Fanion\n\nGroupe : ${req.group}\nDemandé par : ${req.by}\nJeu : ${req.name}\n` + (req.url ? `Règles sur le web : ${req.url}\n` : `Explication :\n${req.text}\n`);
+        const body = `Nouveau jeu demandé pour le fanion.ai\n\nGroupe : ${req.group}\nDemandé par : ${req.by}\nJeu : ${req.name}\n` + (req.url ? `Règles sur le web : ${req.url}\n` : `Explication :\n${req.text}\n`);
         closeSheet(); toast('Demande envoyée. Merci !');
-        location.href = 'mailto:bonjour@fanion.ai?subject=' + encodeURIComponent('Fanion – Ajouter un jeu : ' + req.name) + '&body=' + encodeURIComponent(body);
+        location.href = 'mailto:bonjour@fanion.ai?subject=' + encodeURIComponent('le fanion.ai – Ajouter un jeu : ' + req.name) + '&body=' + encodeURIComponent(body);
       };
     };
     openSheet('', sh => draw(sh));
@@ -2216,7 +2216,7 @@
         <p class="note">Léo cherche les clubs de votre région sur le web et prépare la carte de pointage ; vous pouvez aussi photographier la carte ou l’entrer à la main.</p>
         ${isProprio() ? '<button class="btn" data-addcourse type="button">Ajouter un terrain</button>' : '<p class="note"><b>Seul le propriétaire du groupe peut ajouter ou effacer un terrain.</b></p>'}</section>
       <section class="card terr-etape${nAtt && P.admin ? ' approve-card' : ''}"><h3><span class="terr-n">2</span> Terrains à approuver${nAtt ? ' (' + nAtt + ')' : ''}</h3>
-        <p class="note">${P.admin ? 'Vérifiez chaque terrain avec sa carte de pointage, puis approuvez-le ou effacez-le.' : 'Chaque nouveau terrain est vérifié par l’équipe Fanion, qui l’approuve ou l’efface.'}</p>
+        <p class="note">${P.admin ? 'Vérifiez chaque terrain avec sa carte de pointage, puis approuvez-le ou effacez-le.' : 'Chaque nouveau terrain est vérifié par l’équipe du fanion.ai, qui l’approuve ou l’efface.'}</p>
         ${aApprouver.length ? `<div class="list">${aApprouver.map(ligneProp).join('')}</div>` : '<p class="note vide">Aucun terrain en attente.</p>'}</section>
       <section class="card terr-etape"><h3><span class="terr-n">3</span> Terrains disponibles (${S.courses.length})</h3>
         <p class="note">Ceux marqués « Catalogue Québec » viennent de cartes publiques : vérifiez-les avec la carte du club et corrigez au besoin. « Effacer » enlève le terrain de la banque de votre groupe ; les parties jouées le gardent.</p>
@@ -2475,8 +2475,8 @@
       </section>
       ${prop || (w && admin) ? `<div class="row web-actions"><button class="btn" id="saveCourse" type="button">Approuver et ajouter à la banque</button><button class="btn ghost danger-txt" id="refuseCourse" type="button">${prop ? 'Effacer' : 'Refuser'}</button></div>`
         : w ? `<div class="row web-actions"><button class="btn" id="saveCourse" type="button">Envoyer pour approbation</button><button class="btn ghost danger-txt" id="refuseCourse" type="button">Refuser</button></div>
-          <p class="note">L’équipe Fanion vérifie chaque nouveau terrain avant de l’ajouter à la banque. Vous le verrez dans Terrains dès qu’il est approuvé.</p>`
-        : !c.id && !admin ? `<button class="btn" id="saveCourse" type="button">Envoyer pour approbation</button><p class="note">L’équipe Fanion vérifie chaque nouveau terrain avant de l’ajouter à la banque.</p>`
+          <p class="note">L’équipe du fanion.ai vérifie chaque nouveau terrain avant de l’ajouter à la banque. Vous le verrez dans Terrains dès qu’il est approuvé.</p>`
+        : !c.id && !admin ? `<button class="btn" id="saveCourse" type="button">Envoyer pour approbation</button><p class="note">L’équipe du fanion.ai vérifie chaque nouveau terrain avant de l’ajouter à la banque.</p>`
         : `<button class="btn" id="saveCourse" type="button">Enregistrer le terrain</button>`}
       ${!prop && c.id && S.courses.some(x => x.id === c.id) ? `<section class="card verif-card"><h3>Carte à jour ?</h3><p class="note">${derniereVerif(c) ? 'Dernière vérification : ' + new Date(derniereVerif(c)).toLocaleDateString('fr-CA', { day: 'numeric', month: 'long', year: 'numeric' }) + '.' : 'Jamais vérifiée sur le web.'} Léo revérifie chaque terrain environ une fois par saison ; si la carte du club a changé, la mise à jour passe par l’approbation.</p>
         <button class="btn ghost small" id="verifCarte" type="button">🔄 Vérifier maintenant</button><div id="verifEtat" class="note"></div></section>` : ''}
@@ -4360,7 +4360,7 @@
     if (!install && !Push.supported()) return '';
     return `<section class="card push-card"><span class="push-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 3a6 6 0 0 0-6 6v3.6L4.3 15.4A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6z" fill="currentColor"/><path d="M9.5 19a2.5 2.5 0 0 0 5 0" fill="currentColor"/></svg></span>
       <div><h3>Activez les notifications du groupe</h3><p>Elles sont obligatoires pour les membres : nouvelles dates, rappels, début des parties et résultats. Elles restent actives tant que vous êtes dans le groupe.</p>
-      ${bloque ? '<p class="note"><b>Elles sont bloquées sur ce téléphone.</b> Permettez-les dans les réglages : iPhone, Réglages → Notifications → Fanion ; Android, appui long sur l’icône de Fanion → Infos sur l’appli → Notifications. Puis rouvrez l’app.</p>'
+      ${bloque ? '<p class="note"><b>Elles sont bloquées sur ce téléphone.</b> Permettez-les dans les réglages : iPhone, Réglages → Notifications → le fanion.ai ; Android, appui long sur l’icône du fanion.ai → Infos sur l’appli → Notifications. Puis rouvrez l’app.</p>'
         : `<div class="row">${install ? '<button class="btn small" data-onbact="ecran" type="button">Ajouter l’app à l’écran d’accueil</button>' : '<button class="btn small" data-pushon type="button">Activer les notifications</button>'}</div>`}
       ${install ? '<p class="note">Sur iPhone, les notifications fonctionnent une fois l’app ajoutée à l’écran d’accueil. Ouvrez-la ensuite par son icône.</p>' : ''}</div></section>`;
   }
@@ -4420,7 +4420,7 @@
   function caddieMail() {
     const conv = (S.caddie || []).slice(1).map(m => (m.role === 'user' ? 'Moi : ' : 'Léo : ') + m.content.replace(/\[\[ecran:[a-z]+\]\]/g, '')).join('\n\n');
     const body = `Groupe : ${groupName()}\nJoueur : ${ls.get('pelland.me', '') || ''}\n\n${conv ? 'Ma conversation avec Léo, le caddie :\n\n' + conv + '\n\n' : ''}Ma question :\n`;
-    return 'mailto:bonjour@fanion.ai?subject=' + encodeURIComponent('Fanion – question') + '&body=' + encodeURIComponent(body.slice(0, 1800));
+    return 'mailto:bonjour@fanion.ai?subject=' + encodeURIComponent('le fanion.ai – question') + '&body=' + encodeURIComponent(body.slice(0, 1800));
   }
   document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-caddie]'); if (t) { e.preventDefault(); openCaddie(); } });
 

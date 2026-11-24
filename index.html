@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Fanion</title>
+<title>le fanion.ai</title>
 <meta name="theme-color" content="#14231b">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Fanion">
+<meta name="apple-mobile-web-app-title" content="le fanion.ai">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -31,13 +31,13 @@ body.framed { margin: 0; min-height: 100vh; display: flex; align-items: center; 
 .phone-frame { width: 402px; height: min(874px, calc(100vh - 32px)); border-radius: 44px; padding: 12px; background: #000; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
 .phone-frame iframe { width: 100%; height: 100%; border: 0; border-radius: 34px; background: #fff; display: block; }
 </style>
-<link rel="stylesheet" href="styles.css?v=20261123f">
+<link rel="stylesheet" href="styles.css?v=20261123g">
 </head>
 <body>
 <header class="bar">
   <button class="bar-back" id="back" hidden aria-label="Retour">‹</button>
-  <div class="bar-title" id="barTitle">Fanion</div>
-  <button class="bar-idee" id="ideeBtn" data-idee type="button" hidden aria-label="Une idée ? Un pépin ? Dites-le à l’équipe de Fanion">💡 <span>Idée ou pépin ?</span></button>
+  <div class="bar-title" id="barTitle">le fanion.ai</div>
+  <button class="bar-idee" id="ideeBtn" data-idee type="button" hidden aria-label="Une idée ? Un pépin ? Dites-le à l’équipe du fanion.ai">💡 <span>Idée ou pépin ?</span></button>
   <div class="bar-badge" id="dbBadge"></div>
   <button class="bar-acct" id="acctBtn" type="button" hidden aria-label="Mon compte"><span id="acctIni"></span></button>
 </header>
@@ -63,14 +63,14 @@ body.framed { margin: 0; min-height: 100vh; display: flex; align-items: center; 
 <div class="toast" id="toast" hidden></div>
 
 <!-- Firebase (base de données partagée). Sans configuration, l'app fonctionne en mode local sur ce téléphone. -->
-<script src="install-gate.js?v=20261123f"></script>
+<script src="install-gate.js?v=20261123g"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="firebase-config.js?v=20261029e"></script>
-<script src="logic.js?v=20261123f"></script>
-<script src="caddie-guide.js?v=20261123f"></script>
-<script src="app.js?v=20261123f"></script>
+<script src="logic.js?v=20261123g"></script>
+<script src="caddie-guide.js?v=20261123g"></script>
+<script src="app.js?v=20261123g"></script>
 <script>if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});</script>
 <script>
 /* Mise à jour automatique : l'app installée sur l'écran d'accueil reste ouverte en arrière-plan pendant des jours.
