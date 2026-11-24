@@ -4442,7 +4442,7 @@
     if (canOrganize() && !ls.get(visiteKey(), 0)) { ls.set(visiteKey(), Date.now()); setTimeout(leoVisite, 600); return; }
     if (ssGet('fanion.leo.salut') || carteRetourChoix()) return;   // une seule chose à la fois : la carte de retour passe avant le salut
     ssSet('fanion.leo.salut');
-    setTimeout(() => { if (S.view === 'home' && !document.querySelector('.cd-fond, #welcome')) leo.dire(leoMessage()); }, 1200);
+    // Léo ne parle plus de lui-même : pas de bulle à l'ouverture (il répond quand on touche son visage)
   }
   function leoMessage() {
     const h = new Date().getHours(), salut = h < 12 ? 'Bonjour' : h < 18 ? 'Bon après-midi' : 'Bonsoir', nom = firstName(ls.get('pelland.me', ''));
