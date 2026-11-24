@@ -12,7 +12,8 @@ a:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid 
 .top { background: var(--pine); }
 .top .wrap { display: flex; align-items: center; justify-content: space-between; height: 68px; }
 .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
-.mark { font-family: var(--display); font-weight: 800; font-size: 30px; color: var(--white); text-decoration: none; display: flex; align-items: center; gap: 10px; }
+.mark { font-family: var(--display); font-weight: 800; font-size: 30px; color: var(--white); text-decoration: none; display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+@media (max-width: 520px) { .mark { font-size: 22px; gap: 7px; } }
 .top nav a { color: #c9d4cc; text-decoration: none; font-weight: 500; }
 .top nav a:hover { color: var(--white); }
 main { padding: 56px 0 80px; }
@@ -68,3 +69,4 @@ table.bill { width: 100%; border-collapse: collapse; margin: 8px 0 20px; font-va
   .foot a { margin: 0 14px 0 0; }
 }
 .box .founder { background: #fdf3d6; border-radius: 10px; padding: 8px 12px; font-size: 15px; line-height: 1.35; margin: -10px 0 16px; }
+@media (max-width: 520px) { .top nav a { font-size: 14px; white-space: nowrap; } .top nav { display: flex; gap: 12px; } }
