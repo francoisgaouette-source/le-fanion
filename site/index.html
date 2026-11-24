@@ -567,6 +567,10 @@ details p { margin: 0 0 20px; color: var(--pencil); max-width: 40em; }
   }
   document.querySelectorAll('.leo-av').forEach(function (e) { e.innerHTML = CaddieGuide.avatar(); });
   var p = CaddieGuide.presence({ surFace: visite, label: 'Faire la visite du fanion.ai avec Léo' });
+  if (!lu()) setTimeout(function () {
+    if (document.querySelector('.cd-fond')) return;
+    p.dire({ titre: 'Bonjour ! Moi, c’est Léo.', texte: 'Je vous fais visiter le fanion.ai en une minute ?', bouton: 'Faire la visite', action: visite, onFermer: function () { note('ferme'); } });
+  }, 2500);
 })();
 </script>
 </body>
