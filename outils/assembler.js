@@ -3,6 +3,8 @@
    - src/apps/<app>.json donne le fichier de sortie, l'identité de l'app (« marque » → const MARQUE)
      et la liste ordonnée des morceaux (src/commun, src/golf, …).
    - Les morceaux sont mis bout à bout, dans l'ordre, à l'intérieur de la même fonction : ils partagent leurs variables.
+   - « page » et « copier » (facultatifs) : pour une app servie à part (ex. dist/raquette/), sa page et les fichiers
+     partagés sont copiés à côté de son app.js.
    - --verifier : n'écrit rien ; échoue si le fichier de sortie n'est pas à jour (à lancer avant chaque envoi). */
 'use strict';
 const fs = require('fs'), path = require('path');
@@ -19,11 +21,18 @@ const entete = `/* Fichier assemblé par outils/assembler.js à partir de src/ (
 if (conf.marque) morceaux.splice(1, 0, `  // ==== src/apps/${app}.json (marque) ====\n  const MARQUE = Object.freeze(${JSON.stringify(conf.marque)});`);
 const texte = entete + morceaux.join('\n') + '\n';
 const sortie = path.join(RACINE, conf.sortie);
+// App hors de la racine (ex. dist/raquette/) : on y met aussi sa page (src/<page>/) et les fichiers partagés (copier)
+function dossierApp() {
+  const dos = path.dirname(sortie); fs.mkdirSync(dos, { recursive: true });
+  if (conf.page) for (const f of fs.readdirSync(path.join(RACINE, 'src', conf.page))) fs.copyFileSync(path.join(RACINE, 'src', conf.page, f), path.join(dos, f));
+  for (const f of conf.copier || []) fs.copyFileSync(path.join(RACINE, f), path.join(dos, path.basename(f)));
+}
 if (verifier) {
   const actuel = fs.existsSync(sortie) ? fs.readFileSync(sortie, 'utf8') : '';
   if (actuel !== texte) { console.error(`${conf.sortie} n'est pas à jour avec src/ : lancer « node outils/assembler.js ${app} ».`); process.exit(1); }
   console.log(`${conf.sortie} est à jour.`);
 } else {
+  if (conf.page || conf.copier) dossierApp();
   fs.writeFileSync(sortie, texte);
   console.log(`${conf.sortie} assemblé : ${conf.fichiers.length} morceaux, ${texte.split('\n').length - 1} lignes.`);
 }

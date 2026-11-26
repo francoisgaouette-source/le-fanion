@@ -28,7 +28,7 @@
     if (live) { texte = `${live} partie${live > 1 ? 's' : ''} en cours dans le groupe.`; bouton = 'Suivre en direct'; action = () => go('live'); }
     else if (compAuj) { texte = `Une compétition se joue aujourd’hui. Bonne chance !`; bouton = 'Voir le classement'; action = () => go('comps', { compLive: true }); }
     else if (canOrganize() && nbJ < 4) { texte = `Il vous faut au moins 4 joueurs pour ${SPORT.gratuitPour}. On les invite ?`; bouton = 'Inviter des joueurs'; action = () => go('players', { pMode: 'banque' }); }
-    else if (canOrganize()) { texte = SPORT.leoProchaine; bouton = 'Parties à préparer'; action = () => go('quatuors'); }
+    else if (canOrganize()) { texte = SPORT.leoProchaine; bouton = SPORT.leoBouton; action = () => go(SPORT.vueDates); }
     else texte = 'Tout est en ordre. Touchez mon visage si vous avez une question.';
     return { titre: `${salut}${nom ? ', ' + nom : ''} !`, texte, bouton, action, duree: 9000 };
   }

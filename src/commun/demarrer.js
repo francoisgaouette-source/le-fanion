@@ -12,8 +12,8 @@
     const withPhone = (S.players || []).filter(p => p.id !== me && (p.phone || p.authEmail)).length;
     return [
       { k: 'joueurs', done: withPhone >= 3, t: 'Ajoutez vos joueurs', d: withPhone ? SPORT.etapeJoueurs(withPhone) : 'Avec leur cellulaire : chacun reçoit son invitation par texto.', go: 'players', b: 'Joueurs' },
-      { k: 'offre', done: !!onb.offre || (S.offres || []).length > 0, t: 'Offrez une première date', d: SPORT.etapeOffre, go: 'quatuors', b: 'Offrir' },
-      { k: 'partie', done: !!onb.partie, t: 'Jouez une première partie', d: SPORT.etapePartie, go: 'setup', b: 'Commencer' },
+      { k: 'offre', done: !!onb.offre || (S.offres || []).length > 0, t: 'Offrez une première date', d: SPORT.etapeOffre, go: SPORT.vueDates, b: 'Offrir' },
+      { k: 'partie', done: !!onb.partie, t: 'Jouez une première partie', d: SPORT.etapePartie, go: SPORT.vuePartie, b: 'Commencer' },
       { k: 'ecran', done: standalone() || !!ls.get('pelland.onb.ecran', 0), t: 'Ajoutez l’app à votre écran d’accueil', d: 'Elle s’ouvre ensuite comme une vraie app.', act: 'ecran', b: 'Comment' },
     ];
   }

@@ -5,7 +5,13 @@
 ```
 node outils/assembler.js fanion              # refait app.js
 node outils/assembler.js fanion --verifier   # vérifie que app.js est à jour (aussi fait par GitHub à chaque envoi)
+node outils/assembler.js raquette            # construit l'app raquette dans dist/raquette/ (pas envoyé sur GitHub)
+node outils/tests-raquette.js                # teste les règles des six sports et les rotations
 ```
+
+Pour essayer l'app raquette sur l'ordinateur : `node outils/assembler.js raquette`, puis servir `dist/raquette/`
+(ex. `python3 -m http.server -d dist/raquette 8000` et ouvrir http://localhost:8000/?plein=1). Sans projet
+Supabase, elle fonctionne en mode local.
 
 ## Les dossiers
 
@@ -13,6 +19,8 @@ node outils/assembler.js fanion --verifier   # vérifie que app.js est à jour (
   base de données (groupes, joueurs, banque, présences, offres de dates, avis, notifications), compte HoldingAI,
   rôles, forfaits et parrainage, accueil des nouveaux, boucle de retour (idées), Léo, textos et notifications.
 - `golf/` : le module golf : terrains et cartes, parties, jeux, quatuors, pointage, compétitions, impressions.
+- `raquette/` : le module des sports de raquette : règles des six sports (`regles.js`), rotations (`rotation.js`),
+  lieux et soirées (`donnees.js`, `vues.js`), et sa page (`page/` : index.html, manifest, config.js, sw.js, couleurs).
 - `apps/<app>.json` : pour chaque app, le fichier produit et la **liste ordonnée** des morceaux.
 
 ## Comment ça marche
@@ -22,14 +30,16 @@ dans le gros `app.js`. L'ordre de la liste compte pour ce qui s'exécute au char
 c'est l'ordre d'origine, golf et commun entremêlés. Les déclarations `function` peuvent être dans n'importe quel
 morceau (elles sont hissées).
 
-Le module golf ajoute ses méthodes de base de données (`Object.assign(Store, …)` dans `golf/donnees.js`) et ses
-écrans (`Object.assign(bind, …)` dans `golf/liaisons.js`).
+Chaque module ajoute ses méthodes de base de données (`Object.assign(Store, …)`) et ses interactions
+(`Object.assign(bind, …)`), et fournit deux objets lus par le tronc commun :
+- `MODULE` (`golf/module.js`, `raquette/module.js`) : ses écrans, ce qu'il fait quand on change d'écran ou qu'on
+  touche Retour, les données chargées au démarrage, les liens d'ouverture (`?partie=…`, `?soiree=…`).
+- `SPORT` (`golf/sport.js`, `raquette/sport.js`) : les textes du tronc commun qui dépendent du sport.
 
-## Ce qui reste mêlé (à démêler aux étapes 2 et 3)
+Le tronc commun ne doit appeler aucune fonction d'un module directement : seulement `MODULE` et `SPORT`.
 
-- `commun/etat.js` : `render()` connaît les écrans du golf ; `go()` a des cas propres au golf ; « responsable de
-  partie » (`myIdx`, `isOwner`).
-- `commun/base.js` : `Store.init` envoie la file d'attente des parties (`flush`, défini dans le golf).
-- `commun/demarrage.js` : le premier chargement lit les terrains, quatuors et jeux.
-- `commun/offres.js`, `commun/feuilles.js`, `commun/leo.js`, `commun/caddie.js` : textes qui parlent de golf.
-- `logic.js` (calculs du golf et analyse vocale) et `styles.css` ne sont pas encore découpés.
+## Ce qui reste à faire
+
+- `logic.js` (calculs du golf) est encore chargé par l'app raquette, pour `L.norm`.
+- Le menu d'Albert (porte.js), le dessin de Léo (caddie-guide.js), l'installation obligatoire (install-gate.js) et
+  les services du serveur (textos, notifications, Léo) ne sont pas encore branchés pour l'app raquette (étape 5).

@@ -3,7 +3,7 @@
   const LOCKED = SPORT.verrous;
   function lockTiles(html) {
     if (canOrganize()) return html;
-    return html.replace(/<button class="tile" data-go="(courses|players|jeux|quatuors|setup)"/g, (m, k) => `<button class="tile locked" data-locked="${k}" data-tip="${esc(LOCKED[k])} Touchez pour voir un aperçu."`)
+    return html.replace(new RegExp(`<button class="tile" data-go="(${Object.keys(LOCKED).join('|')})"`, 'g'), (m, k) => `<button class="tile locked" data-locked="${k}" data-tip="${esc(LOCKED[k])} Touchez pour voir un aperçu."`)
       .replace(/(data-locked="\w+" data-tip="[^"]*"[^>]*>)/g, '$1<span class="tile-lock" aria-hidden="true"><svg viewBox="0 0 24 24" width="13" height="13"><rect x="5" y="10.5" width="14" height="10" rx="2.5" fill="currentColor"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" stroke="currentColor" stroke-width="2.4" fill="none"/></svg>Aperçu</span>');
   }
   // =====================================================================

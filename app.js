@@ -78,6 +78,9 @@
     gratuitPour: 'un quatuor',
     quatuors: 'quatuors',
     atouts: 'invitations par texto, quatuors, pointage et argent calculés',
+    vueDates: 'quatuors',
+    vuePartie: 'setup',
+    leoBouton: 'Parties à préparer',
     leoProchaine: 'Prêt pour la prochaine ronde ? Offrez des dates et je forme les quatuors.',
   };
   // ==== src/commun/base.js ====
@@ -757,7 +760,7 @@
   const LOCKED = SPORT.verrous;
   function lockTiles(html) {
     if (canOrganize()) return html;
-    return html.replace(/<button class="tile" data-go="(courses|players|jeux|quatuors|setup)"/g, (m, k) => `<button class="tile locked" data-locked="${k}" data-tip="${esc(LOCKED[k])} Touchez pour voir un aperçu."`)
+    return html.replace(new RegExp(`<button class="tile" data-go="(${Object.keys(LOCKED).join('|')})"`, 'g'), (m, k) => `<button class="tile locked" data-locked="${k}" data-tip="${esc(LOCKED[k])} Touchez pour voir un aperçu."`)
       .replace(/(data-locked="\w+" data-tip="[^"]*"[^>]*>)/g, '$1<span class="tile-lock" aria-hidden="true"><svg viewBox="0 0 24 24" width="13" height="13"><rect x="5" y="10.5" width="14" height="10" rx="2.5" fill="currentColor"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" stroke="currentColor" stroke-width="2.4" fill="none"/></svg>Aperçu</span>');
   }
   // =====================================================================
@@ -953,8 +956,8 @@ ${SPORT.bienvenueVous}</ul></section>
     const withPhone = (S.players || []).filter(p => p.id !== me && (p.phone || p.authEmail)).length;
     return [
       { k: 'joueurs', done: withPhone >= 3, t: 'Ajoutez vos joueurs', d: withPhone ? SPORT.etapeJoueurs(withPhone) : 'Avec leur cellulaire : chacun reçoit son invitation par texto.', go: 'players', b: 'Joueurs' },
-      { k: 'offre', done: !!onb.offre || (S.offres || []).length > 0, t: 'Offrez une première date', d: SPORT.etapeOffre, go: 'quatuors', b: 'Offrir' },
-      { k: 'partie', done: !!onb.partie, t: 'Jouez une première partie', d: SPORT.etapePartie, go: 'setup', b: 'Commencer' },
+      { k: 'offre', done: !!onb.offre || (S.offres || []).length > 0, t: 'Offrez une première date', d: SPORT.etapeOffre, go: SPORT.vueDates, b: 'Offrir' },
+      { k: 'partie', done: !!onb.partie, t: 'Jouez une première partie', d: SPORT.etapePartie, go: SPORT.vuePartie, b: 'Commencer' },
       { k: 'ecran', done: standalone() || !!ls.get('pelland.onb.ecran', 0), t: 'Ajoutez l’app à votre écran d’accueil', d: 'Elle s’ouvre ensuite comme une vraie app.', act: 'ecran', b: 'Comment' },
     ];
   }
@@ -4379,7 +4382,7 @@ ${SPORT.bienvenueVous}</ul></section>
     if (live) { texte = `${live} partie${live > 1 ? 's' : ''} en cours dans le groupe.`; bouton = 'Suivre en direct'; action = () => go('live'); }
     else if (compAuj) { texte = `Une compétition se joue aujourd’hui. Bonne chance !`; bouton = 'Voir le classement'; action = () => go('comps', { compLive: true }); }
     else if (canOrganize() && nbJ < 4) { texte = `Il vous faut au moins 4 joueurs pour ${SPORT.gratuitPour}. On les invite ?`; bouton = 'Inviter des joueurs'; action = () => go('players', { pMode: 'banque' }); }
-    else if (canOrganize()) { texte = SPORT.leoProchaine; bouton = 'Parties à préparer'; action = () => go('quatuors'); }
+    else if (canOrganize()) { texte = SPORT.leoProchaine; bouton = SPORT.leoBouton; action = () => go(SPORT.vueDates); }
     else texte = 'Tout est en ordre. Touchez mon visage si vous avez une question.';
     return { titre: `${salut}${nom ? ', ' + nom : ''} !`, texte, bouton, action, duree: 9000 };
   }

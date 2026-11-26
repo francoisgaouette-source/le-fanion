@@ -62,5 +62,8 @@
     gratuitPour: 'un quatuor',
     quatuors: 'quatuors',
     atouts: 'invitations par texto, quatuors, pointage et argent calculés',
+    vueDates: 'quatuors',
+    vuePartie: 'setup',
+    leoBouton: 'Parties à préparer',
     leoProchaine: 'Prêt pour la prochaine ronde ? Offrez des dates et je forme les quatuors.',
   };
