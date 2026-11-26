@@ -22,8 +22,8 @@
   (async function start() {
     $('#view').innerHTML = '<p class="note">Démarrage…</p>';
     await Store.init();
-    if (Store.redirecting) { $('#view').innerHTML = '<p class="note">Albert vous reconnaît…</p>'; return; }
-    // Menu d'Albert (compte HoldingAI), en haut à droite, comme dans toutes les apps HoldingAI
+    if (Store.redirecting) { $('#view').innerHTML = '<p class="note">Philou vous reconnaît…</p>'; return; }
+    // Menu de Philou (compte HoldingAI), en haut à droite, comme dans toutes les apps HoldingAI
     if (Store.mode === 'cloud') {
       window.HOLDINGAI_PORTE = Store.uid
         ? { app: MARQUE.id, nomApp: MARQUE.nomApp, personnage: MARQUE.personnage, prenom: Store.nom || '', connecte: true,

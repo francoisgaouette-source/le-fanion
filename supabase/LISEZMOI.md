@@ -41,7 +41,7 @@ un étranger ne voit aucun joueur, téléphone ni partie.
 
 ## Branche `supabase-holdingai` (25 novembre 2026)
 Faite, pas encore en ligne (`main` reste sur Firebase) :
-- Connexion : « Continuer avec HoldingAI » (`holdingai.js` version 2, identique aux autres apps), menu d'Albert (`porte.js`), plus de codes texto ni de mots de passe Fanion.
+- Connexion : « Continuer avec HoldingAI » (`holdingai.js` version 2, identique aux autres apps), menu de Philou (`porte.js`), plus de codes texto ni de mots de passe Fanion.
 - Couche `Store` de `app.js` réécrite pour Supabase (`config.js`). Hors ligne : les parties sont gardées sur le téléphone et envoyées au retour du réseau (file `fanion.file`).
 - Fonctions ajoutées à la base : `joueur_maj`, `groupe_maj`, `groupe_etat`, `donnees_maj`, `offre_maj`, `comp_fusion`, `partie_enregistrer`, `mes_groupes` (migration `fonctions_app_fusions`), testées avec des comptes simulés.
 - `worker.js` accepte les jetons HoldingAI (textos, notifications, Léo, retour) et lit Supabase ; les jetons Firebase restent acceptés pendant la transition.
