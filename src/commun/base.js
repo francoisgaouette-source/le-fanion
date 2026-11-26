@@ -166,7 +166,7 @@
       const gr = { id: slug(groupName) + '-' + Math.random().toString(36).slice(2, 6), name: groupName.trim(), owner: pid, createdAt: Date.now(), nPlayers: 1 };
       const rc = String(ref || this.refCode() || '').replace(/[^a-z0-9_-]/gi, '').slice(0, 60); if (rc) gr.ref = rc;
       if (this.mode === 'cloud') {
-        if (!this.uid || !this.e164) throw new Error('Votre compte HoldingAI doit avoir un cellulaire confirmé. Ouvrez « Mon compte » chez Albert.');
+        if (!this.uid || !this.e164) throw new Error('Votre compte L’Établi doit avoir un cellulaire confirmé. Ouvrez « Mon compte » chez Albert.');
         // Forfait Gratuit : un seul groupe gratuit par compte (vérifié par la base)
         const gratuit = await this.groupeGratuit();
         if (gratuit) throw Object.assign(new Error(`Avec le forfait Gratuit, vous avez droit à un groupe de 4 joueurs : vous avez déjà « ${gratuit.name} ». Passez ce groupe au forfait Groupe pour en créer un autre.`), { code: 'local/gratuit' });

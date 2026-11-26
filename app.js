@@ -252,7 +252,7 @@
       const gr = { id: slug(groupName) + '-' + Math.random().toString(36).slice(2, 6), name: groupName.trim(), owner: pid, createdAt: Date.now(), nPlayers: 1 };
       const rc = String(ref || this.refCode() || '').replace(/[^a-z0-9_-]/gi, '').slice(0, 60); if (rc) gr.ref = rc;
       if (this.mode === 'cloud') {
-        if (!this.uid || !this.e164) throw new Error('Votre compte HoldingAI doit avoir un cellulaire confirmé. Ouvrez « Mon compte » chez Albert.');
+        if (!this.uid || !this.e164) throw new Error('Votre compte L’Établi doit avoir un cellulaire confirmé. Ouvrez « Mon compte » chez Albert.');
         // Forfait Gratuit : un seul groupe gratuit par compte (vérifié par la base)
         const gratuit = await this.groupeGratuit();
         if (gratuit) throw Object.assign(new Error(`Avec le forfait Gratuit, vous avez droit à un groupe de 4 joueurs : vous avez déjà « ${gratuit.name} ». Passez ce groupe au forfait Groupe pour en créer un autre.`), { code: 'local/gratuit' });
@@ -1001,11 +1001,11 @@ ${SPORT.bienvenueVous}</ul></section>
     if (mine && !S.fromLogin) ls.set('pelland.me', mine.playerName);
     return `<section class="card"><h2>${esc(mine ? mine.playerName : ls.get('pelland.me', '') || '')}</h2>
         ${S.fromLogin ? '<p class="note"><b>Bienvenue !</b> Choisissez votre groupe.</p>' : ''}
-        <p class="note">${cell ? 'Cellulaire confirmé : ' + esc(fmtPhone(cell)) : 'Votre compte HoldingAI n’a pas de cellulaire confirmé : ajoutez-le dans « Mon compte HoldingAI ».'}</p>
+        <p class="note">${cell ? 'Cellulaire confirmé : ' + esc(fmtPhone(cell)) : 'Votre compte L’Établi n’a pas de cellulaire confirmé : ajoutez-le dans « Mon compte L’Établi ».'}</p>
         ${u.uid ? `<p class="note uid-ligne">Identifiant du compte : <code>${esc(u.uid)}</code> <button class="linkbtn" data-copyuid="${esc(u.uid)}" type="button">Copier</button>${P.admin ? ' · <b>approbateur des terrains ✓</b>' : ''}</p>` : ''}</section>
       ${S.fromLogin ? '' : forfaitHtml()}
-      <h3 class="acct-h">Compte HoldingAI</h3>
-      <div class="acct-box acct-g"><div><b>Cellulaire et mot de passe</b><small>Votre compte HoldingAI sert dans toutes les apps HoldingAI. Albert s’en occupe.</small></div><a class="btn ghost small" href="${esc(HoldingAI.compteUrl)}">Gérer</a></div>
+      <h3 class="acct-h">Compte L’Établi</h3>
+      <div class="acct-box acct-g"><div><b>Cellulaire et mot de passe</b><small>Votre compte L’Établi sert dans toutes les apps de L’Établi. Albert s’en occupe.</small></div><a class="btn ghost small" href="${esc(HoldingAI.compteUrl)}">Gérer</a></div>
       <h3 class="acct-h acct-h-act"><span>Mes groupes (${S.acctGroups.filter(x => !x.archived).length})</span><button class="btn ghost small" data-viral type="button">+ Ajouter un groupe</button></h3>
       ${groupRows(S.acctGroups.filter(x => !x.archived), S.fromLogin ? null : Store.gid, S.acctGroups).replace(S.fromLogin ? /Ouvrir/g : /^$/, 'Entrer')}
       ${S.acctGroups.some(x => x.archived) ? `<h3 class="acct-h">Groupes archivés (${S.acctGroups.filter(x => x.archived).length})</h3>
@@ -2014,9 +2014,9 @@ ${SPORT.bienvenueVous}</ul></section>
     const hero = `<div class="hero"><h1>${APP}</h1><p>${MARQUE.accroche}</p></div>`;
     // Pas encore connecté : le compte HoldingAI (le même pour toutes les apps HoldingAI)
     if (!Store.uid) return hero + `<section class="card"><h2>Connexion</h2>
-        <p class="note">Un seul compte pour toutes les apps HoldingAI : votre cellulaire et votre mot de passe. Albert s’en occupe.</p>
+        <p class="note">Un seul compte pour toutes les apps de L’Établi : votre cellulaire et votre mot de passe. Albert s’en occupe.</p>
         <p class="note"><b>Invité par texto ?</b> Utilisez le cellulaire où vous avez reçu l’invitation : vous retrouverez votre groupe.</p>
-        <button class="btn" id="haiGo" type="button">Continuer avec HoldingAI</button>
+        <button class="btn" id="haiGo" type="button">Continuer avec L’Établi</button>
         <p class="note" id="loginMsg">${esc(S.loginMsg || Store.error || '')}</p></section>`;
     // Connecté, mais ce cellulaire n'est inscrit dans aucun groupe : invitation à demander, ou nouveau groupe
     const nom = Store.nom || '';
