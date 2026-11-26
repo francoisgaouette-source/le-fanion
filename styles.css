@@ -841,7 +841,7 @@ textarea { font-family: inherit; line-height: 1.4; resize: vertical; }
 .av-ok { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; line-height: 1.4; margin: 6px 0 4px; }
 .av-ok input { width: 20px; height: 20px; flex: none; margin-top: 1px; accent-color: var(--green); }
 .hist-seg { margin: 0 0 12px; } .hist-seg button { text-align: center; min-height: 44px; }
-/* Léo, le caddie */
+/* Samuel, le caddie */
 .cad-ico svg, .cad-av svg { width: 100%; height: 100%; display: block; }
 .caddie-tile .cad-ico { background: #DDEBE1; overflow: hidden; width: 44px; height: 44px; }
 .cad-id { display: flex; align-items: center; gap: 12px; margin: 0 0 6px; }
@@ -982,7 +982,7 @@ body:has(#sheetWrap:not([hidden])) .cd-lanceur { display: none; }
 .bar-sous { display: block; font-family: var(--body, inherit); font-size: 11.5px; font-weight: 500; letter-spacing: .02em; opacity: .75; line-height: 1.1; margin-top: -2px; }
 .bar-title:has(.bar-sous) { font-size: 30px; line-height: 1.05; padding: 2px 0 3px; letter-spacing: -.01em; } .bar-sous { line-height: 1.25; font-size: 12px; }
 .hero-k-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 18px; } .hero-k-row .hero-k { margin: 0; } .hero-liens { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; } .hero-liens .btn { width: auto; margin: 0; min-height: 34px; padding: 0 12px; font-size: 14px; }
-/* Carte préparée par Léo : rien ne dépasse l'écran (adresses longues, noms de tertres, image de la carte) */
+/* Carte préparée par Samuel : rien ne dépasse l'écran (adresses longues, noms de tertres, image de la carte) */
 .web-band, .carte-source, .web-alertes, .maj-liste, .club-item, .leo-cherche { overflow-wrap: anywhere; word-break: break-word; min-width: 0; max-width: 100%; }
 .carte-source a, .web-band a { overflow-wrap: anywhere; }
 .carte-img, .carte-img img { max-width: 100%; }

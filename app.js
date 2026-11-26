@@ -12,10 +12,10 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* stockage indisponible */ } }
   };
   // ==== src/apps/fanion.json (marque) ====
-  const MARQUE = Object.freeze({"id":"fanion","nom":"le fanion.ai","nomMaj":"Le fanion.ai","duNom":"du fanion.ai","nomApp":"Le Fanion","domaine":"fanion.ai","site":"https://lefanion.ai","api":"https://lefanion.ai","courriel":"bonjour@fanion.ai","slogan":"le golf entre amis","accroche":"Le golf entre amis : pointage, jeux et parties à venir.","description":"l’app de golf entre amis","groupeDefaut":"La gang à Pelland","personnage":"Léo","role":"votre caddie","roleMaj":"Votre caddie","leRole":"le caddie","icone":"L’icône du fanion","logoVue":"0 0 26 30","logo":"<path d=\"M5 2v26\" stroke=\"currentColor\" stroke-width=\"2.6\" stroke-linecap=\"round\"/><path d=\"M6 3l15 5.5L6 14z\" fill=\"#e3a90c\"/>"});
+  const MARQUE = Object.freeze({"id":"fanion","nom":"le fanion.ai","nomMaj":"Le fanion.ai","duNom":"du fanion.ai","nomApp":"Le Fanion","domaine":"fanion.ai","site":"https://lefanion.ai","api":"https://lefanion.ai","courriel":"bonjour@fanion.ai","slogan":"le golf entre amis","accroche":"Le golf entre amis : pointage, jeux et parties à venir.","description":"l’app de golf entre amis","groupeDefaut":"La gang à Pelland","personnage":"Samuel","role":"votre caddie","roleMaj":"Votre caddie","leRole":"le caddie","icone":"L’icône du fanion","logoVue":"0 0 26 30","logo":"<path d=\"M5 2v26\" stroke=\"currentColor\" stroke-width=\"2.6\" stroke-linecap=\"round\"/><path d=\"M6 3l15 5.5L6 14z\" fill=\"#e3a90c\"/>"});
   // ==== src/golf/sport.js ====
   // =====================================================================
-  // Contenu propre au golf, lu par le tronc commun (accueil, aperçus, Léo, textes d'invitation)
+  // Contenu propre au golf, lu par le tronc commun (accueil, aperçus, Samuel, textes d'invitation)
   // =====================================================================
   const SPORT = {
     // Tuiles réservées à l'organisateur : explication, aperçu dessiné et fiche
@@ -51,18 +51,18 @@
           <li><b>Suivre les parties en direct</b> : scores, points et argent, trou par trou.</li>
           <li><b>Revoir les parties jouées</b> et qui doit quoi à qui.</li>
           <li><b>Voir le classement</b> des compétitions.</li>
-          <li><b>Poser vos questions</b> à Léo, votre caddie : touchez son visage dans le coin.</li>`,
+          <li><b>Poser vos questions</b> à Samuel, votre caddie : touchez son visage dans le coin.</li>`,
     bienvenueOrg: '<li>Inviter les joueurs</li><li>Offrir les dates et former les quatuors</li><li>Créer les parties</li><li>Gérer les terrains et les jeux</li>',
     // Bien démarrer
     etapeJoueurs: n => `${n} joueur${n > 1 ? 's' : ''} avec cellulaire : il en faut 3 pour un premier quatuor.`,
     etapeOffre: 'Vos joueurs répondent par texto ; l’app forme les quatuors.',
     etapePartie: 'Choisissez le terrain et le jeu ; l’app compte tout, en direct.',
-    // Léo
+    // Samuel
     ecrans: { home: 'Accueil', players: 'Inviter des joueurs', quatuors: 'Parties à préparer', setup: 'Créer une partie', jeux: 'Banque de jeux', courses: 'Banque de terrains', live: 'Parties en cours', history: 'Parties et compétitions jouées', comps: 'Banque de compétitions', compte: 'Mon compte' },
     questionsLeo: ['Comment inviter mes joueurs ?', 'Comment marche la press ?', 'Combien coûte le forfait Groupe ?'],
     leoAccueil: 'Posez-moi vos questions sur l’app, les règles des jeux ou les forfaits.',
     visite: nom => [
-      { puce: 'Bonjour !', titre: `Bienvenue${nom ? ', ' + nom : ''} ! Moi, c’est Léo, votre caddie.`, texte: `Je vous fais faire le tour de « ${groupName()} » en six coups. Ça prend une minute.` },
+      { puce: 'Bonjour !', titre: `Bienvenue${nom ? ', ' + nom : ''} ! Moi, c’est Samuel, votre caddie.`, texte: `Je vous fais faire le tour de « ${groupName()} » en six coups. Ça prend une minute.` },
       { puce: 'Étape 1', titre: 'Inviter des joueurs', texte: 'Le nom et le cellulaire de chacun : l’invitation part par texto. Chaque joueur crée son compte une fois, pour tous ses groupes.' },
       { puce: 'Étape 2', titre: 'Parties à préparer', texte: 'Offrez quelques dates. Chacun coche les siennes, et je forme les quatuors à la date butoir.' },
       { puce: 'Étapes 3 et 4', titre: 'Créer une partie, la suivre en direct', texte: 'Terrain, équipes, jeu et montants. Un joueur entre les scores ; les autres suivent la partie sur leur téléphone.' },
@@ -107,8 +107,8 @@
         try {
           this.sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, { accessToken: async () => (await HoldingAI.jeton()) || null });
           this.mode = 'cloud';
-          // Le compte suit : sans session, on passe chez Albert (compte.letabli.ai), qui ramène la personne connectée
-          // Installation obligatoire sur téléphone : on ne passe chez Albert qu'une fois l'app installée (iPhone : l'app installée ne garde pas la connexion faite dans Safari)
+          // Le compte suit : sans session, on passe chez Philou (compte.letabli.ai), qui ramène la personne connectée
+          // Installation obligatoire sur téléphone : on ne passe chez Philou qu'une fois l'app installée (iPhone : l'app installée ne garde pas la connexion faite dans Safari)
           const dep = await HoldingAI.demarrer({ obligatoire: !window.FANION_INSTALL_REQUISE });
           if (dep.redirection) { this.redirecting = true; return; }
           if (dep.erreur) toast(dep.erreur.message);
@@ -252,7 +252,7 @@
       const gr = { id: slug(groupName) + '-' + Math.random().toString(36).slice(2, 6), name: groupName.trim(), owner: pid, createdAt: Date.now(), nPlayers: 1 };
       const rc = String(ref || this.refCode() || '').replace(/[^a-z0-9_-]/gi, '').slice(0, 60); if (rc) gr.ref = rc;
       if (this.mode === 'cloud') {
-        if (!this.uid || !this.e164) throw new Error('Votre compte L’Établi doit avoir un cellulaire confirmé. Ouvrez « Mon compte » chez Albert.');
+        if (!this.uid || !this.e164) throw new Error('Votre compte L’Établi doit avoir un cellulaire confirmé. Ouvrez « Mon compte » chez Philou.');
         // Forfait Gratuit : un seul groupe gratuit par compte (vérifié par la base)
         const gratuit = await this.groupeGratuit();
         if (gratuit) throw Object.assign(new Error(`Avec le forfait Gratuit, vous avez droit à un groupe de 4 joueurs : vous avez déjà « ${gratuit.name} ». Passez ce groupe au forfait Groupe pour en créer un autre.`), { code: 'local/gratuit' });
@@ -727,11 +727,11 @@
   function render() {
     const v = $('#view');
     $('#back').hidden = S.view === 'home' || S.view === 'login';
-    document.body.classList.toggle('tv-mode', S.view === 'compTv');   // écran télé : sans barre ni bouton de Léo
+    document.body.classList.toggle('tv-mode', S.view === 'compTv');   // écran télé : sans barre ni bouton de Samuel
     $('#dbBadge').textContent = !navigator.onLine ? 'Hors ligne' : Store.mode === 'cloud' ? '' : 'Local';
-    // Mon compte : l'ancien bouton aux initiales reste caché ; le visage d'Albert (porte.js) le remplace
+    // Mon compte : l'ancien bouton aux initiales reste caché ; le visage de Philou (porte.js) le remplace
     const ab = $('#acctBtn'), acctOk = Store.mode === 'cloud' && !!Store.email && !Store.needLogin && S.view !== 'login';
-    ab.hidden = true; $('#ideeBtn').hidden = !acctOk;  // Mon compte : par le menu d'Albert (HoldingAI)
+    ab.hidden = true; $('#ideeBtn').hidden = !acctOk;  // Mon compte : par le menu de Philou (HoldingAI)
     $('#ideeBtn').classList.toggle('compact', S.view !== 'home'); ab.classList.toggle('on', S.view === 'compte');
     if (acctOk) { const nm = (S.players.find(p => p.id === meId()) || {}).name || ls.get('pelland.me', '') || ''; $('#acctIni').textContent = nm.split(/[\s-]+/).filter(Boolean).slice(0, 2).map(x => x[0].toUpperCase()).join('') || '👤'; ab.title = 'Mon compte' + (nm ? ' · ' + nm : ''); }
     $('#dbBadge').classList.toggle('offline', !navigator.onLine);
@@ -863,7 +863,7 @@ ${SPORT.bienvenueVous}</ul></section>
       </div>`)}
       ${avisCard('home')}
       ${referralCard()}
-      ${Store.needLogin ? '' : `<button class="caddie-tile" data-caddie type="button"><span class="cad-ico" aria-hidden="true">${window.CaddieGuide ? CaddieGuide.avatar() : '?'}</span><span><b>Une question ?</b><small>Demandez à Léo, votre caddie : l’app, les règles des jeux, les forfaits.</small></span></button>`}
+      ${Store.needLogin ? '' : `<button class="caddie-tile" data-caddie type="button"><span class="cad-ico" aria-hidden="true">${window.CaddieGuide ? CaddieGuide.avatar() : '?'}</span><span><b>Une question ?</b><small>Demandez à Samuel, votre caddie : l’app, les règles des jeux, les forfaits.</small></span></button>`}
       ${viralCard('home')}
       <p class="note">${Store.mode === 'cloud' ? 'Base partagée active : les autres joueurs suivent la partie en direct dans Parties en cours.' : 'Mode local : les parties restent sur ce téléphone.'}</p>
       ${Store.mode === 'local' && Store.error ? `<div class="warn"><b>Pourquoi le mode local :</b> ${esc(Store.error)}</div>` : ''}`;
@@ -1005,7 +1005,7 @@ ${SPORT.bienvenueVous}</ul></section>
         ${u.uid ? `<p class="note uid-ligne">Identifiant du compte : <code>${esc(u.uid)}</code> <button class="linkbtn" data-copyuid="${esc(u.uid)}" type="button">Copier</button>${P.admin ? ' · <b>approbateur des terrains ✓</b>' : ''}</p>` : ''}</section>
       ${S.fromLogin ? '' : forfaitHtml()}
       <h3 class="acct-h">Compte L’Établi</h3>
-      <div class="acct-box acct-g"><div><b>Cellulaire et mot de passe</b><small>Votre compte L’Établi sert dans toutes les apps de L’Établi. Albert s’en occupe.</small></div><a class="btn ghost small" href="${esc(HoldingAI.compteUrl)}">Gérer</a></div>
+      <div class="acct-box acct-g"><div><b>Cellulaire et mot de passe</b><small>Votre compte L’Établi sert dans toutes les apps de L’Établi. Philou s’en occupe.</small></div><a class="btn ghost small" href="${esc(HoldingAI.compteUrl)}">Gérer</a></div>
       <h3 class="acct-h acct-h-act"><span>Mes groupes (${S.acctGroups.filter(x => !x.archived).length})</span><button class="btn ghost small" data-viral type="button">+ Ajouter un groupe</button></h3>
       ${groupRows(S.acctGroups.filter(x => !x.archived), S.fromLogin ? null : Store.gid, S.acctGroups).replace(S.fromLogin ? /Ouvrir/g : /^$/, 'Entrer')}
       ${S.acctGroups.some(x => x.archived) ? `<h3 class="acct-h">Groupes archivés (${S.acctGroups.filter(x => x.archived).length})</h3>
@@ -2014,7 +2014,7 @@ ${SPORT.bienvenueVous}</ul></section>
     const hero = `<div class="hero"><h1>${APP}</h1><p>${MARQUE.accroche}</p></div>`;
     // Pas encore connecté : le compte HoldingAI (le même pour toutes les apps HoldingAI)
     if (!Store.uid) return hero + `<section class="card"><h2>Connexion</h2>
-        <p class="note">Un seul compte pour toutes les apps de L’Établi : votre cellulaire et votre mot de passe. Albert s’en occupe.</p>
+        <p class="note">Un seul compte pour toutes les apps de L’Établi : votre cellulaire et votre mot de passe. Philou s’en occupe.</p>
         <p class="note"><b>Invité par texto ?</b> Utilisez le cellulaire où vous avez reçu l’invitation : vous retrouverez votre groupe.</p>
         <button class="btn" id="haiGo" type="button">Continuer avec L’Établi</button>
         <p class="note" id="loginMsg">${esc(S.loginMsg || Store.error || '')}</p></section>`;
@@ -2185,7 +2185,7 @@ ${SPORT.bienvenueVous}</ul></section>
     };
     const nAtt = aApprouver.filter(p => p.statut === 'propose').length;
     return `<section class="card terr-etape"><h3><span class="terr-n">1</span> Terrain à ajouter</h3>
-        <p class="note">Léo cherche les clubs de votre région sur le web et prépare la carte de pointage ; vous pouvez aussi photographier la carte ou l’entrer à la main.</p>
+        <p class="note">Samuel cherche les clubs de votre région sur le web et prépare la carte de pointage ; vous pouvez aussi photographier la carte ou l’entrer à la main.</p>
         ${isProprio() ? '<button class="btn" data-addcourse type="button">Ajouter un terrain</button>' : '<p class="note"><b>Seul le propriétaire du groupe peut ajouter ou effacer un terrain.</b></p>'}</section>
       <section class="card terr-etape${nAtt && P.admin ? ' approve-card' : ''}"><h3><span class="terr-n">2</span> Terrains à approuver${nAtt ? ' (' + nAtt + ')' : ''}</h3>
         <p class="note">${P.admin ? 'Vérifiez chaque terrain avec sa carte de pointage, puis approuvez-le ou effacez-le.' : 'Chaque nouveau terrain est vérifié par l’équipe du fanion.ai, qui l’approuve ou l’efface.'}</p>
@@ -2254,7 +2254,7 @@ ${SPORT.bienvenueVous}</ul></section>
     if (ad && (ad.state || ad.country)) return { region: [ad.state || ad.county, ad.country].filter(Boolean).join(', '), ville: ad.city || ad.town || ad.village || '' };
     return { region: `environs de ${lat.toFixed(2)}, ${lng.toFixed(2)}`, ville: '' };
   }
-  // ---- Léo garde les cartes à jour : il revérifie chaque terrain sur le web environ une fois par saison
+  // ---- Samuel garde les cartes à jour : il revérifie chaque terrain sur le web environ une fois par saison
   const VERIF_JOURS = 300, VERIF_PAR_JOUR = 2;
   const derniereVerif = c => Number(c.verifieLe || c.approuveLe || 0);
   const fmtN = x => String(x).replace('.', ',');
@@ -2284,7 +2284,7 @@ ${SPORT.bienvenueVous}</ul></section>
     if ([...P.todo, ...P.mine].some(p => p.statut === 'propose' && p.courseId === c.id)) return { etat: 'deja', changes: r.changes };
     const g = curGroup(), moi = (S.players.find(p => p.id === meId()) || {}).name || ls.get('pelland.me', '') || '';
     const web = { region: c.region || '', sources: d.sources || [], alertes: [], notes: d.notes || '', confiance: d.confiance || 'basse', carte: d.carte || null, cartePage: d.cartePage || null };
-    const p = await Store.proposeCourse({ ...r.course, web }, { type: 'maj', courseId: c.id, changes: r.changes.slice(0, 40), proposePar: auto ? 'Léo (vérification automatique)' : moi, groupeNom: g.name || '' });
+    const p = await Store.proposeCourse({ ...r.course, web }, { type: 'maj', courseId: c.id, changes: r.changes.slice(0, 40), proposePar: auto ? 'Samuel (vérification automatique)' : moi, groupeNom: g.name || '' });
     P.mine.push(p); if (P.admin) P.todo.push(p);
     return { etat: 'change', changes: r.changes };
   }
@@ -2309,13 +2309,13 @@ ${SPORT.bienvenueVous}</ul></section>
     const memo = ls.get(REGION_K, null);   // { region, auto } : dernière région détectée ou choisie
     const html = (etat) => {
       const r = etat.region;
-      const tete = etat.cherche ? `<div class="region-moi"><div class="spin small"></div><span>Léo cherche votre région d’après votre position…</span></div>`
+      const tete = etat.cherche ? `<div class="region-moi"><div class="spin small"></div><span>Samuel cherche votre région d’après votre position…</span></div>`
         : r ? `<div class="region-moi"><span class="note">${etat.auto ? (etat.ville ? `📍 Vous êtes près de ${esc(etat.ville)}` : '📍 Votre région, d’après votre position') : 'Dernière région utilisée'}</span>
             <button class="btn" data-region="${esc(r)}" type="button">Chercher les clubs · ${esc(r)}</button></div>`
         : `<div class="region-moi"><span class="note">${etat.refus ? 'Position non disponible : choisissez une région ou tapez un lieu.' : 'Choisissez une région ou tapez un lieu.'}</span>
             ${etat.refus || etat.echec ? '<button class="btn ghost small" data-relocal type="button">📍 Utiliser ma position</button>' : ''}</div>`;
       return `<h3>Ajouter un terrain</h3>
-        <p class="note">Léo cherche sur le web tous les clubs de golf de la région et prépare la carte de pointage du terrain choisi. Vous la vérifiez, puis l’approuvez ou la refusez avant qu’elle entre dans la banque.</p>
+        <p class="note">Samuel cherche sur le web tous les clubs de golf de la région et prépare la carte de pointage du terrain choisi. Vous la vérifiez, puis l’approuvez ou la refusez avant qu’elle entre dans la banque.</p>
         ${tete}
         <form class="region-libre" data-libre><input id="regionLibre" type="text" maxlength="80" placeholder="Autre lieu (ville, pays)" autocomplete="off"><button class="btn small" type="submit">Chercher</button></form>
         <h4 class="region-autres">${r && REGIONS_QC.includes(r) ? 'Autres régions du Québec' : 'Régions du Québec'}</h4>
@@ -2366,10 +2366,10 @@ ${SPORT.bienvenueVous}</ul></section>
   function vClubs() {
     $('#barTitle').textContent = W.region || 'Clubs';
     const enBanque = c => { const n = normNom(c.nom); return n && S.courses.some(x => { const m = normNom(x.name); return m && (m.includes(n) || n.includes(m)); }); };
-    if (!W.charge) return `<section class="card leo-cherche"><div class="spin"></div><p><b>Léo cherche les clubs de golf · ${esc(W.region)}</b></p><p class="note">Recherche sur le web, ça prend de 20 à 60 secondes.</p></section>`;
-    if (W.prep) return `<section class="card leo-cherche"><div class="spin"></div><p><b>Léo prépare la carte de pointage</b></p><p>${esc(W.prep)}</p><p class="note">Il lit le site du club et les sites de cartes de pointage : normales, handicaps, tertres, évaluation et slope. Comptez jusqu’à une minute.</p></section>`;
+    if (!W.charge) return `<section class="card leo-cherche"><div class="spin"></div><p><b>Samuel cherche les clubs de golf · ${esc(W.region)}</b></p><p class="note">Recherche sur le web, ça prend de 20 à 60 secondes.</p></section>`;
+    if (W.prep) return `<section class="card leo-cherche"><div class="spin"></div><p><b>Samuel prépare la carte de pointage</b></p><p>${esc(W.prep)}</p><p class="note">Il lit le site du club et les sites de cartes de pointage : normales, handicaps, tertres, évaluation et slope. Comptez jusqu’à une minute.</p></section>`;
     return `${W.err ? `<p class="note err-txt">${esc(W.err)}</p>` : ''}
-      ${W.clubs.length ? `<p class="note">${W.clubs.length} club${W.clubs.length > 1 ? 's' : ''} trouvé${W.clubs.length > 1 ? 's' : ''}. Touchez un parcours : Léo prépare sa carte, vous la vérifiez puis l’approuvez.</p>
+      ${W.clubs.length ? `<p class="note">${W.clubs.length} club${W.clubs.length > 1 ? 's' : ''} trouvé${W.clubs.length > 1 ? 's' : ''}. Touchez un parcours : Samuel prépare sa carte, vous la vérifiez puis l’approuvez.</p>
       <div class="list">${W.clubs.map((c, i) => { const deja = enBanque(c); const pcs = c.parcours && c.parcours.length > 1 ? c.parcours : null;
         return `<div class="item club-item${deja ? ' deja' : ''}"><div><b>${esc(c.nom)}</b><span>${esc(c.ville || '')}${c.prive ? ' · privé' : ''}${deja ? ' · déjà dans la banque' : ''}</span></div>
           <div class="club-pcs">${pcs ? pcs.map((p, j) => `<button class="btn ghost small" data-club="${i}" data-pc="${j}" type="button">${esc(p.nom || 'Parcours ' + (j + 1))}${p.trous && p.trous !== 18 ? ' (' + p.trous + ' t.)' : ''}</button>`).join('') : `<button class="btn ghost small" data-club="${i}" type="button">${deja ? 'Préparer quand même' : 'Préparer la carte'}</button>`}</div></div>`; }).join('')}</div>` : (W.err ? '' : '<p class="note">Aucun club trouvé pour cette région.</p>')}
@@ -2404,10 +2404,10 @@ ${SPORT.bienvenueVous}</ul></section>
     $('#barTitle').textContent = c.proposition ? (c.proposition.maj ? 'Mise à jour à approuver' : 'Terrain à approuver') : c.web ? 'Carte à réviser' : c.id ? 'Modifier le terrain' : 'Nouveau terrain';
     const imgs = S.cardImgs || [];
     const w = c.web, prop = c.proposition, admin = P.admin;
-    const propBand = prop ? `<section class="card web-band"><h2>${prop.maj ? 'La carte a changé' : 'Proposé pour la banque'}</h2><p>${prop.maj ? 'Léo a revérifié ce terrain sur le web et trouvé des différences avec la banque' : 'Par ' + esc(prop.par || 'un joueur') + (prop.groupeNom ? ' (' + esc(prop.groupeNom) + ')' : '')}. Vérifiez avec la carte du club, corrigez au besoin, puis approuvez ou effacez.</p>
+    const propBand = prop ? `<section class="card web-band"><h2>${prop.maj ? 'La carte a changé' : 'Proposé pour la banque'}</h2><p>${prop.maj ? 'Samuel a revérifié ce terrain sur le web et trouvé des différences avec la banque' : 'Par ' + esc(prop.par || 'un joueur') + (prop.groupeNom ? ' (' + esc(prop.groupeNom) + ')' : '')}. Vérifiez avec la carte du club, corrigez au besoin, puis approuvez ou effacez.</p>
       ${prop.changes && prop.changes.length ? `<ul class="maj-liste">${prop.changes.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}</section>` : '';
     const webBand = w ? `<section class="card web-band conf-${esc(w.confiance)}">
-        <h2>Carte préparée par Léo · à réviser</h2>
+        <h2>Carte préparée par Samuel · à réviser</h2>
         <p>Trouvée sur le web (fiabilité ${w.confiance === 'haute' ? 'élevée' : w.confiance === 'moyenne' ? 'moyenne' : 'faible'}). Comparez chaque normale, handicap, évaluation et slope avec la carte officielle du club, corrigez au besoin, puis approuvez ou refusez.</p>
         ${carteSourceHtml(w.carte, w.cartePage)}
         ${w.alertes.length ? `<ul class="web-alertes">${w.alertes.map(a => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
@@ -2448,7 +2448,7 @@ ${SPORT.bienvenueVous}</ul></section>
           <p class="note">L’équipe du fanion.ai vérifie chaque nouveau terrain avant de l’ajouter à la banque. Vous le verrez dans Terrains dès qu’il est approuvé.</p>`
         : !c.id && !admin ? `<button class="btn" id="saveCourse" type="button">Envoyer pour approbation</button><p class="note">L’équipe du fanion.ai vérifie chaque nouveau terrain avant de l’ajouter à la banque.</p>`
         : `<button class="btn" id="saveCourse" type="button">Enregistrer le terrain</button>`}
-      ${!prop && c.id && S.courses.some(x => x.id === c.id) ? `<section class="card verif-card"><h3>Carte à jour ?</h3><p class="note">${derniereVerif(c) ? 'Dernière vérification : ' + new Date(derniereVerif(c)).toLocaleDateString('fr-CA', { day: 'numeric', month: 'long', year: 'numeric' }) + '.' : 'Jamais vérifiée sur le web.'} Léo revérifie chaque terrain environ une fois par saison ; si la carte du club a changé, la mise à jour passe par l’approbation.</p>
+      ${!prop && c.id && S.courses.some(x => x.id === c.id) ? `<section class="card verif-card"><h3>Carte à jour ?</h3><p class="note">${derniereVerif(c) ? 'Dernière vérification : ' + new Date(derniereVerif(c)).toLocaleDateString('fr-CA', { day: 'numeric', month: 'long', year: 'numeric' }) + '.' : 'Jamais vérifiée sur le web.'} Samuel revérifie chaque terrain environ une fois par saison ; si la carte du club a changé, la mise à jour passe par l’approbation.</p>
         <button class="btn ghost small" id="verifCarte" type="button">🔄 Vérifier maintenant</button><div id="verifEtat" class="note"></div></section>` : ''}
       ${!prop && c.id && S.courses.some(x => x.id === c.id) ? (S.confirmRetire === c.id
         ? `<div class="row retire-row"><span class="note">Effacer « ${esc(c.name)} » de la banque du groupe ?</span><button class="btn small" id="retireOk" type="button" style="background:var(--red)">Effacer</button><button class="btn ghost small" id="retireNo" type="button">Annuler</button></div>`
@@ -2873,10 +2873,10 @@ ${SPORT.bienvenueVous}</ul></section>
         catch (e) { ro.disabled = false; toast('Retrait impossible : ' + e.message); }
       };
       const vc = $('#verifCarte'); if (vc) vc.onclick = async () => {
-        vc.disabled = true; const et = $('#verifEtat'); et.textContent = 'Léo compare avec la carte du club sur le web… (jusqu’à une minute)';
+        vc.disabled = true; const et = $('#verifEtat'); et.textContent = 'Samuel compare avec la carte du club sur le web… (jusqu’à une minute)';
         try {
           const r = await verifierCarte(S.courses.find(x => x.id === c.id) || c, false);
-          et.textContent = r.etat === 'ajour' ? '✓ La carte est à jour.' : r.etat === 'incertain' ? 'Léo n’a pas trouvé de carte complète et fiable : rien n’a changé.' : r.etat === 'deja' ? 'Une mise à jour attend déjà l’approbation.'
+          et.textContent = r.etat === 'ajour' ? '✓ La carte est à jour.' : r.etat === 'incertain' ? 'Samuel n’a pas trouvé de carte complète et fiable : rien n’a changé.' : r.etat === 'deja' ? 'Une mise à jour attend déjà l’approbation.'
             : `La carte a changé (${r.changes.length} différence${r.changes.length > 1 ? 's' : ''}) : la mise à jour ${P.admin ? 'est dans « Terrains à approuver »' : 'est envoyée pour approbation'}.`;
           if (r.etat === 'ajour') S.courses = await Store.listCourses();
         } catch (e) { et.textContent = 'Vérification impossible : ' + e.message; }
@@ -4352,7 +4352,7 @@ ${SPORT.bienvenueVous}</ul></section>
   }
   document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-caddie]'); if (t) { e.preventDefault(); openCaddie(); } });
   // ==== src/commun/leo.js ====
-  // ---------------- Léo, le caddie en personne : visage dans le coin, salut à l'arrivée, visite guidée ----------------
+  // ---------------- Samuel, le caddie en personne : visage dans le coin, salut à l'arrivée, visite guidée ----------------
   let leo = null;
   const LEO_CACHE = ['game', 'setup', 'compEdit', 'comp', 'compTv', 'offre', 'login', 'join', 'jeuEdit', 'course'];   // écrans de saisie : on ne cache rien
   const ssGet = k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } };
@@ -4671,8 +4671,8 @@ ${SPORT.bienvenueVous}</ul></section>
   (async function start() {
     $('#view').innerHTML = '<p class="note">Démarrage…</p>';
     await Store.init();
-    if (Store.redirecting) { $('#view').innerHTML = '<p class="note">Albert vous reconnaît…</p>'; return; }
-    // Menu d'Albert (compte HoldingAI), en haut à droite, comme dans toutes les apps HoldingAI
+    if (Store.redirecting) { $('#view').innerHTML = '<p class="note">Philou vous reconnaît…</p>'; return; }
+    // Menu de Philou (compte HoldingAI), en haut à droite, comme dans toutes les apps HoldingAI
     if (Store.mode === 'cloud') {
       window.HOLDINGAI_PORTE = Store.uid
         ? { app: MARQUE.id, nomApp: MARQUE.nomApp, personnage: MARQUE.personnage, prenom: Store.nom || '', connecte: true,
