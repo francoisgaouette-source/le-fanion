@@ -1,7 +1,12 @@
-// Réglages publics de l’échange.ai (app des sports de raquette). Sans projet Supabase (étape 5 du plan), l'app fonctionne en mode local.
-// Au lancement : projet Supabase séparé du Fanion (supabaseUrl, supabaseKey) et client OAuth HoldingAI de l'app.
+// Réglages publics de l'échange.ai (app.lechange.ai), l'app des sports de raquette.
+// Projet Supabase « L'Échange ». La clé publique peut être dans le code : la sécurité vient des règles de la base.
 window.APP_CONFIG = {
-  supabaseUrl: "",
-  supabaseKey: "",
-  HOLDINGAI: { clientId: "", app: "lechange", retour: "https://lechange.ai/" }
+  supabaseUrl: "https://vdhlidlgwutlgihrypgo.supabase.co",
+  supabaseKey: "sb_publishable_RXZGbjuF6U5Fgu5Kdo1LBQ_Jv6xKnZ6",
+  // Compte HoldingAI (compte.holdingai.app) : client OAuth de l'échange.ai dans le projet Supabase « HoldingAI Compte »
+  HOLDINGAI: {
+    clientId: "",
+    app: "lechange",
+    retour: "https://app.lechange.ai/"
+  }
 };

@@ -18,7 +18,7 @@
 
   function etapes() {
     if (DANS_APP) return `<ol><li>Touchez le menu <b>⋯</b> ou <b>⋮</b> de cette fenêtre.</li><li>Choisissez <b>Ouvrir dans ${IOS ? 'Safari' : 'Chrome'}</b> (ou « Ouvrir dans le navigateur »).</li><li>Revenez à ces étapes dans ${IOS ? 'Safari' : 'Chrome'}.</li></ol>`;
-    if (PAS_SAFARI) return `<ol><li>Copiez l’adresse <b>lechange.ai</b>.</li><li>Ouvrez-la dans <b>Safari</b> : sur iPhone, seule Safari ajoute une app à l’écran d’accueil.</li><li>Suivez les étapes qui s’y affichent.</li></ol>`;
+    if (PAS_SAFARI) return `<ol><li>Copiez l’adresse <b>app.lechange.ai</b>.</li><li>Ouvrez-la dans <b>Safari</b> : sur iPhone, seule Safari ajoute une app à l’écran d’accueil.</li><li>Suivez les étapes qui s’y affichent.</li></ol>`;
     if (IOS) return `<ol><li>Touchez le bouton <b>Partager</b> ${PARTAGE} en bas de Safari.</li><li>Faites défiler et choisissez <b>Sur l’écran d’accueil</b>.</li><li>Touchez <b>Ajouter</b>, puis ouvrez l’échange.ai par sa nouvelle icône.</li></ol>`;
     return `<ol><li>Touchez le menu <b>⋮</b> en haut à droite de Chrome.</li><li>Choisissez <b>Installer l’application</b> (ou <b>Ajouter à l’écran d’accueil</b>).</li><li>Ouvrez l’échange.ai par sa nouvelle icône.</li></ol>`;
   }
