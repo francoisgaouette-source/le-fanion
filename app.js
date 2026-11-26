@@ -32,7 +32,7 @@
         try {
           this.sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, { accessToken: async () => (await HoldingAI.jeton()) || null });
           this.mode = 'cloud';
-          // Le compte suit : sans session, on passe chez Albert (compte.holdingai.app), qui ramène la personne connectée
+          // Le compte suit : sans session, on passe chez Albert (compte.letabli.ai), qui ramène la personne connectée
           // Installation obligatoire sur téléphone : on ne passe chez Albert qu'une fois l'app installée (iPhone : l'app installée ne garde pas la connexion faite dans Safari)
           const dep = await HoldingAI.demarrer({ obligatoire: !window.FANION_INSTALL_REQUISE });
           if (dep.redirection) { this.redirecting = true; return; }

@@ -4,7 +4,7 @@
 //   ANTHROPIC_API_KEY (le Caddie : l'agent qui répond aux questions dans l'app)
 //   VAPID_PRIVATE_JWK (notifications de l'app : clé privée VAPID, format JWK)
 // Sécurité : seuls les membres connectés peuvent texter, et seulement les numéros de leur propre groupe. Maximum 30 numéros par envoi.
-// Connexion : compte HoldingAI (jeton de compte.holdingai.app), lu dans Supabase « Le Fanion » avec le jeton du membre (règles RLS).
+// Connexion : compte HoldingAI (jeton de compte.letabli.ai), lu dans Supabase « Le Fanion » avec le jeton du membre (règles RLS).
 
 const ORIGINS = ['https://francoisgaouette-source.github.io', 'https://lefanion.ai', 'https://www.lefanion.ai', 'https://app.lefanion.ai',
   // Anciennes adresses : encore acceptées pendant la transition vers lefanion.ai
