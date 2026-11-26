@@ -5,7 +5,7 @@ window.FANION_CONFIG = window.APP_CONFIG = {
   supabaseKey: "sb_publishable_OyJAYcd00NPMK0_yiW54dA_ySQhECPK",
   // Compte HoldingAI (compte.holdingai.app) : client OAuth du Fanion dans le projet Supabase « HoldingAI Compte »
   HOLDINGAI: {
-    clientId: "",          // à remplir quand le client « Le Fanion » est créé (Authentication > OAuth Apps)
+    clientId: "e075c09b-a84c-453b-9ca1-19c3800af8ae",
     app: "fanion",
     retour: "https://app.fanion.ai/"
   }

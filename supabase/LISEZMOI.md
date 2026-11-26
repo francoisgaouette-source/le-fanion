@@ -47,9 +47,12 @@ Faite, pas encore en ligne (`main` reste sur Firebase) :
 - `worker.js` accepte les jetons HoldingAI (textos, notifications, Léo, retour) et lit Supabase ; les jetons Firebase restent acceptés pendant la transition.
 - `supabase/console/` : nouvelles versions de `retour-fanion` et `journal-caddie` (projet Notre épicerie) qui acceptent aussi les jetons HoldingAI. À déployer.
 
+## Fait le 25 novembre 2026 (suite)
+- Client OAuth « Le Fanion » créé dans HoldingAI Compte (`e075c09b-a84c-453b-9ca1-19c3800af8ae`, public, retour `https://app.fanion.ai/`), noté dans `config.js` et la table `apps`.
+- Le Fanion > Third-Party Auth : Custom OIDC, émetteur `https://wwakxuzuhmdmweluafiz.supabase.co/auth/v1`.
+- `retour-fanion` et `journal-caddie` (Notre épicerie) déployées : elles acceptent les jetons HoldingAI et Firebase.
+- Données Firestore : **pas de migration** (décision de François). Les groupes repartent de zéro sur Supabase.
+
 ## Reste à faire
-1. Créer le client OAuth « Le Fanion » dans HoldingAI Compte (adresse de retour `https://app.fanion.ai/`), mettre son Client ID dans `config.js` et dans la table `apps`.
-2. Le Fanion > Authentication > Third-Party Auth : Custom OIDC, émetteur `https://wwakxuzuhmdmweluafiz.supabase.co/auth/v1`.
-3. Déployer `supabase/console/*` dans Notre épicerie.
-4. Exporter Firestore et importer les données (clé de compte de service Firebase, à effacer ensuite) ; relier les idées de la console (`fanion_idees.qui`) aux nouveaux comptes.
-5. Fusionner la branche dans `main` (bascule), garder Firebase en lecture seule quelques semaines, puis le supprimer (et corriger la page de confidentialité).
+1. Fusionner la branche `supabase-holdingai` dans `main` (bascule) : les joueurs se connectent avec HoldingAI et recréent leur groupe.
+2. Garder Firebase en lecture seule quelques semaines, puis le supprimer (et corriger la page de confidentialité).
