@@ -1,0 +1,13 @@
+# Vérifie que app.js correspond bien aux fichiers de src/, que l'app raquette s'assemble et que sa logique passe ses tests.
+name: Assemblage
+on: [push, pull_request]
+jobs:
+  verifier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node outils/assembler.js fanion --verifier
+      - run: node outils/assembler.js raquette
+      - run: node outils/tests-raquette.js

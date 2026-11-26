@@ -1,3 +1,5 @@
+/* Fichier assemblé par outils/assembler.js à partir de src/ (src/apps/fanion.json). Ne pas le modifier directement :
+   modifier les fichiers de src/, puis lancer « node outils/assembler.js fanion ». */
 /* Pelland — application (interface, voix, base de données). */
 (function () {
   'use strict';
@@ -9,6 +11,79 @@
     get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* stockage indisponible */ } }
   };
+  // ==== src/apps/fanion.json (marque) ====
+  const MARQUE = Object.freeze({"id":"fanion","nom":"le fanion.ai","nomMaj":"Le fanion.ai","duNom":"du fanion.ai","nomApp":"Le Fanion","domaine":"fanion.ai","site":"https://lefanion.ai","api":"https://lefanion.ai","courriel":"bonjour@fanion.ai","slogan":"le golf entre amis","accroche":"Le golf entre amis : pointage, jeux et parties à venir.","description":"l’app de golf entre amis","groupeDefaut":"La gang à Pelland","personnage":"Léo","role":"votre caddie","roleMaj":"Votre caddie","leRole":"le caddie","icone":"L’icône du fanion","logoVue":"0 0 26 30","logo":"<path d=\"M5 2v26\" stroke=\"currentColor\" stroke-width=\"2.6\" stroke-linecap=\"round\"/><path d=\"M6 3l15 5.5L6 14z\" fill=\"#e3a90c\"/>"});
+  // ==== src/golf/sport.js ====
+  // =====================================================================
+  // Contenu propre au golf, lu par le tronc commun (accueil, aperçus, Léo, textes d'invitation)
+  // =====================================================================
+  const SPORT = {
+    // Tuiles réservées à l'organisateur : explication, aperçu dessiné et fiche
+    verrous: {
+      courses: 'Réservé à l’organisateur : il ajoute et corrige les terrains du groupe.',
+      players: 'Réservé à l’organisateur : il ajoute les joueurs et leur cellulaire.',
+      jeux: 'Réservé à l’organisateur : il choisit les jeux, les règles et les montants du groupe.',
+      quatuors: 'Réservé à l’organisateur : il offre les dates et forme les quatuors. Vous répondez avec le lien reçu par texto.',
+      setup: 'Réservé à l’organisateur : il crée les parties. Vous les suivez en direct dans Parties en cours.',
+    },
+    apercus: {
+      players: () => `<div class="mk mk-list">${[['Marc Lavoie', 'ok', 'Compte créé'], ['Julie Roy', 'ok', 'Compte créé'], ['Éric Gagnon', 'wait', 'Invité']].map(([n, c, t]) =>
+      `<div class="mk-row"><span class="mk-av">${n.split(' ').map(x => x[0]).join('')}</span><b>${n}</b><span class="mk-pill ${c}">${t}</span></div>`).join('')}<div class="mk-add">+ Ajouter un joueur et son cellulaire</div></div>`,
+      quatuors: () => `<div class="mk mk-offre"><div class="mk-date"><b>Samedi 14 juin, 8 h</b><span>Pinegrove</span></div>
+      <div class="mk-yes">${['Marc', 'Julie', 'Éric', 'Luc', 'Ana', 'Paul', 'Guy', 'Bob'].map(n => `<span>${n}</span>`).join('')}</div>
+      <div class="mk-q"><span>Quatuor 1 : Marc, Julie, Éric, Luc</span><span>Quatuor 2 : Ana, Paul, Guy, Bob</span></div></div>`,
+      setup: () => `<div class="mk mk-setup"><div class="mk-f"><span>Terrain</span><b>Pinegrove, tertres blancs</b></div><div class="mk-f"><span>Jeu</span><b>La game à Pelland</b></div>
+      <div class="mk-teams"><div class="r"><b>Rouges</b>Marc et Paul</div><div class="b"><b>Bleus</b>Julie et Luc</div></div><div class="mk-f"><span>La game commence à</span><b>10 $</b></div></div>`,
+      courses: () => `<div class="mk mk-course"><b>Pinegrove</b><span>Saint-Jean-sur-Richelieu, normale 72</span>
+      <div class="mk-holes">${[5, 3, 4, 4, 5, 3, 5, 3, 4, 4, 5, 3, 5, 4, 3, 4, 4, 4].map((p, i) => `<i><small>${i + 1}</small>${p}</i>`).join('')}</div></div>`,
+      jeux: () => `<div class="mk mk-jeu"><b>La game à Pelland</b><ul><li>Plus bas net du trou : 2 points</li><li>Skin, oiselet, press et reroll</li></ul>
+      <div class="mk-money"><span>Départ <b>10 $</b></span><span>Revirement <b>5 $</b></span><span>Normale 3 <b>5 $</b></span></div></div>`,
+    },
+    apercuInfos: {
+      players: { t: 'Inviter des joueurs', d: 'L’organisateur ajoute chaque joueur avec son cellulaire ; l’invitation part par texto.', you: 'Vous avez reçu cette invitation : votre compte est créé.' },
+      quatuors: { t: 'Parties à préparer', d: 'L’organisateur offre des dates ; l’app voit qui est disponible et forme les quatuors.', you: 'Vous recevez un texto avec un lien : cochez vos dates, c’est tout.' },
+      setup: { t: 'Créer une partie', d: 'Terrain, joueurs, équipes, jeu et montants : l’organisateur lance la partie et entre les scores.', you: 'Vous suivez la partie en direct dans Parties en cours.' },
+      courses: { t: 'Banque de terrains', d: 'Les terrains du groupe, avec leurs normales, la difficulté de chaque trou et leurs tertres.', you: 'Les coups de handicap de chacun en découlent automatiquement.' },
+      jeux: { t: 'Banque de jeux', d: 'Les règles et les montants de chaque jeu : la game à Pelland, Nassau, Vegas, skins, Wolf…', you: 'Les règles détaillées sont aussi sur lefanion.ai/regles.' },
+    },
+    // Accueil du participant
+    bienvenueVous: `          <li><b>Répondre aux dates</b> avec le lien reçu par texto.</li>
+          <li><b>Suivre les parties en direct</b> : scores, points et argent, trou par trou.</li>
+          <li><b>Revoir les parties jouées</b> et qui doit quoi à qui.</li>
+          <li><b>Voir le classement</b> des compétitions.</li>
+          <li><b>Poser vos questions</b> à Léo, votre caddie : touchez son visage dans le coin.</li>`,
+    bienvenueOrg: '<li>Inviter les joueurs</li><li>Offrir les dates et former les quatuors</li><li>Créer les parties</li><li>Gérer les terrains et les jeux</li>',
+    // Bien démarrer
+    etapeJoueurs: n => `${n} joueur${n > 1 ? 's' : ''} avec cellulaire : il en faut 3 pour un premier quatuor.`,
+    etapeOffre: 'Vos joueurs répondent par texto ; l’app forme les quatuors.',
+    etapePartie: 'Choisissez le terrain et le jeu ; l’app compte tout, en direct.',
+    // Léo
+    ecrans: { home: 'Accueil', players: 'Inviter des joueurs', quatuors: 'Parties à préparer', setup: 'Créer une partie', jeux: 'Banque de jeux', courses: 'Banque de terrains', live: 'Parties en cours', history: 'Parties et compétitions jouées', comps: 'Banque de compétitions', compte: 'Mon compte' },
+    questionsLeo: ['Comment inviter mes joueurs ?', 'Comment marche la press ?', 'Combien coûte le forfait Groupe ?'],
+    leoAccueil: 'Posez-moi vos questions sur l’app, les règles des jeux ou les forfaits.',
+    visite: nom => [
+      { puce: 'Bonjour !', titre: `Bienvenue${nom ? ', ' + nom : ''} ! Moi, c’est Léo, votre caddie.`, texte: `Je vous fais faire le tour de « ${groupName()} » en six coups. Ça prend une minute.` },
+      { puce: 'Étape 1', titre: 'Inviter des joueurs', texte: 'Le nom et le cellulaire de chacun : l’invitation part par texto. Chaque joueur crée son compte une fois, pour tous ses groupes.' },
+      { puce: 'Étape 2', titre: 'Parties à préparer', texte: 'Offrez quelques dates. Chacun coche les siennes, et je forme les quatuors à la date butoir.' },
+      { puce: 'Étapes 3 et 4', titre: 'Créer une partie, la suivre en direct', texte: 'Terrain, équipes, jeu et montants. Un joueur entre les scores ; les autres suivent la partie sur leur téléphone.' },
+      { puce: 'Étapes 5 et 6', titre: 'Compétitions et résultats', texte: 'Membre-membre, membre-invité, scrambles, Coupe Ryder ou tableau à élimination, avec le classement en direct. À la fin, je dis qui doit quoi à qui.' },
+      { puce: 'Les banques', titre: 'Joueurs, terrains, jeux, compétitions', texte: 'Tout ce que le groupe bâtit reste là pour la prochaine saison : vos terrains, vos jeux maison, vos formats.' },
+    ],
+    // Textes
+    parrainage: app => `On organise notre golf avec ${app} : invitations par texto, quatuors, pointage et gageures calculées. Crée ton groupe, c’est gratuit pour un quatuor :`,
+    avisExemple: 'ex. Plus besoin de 40 textos pour former les quatuors.',
+    lieuExemple: 'ex. Golf Simulateur Laval, baies 2 et 3',
+    amiJoueur: 'un ami golfeur',
+    autreGroupe: 'un autre groupe de golf',
+    gratuitPour: 'un quatuor',
+    quatuors: 'quatuors',
+    atouts: 'invitations par texto, quatuors, pointage et argent calculés',
+    vueDates: 'quatuors',
+    vuePartie: 'setup',
+    leoBouton: 'Parties à préparer',
+    leoProchaine: 'Prêt pour la prochaine ronde ? Offrez des dates et je forme les quatuors.',
+  };
+  // ==== src/commun/base.js ====
 
   // =====================================================================
   // Base de données : Supabase (projet « Le Fanion ») avec le compte HoldingAI ; sinon stockage local
@@ -50,8 +125,7 @@
         // Compte relié à aucun joueur : on reste connecté, mais il faut un groupe (invitation ou nouveau groupe)
         const m = await this.ensureMember();
         if (m === false) { this.noGroup = true; this.needLogin = true; }
-        this.flush();
-        window.addEventListener('online', () => this.flush());
+        if (this.flush) { this.flush(); window.addEventListener('online', () => this.flush()); }
       }
     },
     // ---------- Compte (HoldingAI) ----------
@@ -121,145 +195,13 @@
       if (r.error) { console.warn('telephones', r.error.message); this.phonesBlocked = true; if (strict) throw new Error(/duplicate|unique/i.test(r.error.message) ? 'Ce cellulaire est déjà inscrit.' : 'Numéro non conservé : ' + r.error.message); }
       else this.phonesBlocked = false;
     },
-    async ensureSeed() { return this.listCourses(); },
-    async listCourses() {
-      let list;
-      if (this.mode === 'cloud') list = (ok(await this.sb.from('terrains').select('id, data')) || []).map(r => ({ ...(r.data || {}), id: r.id }));
-      else list = ls.get('pelland.courses', []);
-      // Terrains retirés de la banque de ce groupe (les autres groupes les gardent)
-      const out = await this.retiredCourses();
-      this.retired = list.filter(c => out.includes(c.id)).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-      return list.filter(c => !out.includes(c.id)).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-    },
-    async retiredCourses() {
-      if (this.mode === 'cloud') { const g = await this.gdata(); return (g && g.terrainsRetires) || []; }
-      return ls.get('pelland.terrainsRetires.' + this.gid, []);
-    },
-    async setCourseRetired(id, out) {
-      const cur = await this.retiredCourses(), next = out ? [...new Set([...cur, id])] : cur.filter(x => x !== id);
-      if (this.mode === 'cloud') await this.setGdata('terrainsRetires', next); else ls.set('pelland.terrainsRetires.' + this.gid, next);
-    },
     // ---- Nouveaux terrains : proposés par les joueurs, approuvés par l'équipe Fanion (table admins) avant d'entrer dans la banque commune
     async isAdmin() {
       if (this.mode !== 'cloud') return !!ls.get('pelland.admin', false);
       try { return !!ok(await this.sb.from('admins').select('uid').eq('uid', this.uid).maybeSingle()); } catch (e) { return false; }
     },
-    async proposeCourse(course, meta) {
-      const p = { course: JSON.parse(JSON.stringify(course)), statut: 'propose', groupe: this.gid, cree: Date.now(), ...meta, proposeUid: this.uid || '' };
-      if (this.mode === 'cloud') { const r = ok(await this.sb.from('terrains_proposes').insert({ groupe: this.gid, propose_uid: this.uid, statut: 'propose', data: p }).select('id').single()); return { ...p, id: r.id }; }
-      const l = ls.get('pelland.terrainsProposes', []); p.id = 'p' + Date.now(); l.push(p); ls.set('pelland.terrainsProposes', l); return p;
-    },
-    async listProposals(admin) {
-      if (this.mode !== 'cloud') { const l = ls.get('pelland.terrainsProposes', []); return { mine: l.filter(p => p.groupe === this.gid), todo: admin ? l.filter(p => p.statut === 'propose') : [] }; }
-      const map = q => q.then(r => (ok(r) || []).map(x => ({ ...(x.data || {}), id: x.id, statut: x.statut, groupe: x.groupe }))).catch(() => []);
-      const cols = 'id, groupe, statut, data';
-      const [mine, todo] = await Promise.all([map(this.sb.from('terrains_proposes').select(cols).eq('groupe', this.gid)), admin ? map(this.sb.from('terrains_proposes').select(cols).eq('statut', 'propose')) : []]);
-      return { mine, todo };
-    },
-    async withdrawProposal(id) {
-      if (this.mode === 'cloud') { ok(await this.sb.from('terrains_proposes').delete().eq('id', id)); return; }
-      ls.set('pelland.terrainsProposes', ls.get('pelland.terrainsProposes', []).filter(p => p.id !== id));
-    },
-    async decideProposal(id, yes, course, photos) {
-      const ch = { statut: yes ? 'approuve' : 'refuse', decideLe: Date.now(), decideUid: this.uid || '' };
-      if (yes) {
-        const c = await this.saveCourse({ ...course, verifieLe: Date.now(), ...(photos && photos.length ? { photosCarte: photos.length } : {}) }); ch.courseId = c.id;
-        // Photos de la carte gardées à part (lues seulement quand on ouvre le terrain)
-        if (photos && photos.length) { if (this.mode === 'cloud') ok(await this.sb.from('cartes_terrains').upsert({ course_id: c.id, photos, cree: Date.now() })); else ls.set('pelland.carte.' + c.id, photos); }
-      }
-      if (this.mode === 'cloud') {
-        const cur = ok(await this.sb.from('terrains_proposes').select('data').eq('id', id).maybeSingle());
-        ok(await this.sb.from('terrains_proposes').update({ statut: ch.statut, data: { ...((cur && cur.data) || {}), ...ch } }).eq('id', id)); return;
-      }
-      ls.set('pelland.terrainsProposes', ls.get('pelland.terrainsProposes', []).map(p => p.id === id ? { ...p, ...ch } : p));
-    },
-    async cartePhotos(courseId) {
-      if (this.mode !== 'cloud') return ls.get('pelland.carte.' + courseId, []);
-      try { const r = ok(await this.sb.from('cartes_terrains').select('photos').eq('course_id', courseId).maybeSingle()); return (r && r.photos) || []; } catch (e) { return []; }
-    },
-    async saveCourse(c) {
-      c = JSON.parse(JSON.stringify(c));
-      if (!c.id) c.id = slug(c.name) + '-' + Math.random().toString(36).slice(2, 6);
-      c.updatedAt = Date.now();
-      if (this.mode === 'cloud') {
-        const u = ok(await this.sb.from('terrains').update({ data: c }).eq('id', c.id).select('id'));
-        if (!u || !u.length) ok(await this.sb.from('terrains').insert({ id: c.id, data: c }));
-        return c;
-      }
-      const list = ls.get('pelland.courses', []).filter(x => x.id !== c.id); list.push(c); ls.set('pelland.courses', list); return c;
-    },
-    async newCode() {
-      const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-      for (let n = 0; n < 20; n++) {
-        const code = Array.from({ length: 4 }, () => A[Math.floor(Math.random() * A.length)]).join('');
-        let used = null; try { used = await this.getGame(code); } catch (e) { return code; }
-        if (!used) return code;
-      }
-      return 'P' + Date.now().toString(36).toUpperCase().slice(-5);
-    },
     // ---- Parties : copie sur le téléphone + file d'attente (hors ligne sur le terrain), envoyées dès que possible
-    cacheGame(g) { const all = ls.get('fanion.parties', {}); all[g.id] = g; const ids = Object.keys(all); if (ids.length > 40) ids.sort((a, b) => (all[a].updatedAt || 0) - (all[b].updatedAt || 0)).slice(0, ids.length - 40).forEach(k => delete all[k]); ls.set('fanion.parties', all); },
-    cachedGame(id) { return ls.get('fanion.parties', {})[id] || null; },
-    async getGame(id) {
-      if (this.mode === 'cloud') {
-        try { const r = ok(await this.sb.from('parties').select('data').eq('id', id).maybeSingle()); if (r) { const g = fromDb(r.data); return this.pending(id) || g; } return this.pending(id) || null; }
-        catch (e) { const c = this.cachedGame(id); if (c) return c; throw e; }
-      }
-      return ls.get('pelland.games', {})[id] || null;
-    },
-    pending(id) { const q = ls.get('fanion.file', {}); return q[id] ? q[id] : null; },
-    async saveGame(g) {
-      g.updatedAt = Date.now(); if (!g.groupId) g.groupId = this.gid;
-      if (this.mode === 'cloud') {
-        if (!g.ownerUid) g.ownerUid = this.uid;
-        this.cacheGame(g);
-        const q = ls.get('fanion.file', {}); q[g.id] = g; ls.set('fanion.file', q);
-        this._emit(g);
-        // hors ligne : la partie reste dans la file et part au retour du réseau ; on n'attend pas plus de 5 s
-        const p = this.flush(); await Promise.race([p, new Promise(r => setTimeout(r, navigator.onLine ? 5000 : 0))]); return;
-      }
-      const all = ls.get('pelland.games', {}); all[g.id] = g; ls.set('pelland.games', all);
-      this._emit(g);
-    },
-    async flush() {
-      if (this.mode !== 'cloud' || this._flushing || navigator.onLine === false) return;
-      this._flushing = true;
-      try {
-        const q = ls.get('fanion.file', {});
-        for (const id of Object.keys(q)) {
-          const g = q[id];
-          const r = await this.sb.rpc('partie_enregistrer', { p_id: g.id, p_group: g.groupId, p_owner: g.ownerUid || '', p_data: toDb(g) });
-          const now = ls.get('fanion.file', {});
-          if (!r.error || /appartient|row-level|violates/i.test(r.error.message || '')) {
-            if (now[id] && now[id].updatedAt === g.updatedAt) { delete now[id]; ls.set('fanion.file', now); }
-            if (r.error) toast('Non enregistré : ' + r.error.message);
-          } else if (!/fetch|network|Failed/i.test(r.error.message || '')) { toast('Non enregistré : ' + r.error.message); delete now[id]; ls.set('fanion.file', now); }
-          else break;
-        }
-      } catch (e) { /* réseau : on réessaiera */ } finally { this._flushing = false; }
-    },
-    _subs: {},
-    _emit(g) { (this._subs[g.id] || []).forEach(cb => cb(g)); },
     // Temps réel : changements de la base (autres joueurs) + nos propres enregistrements (immédiats, même hors ligne)
-    watch(table, col, id, cb) {
-      const ch = this.sb.channel(table + ':' + id + ':' + Math.random().toString(36).slice(2, 7))
-        .on('postgres_changes', { event: '*', schema: 'public', table, filter: col + '=eq.' + id }, p => { if (p.new && Object.keys(p.new).length) cb(p.new); })
-        .subscribe();
-      return () => { try { this.sb.removeChannel(ch); } catch (e) { } };
-    },
-    watchGame(id, cb) {
-      (this._subs[id] = this._subs[id] || []).push(cb);
-      if (this.mode === 'cloud') {
-        const c = this.cachedGame(id); if (c) cb(c);
-        this.getGame(id).then(g => g && cb(g)).catch(e => toast('Lecture impossible : ' + e.message));
-        const off = this.watch('parties', 'id', id, r => { if (!this.pending(id)) { const g = fromDb(r.data); this.cacheGame(g); cb(g); } });
-        return () => { off(); this._subs[id] = (this._subs[id] || []).filter(x => x !== cb); };
-      }
-      this.getGame(id).then(g => g && cb(g));
-      const onStorage = e => { if (e.key === 'pelland.games') this.getGame(id).then(g => g && cb(g)); };
-      window.addEventListener('storage', onStorage);
-      return () => { this._subs[id] = (this._subs[id] || []).filter(x => x !== cb); window.removeEventListener('storage', onStorage); };
-    },
     // Groupes : chaque groupe a ses joueurs, parties, dates et quatuors (les terrains sont communs). Pelland = premier groupe.
     get gid() { return ls.get('pelland.group', 'pelland') || 'pelland'; },
     setGroup(id) { ls.set('pelland.group', id || 'pelland'); },
@@ -267,7 +209,7 @@
       let list = [];
       if (this.mode === 'cloud') { try { list = (ok(await this.sb.from('groupes').select('*')) || []).map(rowGroupe); } catch (e) { } }
       else list = Object.values(ls.get('pelland.groups', {}));
-      if (!list.find(g => g.id === 'pelland') && this.mode !== 'cloud') list.push({ id: 'pelland', name: 'La gang à Pelland' });
+      if (!list.find(g => g.id === 'pelland') && this.mode !== 'cloud') list.push({ id: 'pelland', name: MARQUE.groupeDefaut });
       return list.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'fr'));
     },
     async saveGroup(gr) {
@@ -320,7 +262,7 @@
           p_donnees_joueur: { id: pid, name: name.trim(), phoneHint: this.e164.slice(-2), updatedAt: Date.now() } }));
       } else { await this.saveGroup(gr); const list = ls.get('pelland.players', []); list.push({ id: pid, name: name.trim(), groupId: gr.id, authEmail: 'local', acct: 'local' }); ls.set('pelland.players', list); }
       this.setGroup(gr.id); this.needLogin = false; this.noGroup = false; ls.set('pelland.me', name.trim());
-      await this.ensureSeed();
+      if (this.ensureSeed) await this.ensureSeed();
       return gr;
     },
     // Membres du groupe (par défaut) ; avec bank = true, toute la banque de joueurs du groupe (membres et non-membres)
@@ -339,28 +281,8 @@
       try { const r = ok(await this.sb.from('donnees_groupe').select('data').eq('group_id', this.gid).maybeSingle()); return r ? r.data : null; } catch (e) { return null; }
     },
     async setGdata(field, list) { ok(await this.sb.rpc('donnees_maj', { p_group: this.gid, p_patch: { groupId: this.gid, [field]: list, updatedAt: Date.now() } })); },
-    async listQuatuors() {
-      if (this.mode === 'cloud') { const g = await this.gdata(); return (g && g.quatuors) || []; }
-      return ls.get('pelland.quatuors.' + this.gid, this.gid === 'pelland' ? ls.get('pelland.quatuors', []) : []);
-    },
-    async saveQuatuors(list) {
-      if (this.mode === 'cloud') { await this.setGdata('quatuors', list); return; }
-      ls.set('pelland.quatuors.' + this.gid, list);
-    },
     // Demandes d'ajout de jeux : table demandes (envoi seulement ; lues par l'équipe Fanion)
-    async saveGameRequest(req) {
-      if (this.mode === 'cloud') { ok(await this.sb.from('demandes').insert({ data: req })); return; }
-      ls.set('pelland.demandesJeux', ls.get('pelland.demandesJeux', []).concat([req]));
-    },
     // Jeux maison du groupe
-    async listJeux() {
-      if (this.mode === 'cloud') { const g = await this.gdata(); return (g && g.jeux) || []; }
-      return ls.get('pelland.jeux.' + this.gid, []);
-    },
-    async saveJeux(list) {
-      if (this.mode === 'cloud') { await this.setGdata('jeux', list); return; }
-      ls.set('pelland.jeux.' + this.gid, list);
-    },
     // Offres de parties : { id, groupId, course, dates:[ms], deadline:ms, by, createdAt, rep_<joueur>: { name, dates:[ms], at } }
     async listOffres() {
       if (this.mode === 'cloud') {
@@ -426,6 +348,14 @@
       }
       ls.set('pelland.players', ls.get('pelland.players', []).filter(x => x.id !== id));
     },
+    _subs: {},
+    _emit(g) { (this._subs[g.id] || []).forEach(cb => cb(g)); },
+    watch(table, col, id, cb) {
+      const ch = this.sb.channel(table + ':' + id + ':' + Math.random().toString(36).slice(2, 7))
+        .on('postgres_changes', { event: '*', schema: 'public', table, filter: col + '=eq.' + id }, p => { if (p.new && Object.keys(p.new).length) cb(p.new); })
+        .subscribe();
+      return () => { try { this.sb.removeChannel(ch); } catch (e) { } };
+    },
     // Présences : { cléJoueur: { ok: true|false, at } } par partie ; chaque membre écrit sa propre réponse
     watchPresence(id, cb) {
       if (this.mode === 'cloud') {
@@ -447,10 +377,6 @@
       if (this.mode === 'cloud') { const m = {}; if (!(ids || []).length) return m; try { (ok(await this.sb.from('presences').select('game_id, data').in('game_id', ids)) || []).forEach(r => { m[r.game_id] = r.data; }); } catch (e) { } return m; }
       return ls.get('pelland.presence', {});
     },
-    async deleteGame(id) {
-      if (this.mode === 'cloud') { const q = ls.get('fanion.file', {}); delete q[id]; ls.set('fanion.file', q); ok(await this.sb.from('parties').delete().eq('id', id)); return; }
-      const all = ls.get('pelland.games', {}); delete all[id]; ls.set('pelland.games', all);
-    },
     // Avis des joueurs : un par compte ; publié seulement si approuvé par l'équipe Fanion
     async getAvis() {
       if (this.mode !== 'cloud' || !this.uid) return ls.get('fanion.avis', null);
@@ -461,6 +387,186 @@
       ok(await this.sb.from('avis').upsert({ uid: this.uid, stars: a.stars, text: String(a.text || '').slice(0, 280), name: String(a.name || '').slice(0, 40), group_name: String(a.groupName || '').slice(0, 60), ok: !!a.ok, at: a.at || Date.now() }));
     },
     // Compétitions : { groupId, format, name, date, course, tee, allowance, flights, teams:[…], scores:{ <équipe>: { <trou>: [s1, s2] } } }
+    // Un score à la fois, fusionné, pour que deux équipes puissent entrer leurs scores en même temps
+    // Remplace un champ entier (ex. tableau.manual)
+    // Notifications : un abonnement par compte et par groupe (abonnements_push)
+    async savePushSub(g, playerId, js, etat) {
+      ok(await this.sb.from('abonnements_push').upsert({ id: this.uid + '_' + g, uid: this.uid, group_id: g, player_id: playerId, sub: js ? JSON.parse(js) : null, etat, at: Date.now() }));
+    },
+    async deletePushSub(g) { await this.sb.from('abonnements_push').delete().eq('id', this.uid + '_' + g); },
+    async listPushSubs() { return (ok(await this.sb.from('abonnements_push').select('player_id, sub, etat, at').eq('group_id', this.gid)) || []).map(r => ({ playerId: r.player_id, sub: r.sub, etat: r.etat, at: Number(r.at || 0) })); }
+  };
+  // Approbateur des terrains (compte) et taille maximale de la banque de joueurs
+  const P = { admin: false, mine: [], todo: [], charge: false };
+  const BANQUE_MAX = 64;
+  const presKey = name => L.norm(name).replace(/[^a-z0-9]+/g, '-');
+  function slug(s) { return L.norm(s).replace(/\s+/g, '-').slice(0, 30) || 'terrain'; }
+  const byName = (a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' });
+  // Doublons possibles : même nom à une lettre ou deux près (accents, fautes), ou même nom de famille et même initiale.
+  function duplicateMap(list) {
+    const L2 = window.PellandLogic, n = list.map(p => L2.norm(p.name)), out = {};
+    const lev = (a, b) => { const m = a.length, k = b.length; let pr = Array.from({ length: k + 1 }, (_, j) => j); for (let i = 1; i <= m; i++) { const c = [i]; for (let j = 1; j <= k; j++) c[j] = Math.min(pr[j] + 1, c[j - 1] + 1, pr[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); pr = c; } return pr[k]; };
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const a = n[i], b = n[j], wa = a.split(' '), wb = b.split(' ');
+      const similar = lev(a, b) <= 2 || (wa.length > 1 && wb.length > 1 && wa[wa.length - 1] === wb[wb.length - 1] && wa[0][0] === wb[0][0]) || (wa.length === 1 || wb.length === 1) && (wa[0] === wb[0]);
+      if (similar) { (out[list[i].id] = out[list[i].id] || []).push(list[j].name); (out[list[j].id] = out[list[j].id] || []).push(list[i].name); }
+    }
+    return out;
+  }
+
+  // =====================================================================
+  // Voix : reconnaissance (Safari iOS) et synthèse
+  // ==== src/golf/donnees.js ====
+  // Base de données : ce qui est propre au golf (terrains, parties, quatuors, jeux, compétitions)
+  Object.assign(Store, {
+    async ensureSeed() { return this.listCourses(); },
+    async listCourses() {
+      let list;
+      if (this.mode === 'cloud') list = (ok(await this.sb.from('terrains').select('id, data')) || []).map(r => ({ ...(r.data || {}), id: r.id }));
+      else list = ls.get('pelland.courses', []);
+      // Terrains retirés de la banque de ce groupe (les autres groupes les gardent)
+      const out = await this.retiredCourses();
+      this.retired = list.filter(c => out.includes(c.id)).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+      return list.filter(c => !out.includes(c.id)).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    },
+    async retiredCourses() {
+      if (this.mode === 'cloud') { const g = await this.gdata(); return (g && g.terrainsRetires) || []; }
+      return ls.get('pelland.terrainsRetires.' + this.gid, []);
+    },
+    async setCourseRetired(id, out) {
+      const cur = await this.retiredCourses(), next = out ? [...new Set([...cur, id])] : cur.filter(x => x !== id);
+      if (this.mode === 'cloud') await this.setGdata('terrainsRetires', next); else ls.set('pelland.terrainsRetires.' + this.gid, next);
+    },
+    async proposeCourse(course, meta) {
+      const p = { course: JSON.parse(JSON.stringify(course)), statut: 'propose', groupe: this.gid, cree: Date.now(), ...meta, proposeUid: this.uid || '' };
+      if (this.mode === 'cloud') { const r = ok(await this.sb.from('terrains_proposes').insert({ groupe: this.gid, propose_uid: this.uid, statut: 'propose', data: p }).select('id').single()); return { ...p, id: r.id }; }
+      const l = ls.get('pelland.terrainsProposes', []); p.id = 'p' + Date.now(); l.push(p); ls.set('pelland.terrainsProposes', l); return p;
+    },
+    async listProposals(admin) {
+      if (this.mode !== 'cloud') { const l = ls.get('pelland.terrainsProposes', []); return { mine: l.filter(p => p.groupe === this.gid), todo: admin ? l.filter(p => p.statut === 'propose') : [] }; }
+      const map = q => q.then(r => (ok(r) || []).map(x => ({ ...(x.data || {}), id: x.id, statut: x.statut, groupe: x.groupe }))).catch(() => []);
+      const cols = 'id, groupe, statut, data';
+      const [mine, todo] = await Promise.all([map(this.sb.from('terrains_proposes').select(cols).eq('groupe', this.gid)), admin ? map(this.sb.from('terrains_proposes').select(cols).eq('statut', 'propose')) : []]);
+      return { mine, todo };
+    },
+    async withdrawProposal(id) {
+      if (this.mode === 'cloud') { ok(await this.sb.from('terrains_proposes').delete().eq('id', id)); return; }
+      ls.set('pelland.terrainsProposes', ls.get('pelland.terrainsProposes', []).filter(p => p.id !== id));
+    },
+    async decideProposal(id, yes, course, photos) {
+      const ch = { statut: yes ? 'approuve' : 'refuse', decideLe: Date.now(), decideUid: this.uid || '' };
+      if (yes) {
+        const c = await this.saveCourse({ ...course, verifieLe: Date.now(), ...(photos && photos.length ? { photosCarte: photos.length } : {}) }); ch.courseId = c.id;
+        // Photos de la carte gardées à part (lues seulement quand on ouvre le terrain)
+        if (photos && photos.length) { if (this.mode === 'cloud') ok(await this.sb.from('cartes_terrains').upsert({ course_id: c.id, photos, cree: Date.now() })); else ls.set('pelland.carte.' + c.id, photos); }
+      }
+      if (this.mode === 'cloud') {
+        const cur = ok(await this.sb.from('terrains_proposes').select('data').eq('id', id).maybeSingle());
+        ok(await this.sb.from('terrains_proposes').update({ statut: ch.statut, data: { ...((cur && cur.data) || {}), ...ch } }).eq('id', id)); return;
+      }
+      ls.set('pelland.terrainsProposes', ls.get('pelland.terrainsProposes', []).map(p => p.id === id ? { ...p, ...ch } : p));
+    },
+    async cartePhotos(courseId) {
+      if (this.mode !== 'cloud') return ls.get('pelland.carte.' + courseId, []);
+      try { const r = ok(await this.sb.from('cartes_terrains').select('photos').eq('course_id', courseId).maybeSingle()); return (r && r.photos) || []; } catch (e) { return []; }
+    },
+    async saveCourse(c) {
+      c = JSON.parse(JSON.stringify(c));
+      if (!c.id) c.id = slug(c.name) + '-' + Math.random().toString(36).slice(2, 6);
+      c.updatedAt = Date.now();
+      if (this.mode === 'cloud') {
+        const u = ok(await this.sb.from('terrains').update({ data: c }).eq('id', c.id).select('id'));
+        if (!u || !u.length) ok(await this.sb.from('terrains').insert({ id: c.id, data: c }));
+        return c;
+      }
+      const list = ls.get('pelland.courses', []).filter(x => x.id !== c.id); list.push(c); ls.set('pelland.courses', list); return c;
+    },
+    async newCode() {
+      const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+      for (let n = 0; n < 20; n++) {
+        const code = Array.from({ length: 4 }, () => A[Math.floor(Math.random() * A.length)]).join('');
+        let used = null; try { used = await this.getGame(code); } catch (e) { return code; }
+        if (!used) return code;
+      }
+      return 'P' + Date.now().toString(36).toUpperCase().slice(-5);
+    },
+    cacheGame(g) { const all = ls.get('fanion.parties', {}); all[g.id] = g; const ids = Object.keys(all); if (ids.length > 40) ids.sort((a, b) => (all[a].updatedAt || 0) - (all[b].updatedAt || 0)).slice(0, ids.length - 40).forEach(k => delete all[k]); ls.set('fanion.parties', all); },
+    cachedGame(id) { return ls.get('fanion.parties', {})[id] || null; },
+    async getGame(id) {
+      if (this.mode === 'cloud') {
+        try { const r = ok(await this.sb.from('parties').select('data').eq('id', id).maybeSingle()); if (r) { const g = fromDb(r.data); return this.pending(id) || g; } return this.pending(id) || null; }
+        catch (e) { const c = this.cachedGame(id); if (c) return c; throw e; }
+      }
+      return ls.get('pelland.games', {})[id] || null;
+    },
+    pending(id) { const q = ls.get('fanion.file', {}); return q[id] ? q[id] : null; },
+    async saveGame(g) {
+      g.updatedAt = Date.now(); if (!g.groupId) g.groupId = this.gid;
+      if (this.mode === 'cloud') {
+        if (!g.ownerUid) g.ownerUid = this.uid;
+        this.cacheGame(g);
+        const q = ls.get('fanion.file', {}); q[g.id] = g; ls.set('fanion.file', q);
+        this._emit(g);
+        // hors ligne : la partie reste dans la file et part au retour du réseau ; on n'attend pas plus de 5 s
+        const p = this.flush(); await Promise.race([p, new Promise(r => setTimeout(r, navigator.onLine ? 5000 : 0))]); return;
+      }
+      const all = ls.get('pelland.games', {}); all[g.id] = g; ls.set('pelland.games', all);
+      this._emit(g);
+    },
+    async flush() {
+      if (this.mode !== 'cloud' || this._flushing || navigator.onLine === false) return;
+      this._flushing = true;
+      try {
+        const q = ls.get('fanion.file', {});
+        for (const id of Object.keys(q)) {
+          const g = q[id];
+          const r = await this.sb.rpc('partie_enregistrer', { p_id: g.id, p_group: g.groupId, p_owner: g.ownerUid || '', p_data: toDb(g) });
+          const now = ls.get('fanion.file', {});
+          if (!r.error || /appartient|row-level|violates/i.test(r.error.message || '')) {
+            if (now[id] && now[id].updatedAt === g.updatedAt) { delete now[id]; ls.set('fanion.file', now); }
+            if (r.error) toast('Non enregistré : ' + r.error.message);
+          } else if (!/fetch|network|Failed/i.test(r.error.message || '')) { toast('Non enregistré : ' + r.error.message); delete now[id]; ls.set('fanion.file', now); }
+          else break;
+        }
+      } catch (e) { /* réseau : on réessaiera */ } finally { this._flushing = false; }
+    },
+    watchGame(id, cb) {
+      (this._subs[id] = this._subs[id] || []).push(cb);
+      if (this.mode === 'cloud') {
+        const c = this.cachedGame(id); if (c) cb(c);
+        this.getGame(id).then(g => g && cb(g)).catch(e => toast('Lecture impossible : ' + e.message));
+        const off = this.watch('parties', 'id', id, r => { if (!this.pending(id)) { const g = fromDb(r.data); this.cacheGame(g); cb(g); } });
+        return () => { off(); this._subs[id] = (this._subs[id] || []).filter(x => x !== cb); };
+      }
+      this.getGame(id).then(g => g && cb(g));
+      const onStorage = e => { if (e.key === 'pelland.games') this.getGame(id).then(g => g && cb(g)); };
+      window.addEventListener('storage', onStorage);
+      return () => { this._subs[id] = (this._subs[id] || []).filter(x => x !== cb); window.removeEventListener('storage', onStorage); };
+    },
+    async listQuatuors() {
+      if (this.mode === 'cloud') { const g = await this.gdata(); return (g && g.quatuors) || []; }
+      return ls.get('pelland.quatuors.' + this.gid, this.gid === 'pelland' ? ls.get('pelland.quatuors', []) : []);
+    },
+    async saveQuatuors(list) {
+      if (this.mode === 'cloud') { await this.setGdata('quatuors', list); return; }
+      ls.set('pelland.quatuors.' + this.gid, list);
+    },
+    async saveGameRequest(req) {
+      if (this.mode === 'cloud') { ok(await this.sb.from('demandes').insert({ data: req })); return; }
+      ls.set('pelland.demandesJeux', ls.get('pelland.demandesJeux', []).concat([req]));
+    },
+    async listJeux() {
+      if (this.mode === 'cloud') { const g = await this.gdata(); return (g && g.jeux) || []; }
+      return ls.get('pelland.jeux.' + this.gid, []);
+    },
+    async saveJeux(list) {
+      if (this.mode === 'cloud') { await this.setGdata('jeux', list); return; }
+      ls.set('pelland.jeux.' + this.gid, list);
+    },
+    async deleteGame(id) {
+      if (this.mode === 'cloud') { const q = ls.get('fanion.file', {}); delete q[id]; ls.set('fanion.file', q); ok(await this.sb.from('parties').delete().eq('id', id)); return; }
+      const all = ls.get('pelland.games', {}); delete all[id]; ls.set('pelland.games', all);
+    },
     async listComps() {
       if (this.mode === 'cloud') { try { return (ok(await this.sb.from('competitions').select('id, data, scores').eq('group_id', this.gid)) || []).map(r => ({ ...(r.data || {}), id: r.id, scores: r.scores || {} })).sort((a, b) => (b.date || '').localeCompare(a.date || '')); } catch (e) { return []; } }
       return Object.values(ls.get('pelland.comps', {})).filter(c => c.groupId === this.gid).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -469,12 +575,10 @@
       if (this.mode === 'cloud') { const { scores, ...rest } = c; ok(await this.sb.rpc('comp_fusion', { p_id: c.id, p_group: c.groupId || this.gid, p_patch: JSON.parse(JSON.stringify(rest)) })); return; }
       const all = ls.get('pelland.comps', {}); all[c.id] = { ...(all[c.id] || {}), ...c }; ls.set('pelland.comps', all);
     },
-    // Un score à la fois, fusionné, pour que deux équipes puissent entrer leurs scores en même temps
     async setCompScore(id, tid, h, arr) {
       if (this.mode === 'cloud') { ok(await this.sb.rpc('comp_score', { p_comp: id, p_equipe: String(tid), p_trou: String(h), p_valeur: arr })); return; }
       const all = ls.get('pelland.comps', {}); const c = all[id]; if (!c) return; c.scores = c.scores || {}; c.scores[tid] = c.scores[tid] || {}; c.scores[tid][h] = arr; ls.set('pelland.comps', all);
     },
-    // Remplace un champ entier (ex. tableau.manual)
     async setCompField(id, path, value) {
       if (this.mode === 'cloud') { ok(await this.sb.rpc('comp_maj', { p_comp: id, p_chemin: path.split('.'), p_valeur: value === undefined ? null : value })); return; }
       const all = ls.get('pelland.comps', {}); const c = all[id]; if (!c) return; const ks = path.split('.'); let o = c; ks.slice(0, -1).forEach(k => { o[k] = o[k] || {}; o = o[k]; }); o[ks[ks.length - 1]] = value; ls.set('pelland.comps', all);
@@ -503,13 +607,7 @@
       }
       return Object.values(ls.get('pelland.games', {})).filter(g => (g.groupId || 'pelland') === this.gid).sort((a, b) => b.createdAt - a.createdAt);
     },
-    // Notifications : un abonnement par compte et par groupe (abonnements_push)
-    async savePushSub(g, playerId, js, etat) {
-      ok(await this.sb.from('abonnements_push').upsert({ id: this.uid + '_' + g, uid: this.uid, group_id: g, player_id: playerId, sub: js ? JSON.parse(js) : null, etat, at: Date.now() }));
-    },
-    async deletePushSub(g) { await this.sb.from('abonnements_push').delete().eq('id', this.uid + '_' + g); },
-    async listPushSubs() { return (ok(await this.sb.from('abonnements_push').select('player_id, sub, etat, at').eq('group_id', this.gid)) || []).map(r => ({ playerId: r.player_id, sub: r.sub, etat: r.etat, at: Number(r.at || 0) })); }
-  };
+  });
   // Les parties gardent les équipes sous la forme { e1: [...], e2: [...] } (comme avant).
   function toDb(g) {
     const o = JSON.parse(JSON.stringify(g));
@@ -520,22 +618,7 @@
     if (o && o.teams && !Array.isArray(o.teams)) o.teams = [o.teams.e1, o.teams.e2];
     return o;
   }
-  const byName = (a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' });
-  // Doublons possibles : même nom à une lettre ou deux près (accents, fautes), ou même nom de famille et même initiale.
-  function duplicateMap(list) {
-    const L2 = window.PellandLogic, n = list.map(p => L2.norm(p.name)), out = {};
-    const lev = (a, b) => { const m = a.length, k = b.length; let pr = Array.from({ length: k + 1 }, (_, j) => j); for (let i = 1; i <= m; i++) { const c = [i]; for (let j = 1; j <= k; j++) c[j] = Math.min(pr[j] + 1, c[j - 1] + 1, pr[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); pr = c; } return pr[k]; };
-    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
-      const a = n[i], b = n[j], wa = a.split(' '), wb = b.split(' ');
-      const similar = lev(a, b) <= 2 || (wa.length > 1 && wb.length > 1 && wa[wa.length - 1] === wb[wb.length - 1] && wa[0][0] === wb[0][0]) || (wa.length === 1 || wb.length === 1) && (wa[0] === wb[0]);
-      if (similar) { (out[list[i].id] = out[list[i].id] || []).push(list[j].name); (out[list[j].id] = out[list[j].id] || []).push(list[i].name); }
-    }
-    return out;
-  }
-  function slug(s) { return L.norm(s).replace(/\s+/g, '-').slice(0, 30) || 'terrain'; }
-
-  // =====================================================================
-  // Voix : reconnaissance (Safari iOS) et synthèse
+  // ==== src/commun/voix.js ====
   // =====================================================================
   const Voice = {
     SR: window.SpeechRecognition || window.webkitSpeechRecognition,
@@ -610,7 +693,7 @@
     }
   };
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Voice.wake) Voice.keepAwake(true); });
-
+  // ==== src/commun/etat.js ====
   // =====================================================================
   // État de l'interface
   // =====================================================================
@@ -620,14 +703,6 @@
   const myIdx = g => g.players.findIndex(p => L.norm(p.name) === L.norm(ls.get('pelland.me', '') || ''));
   const isOwner = () => !!S.game && (S.game.ownerUid === Store.uid || (S.game.responsable != null && myIdx(S.game) === S.game.responsable));
   const handoffBtn = (g, owner) => owner && g.status !== 'terminée' ? `<div class="row handoff-row"><span class="note">Responsable : <b>${esc((g.players[g.responsable] || {}).name || '')}</b> ★</span><span class="row" style="gap:8px"><button class="btn ghost small" data-editmoney type="button">Modifier les montants</button><button class="btn ghost small" data-handoff type="button">Changer de responsable</button></span></div>` : '';
-  function respActions(g, owner, note) {
-    if (owner) return '';
-    if (!(Store.mode === 'cloud' && Store.email)) return '';
-    const r = g.players[g.responsable];
-    return S.confirmClaim === g.id
-      ? `<div class="row game-actions"><button class="btn small" data-claim type="button">Oui, je deviens responsable</button><button class="btn ghost small" data-cancelclaim type="button">Annuler</button></div>`
-      : `<div class="row game-actions"><button class="btn ghost small light" data-askclaim type="button">Devenir responsable de cette partie</button>${note ? `<span class="note light">${r ? 'Responsable : ' + esc(r.name) + '. ' : ''}pour entrer les scores, la terminer ou l'effacer</span>` : ''}</div>`;
-  }
 
   function toast(msg) {
     const t = $('#toast'); t.textContent = msg; t.hidden = false;
@@ -638,22 +713,14 @@
   function updateMic() { $('#micBtn').classList.toggle('on', Voice.listening && !Voice.wake); }
 
   function go(view, opts = {}) {
-    if (S.unwatch && view !== 'game') { S.unwatch(); S.unwatch = null; S.game = null; }
-    if (S.unwatchPres && view !== 'game') { S.unwatchPres(); S.unwatchPres = null; }
-    if (S.unwatchComp && view !== 'comp' && view !== 'compEdit') { S.unwatchComp(); S.unwatchComp = null; }
-    if (view === 'comps') S.compList = null;
+    MODULE.quitter(view);   // le module ferme ce qu'il suivait en direct (partie, compétition…)
     if (view === 'compte') S.acctGroups = null;
     if (view !== 'compte') S.fromLogin = false;
     if (view === 'players') S.pFocused = false;
-    if (view !== 'game' && view !== 'setup' && Voice.wake) Voice.setWake(false);
+    MODULE.avant(view);
     S.view = view; Object.assign(S, opts);
-    if (view === 'setup' && !S.offres) Store.listOffres().then(l => { S.offres = l; if (S.view === 'setup') render(); });
-    if (view === 'quatuors') { Store.listOffres().then(l => { S.offres = l; if (S.view === 'quatuors') render(); }); Store.listQuatuors().then(l => { S.quatuors = l; }); }
+    MODULE.aller(view, opts);
     if (view === 'offre') { S.offre = undefined; S.offreSel = null; }
-    if (view === 'course' && 'editCourse' in opts) { S.cardImgs = []; S.cardStatus = ''; }
-    if (view === 'history' || view === 'live') { S.historyList = null; S.confirmDelGame = null; }
-    if (view === 'setup') { setHeard('Touchez le micro et dites les joueurs et leurs index.'); setReply(''); }
-    if (view === 'game') { setHeard('Appuyez sur le micro et parlez.'); setReply(''); }
     render(); window.scrollTo(0, 0);
   }
 
@@ -671,14 +738,14 @@
     const showDock = false; // plus d'interface vocale
     document.body.classList.toggle('view-game', S.view === 'game');
     $('#dock').hidden = !showDock; document.body.classList.toggle('no-dock', !showDock);
-    const R = { home: vHome, jeux: vJeux, jeuEdit: vJeuEdit, quatuors: vQuatuors, offre: vOffre, setup: vSetup, game: vGame, join: vJoin, history: vHistory, live: vHistory, courses: vCourses, course: vCourse, clubs: vClubs, players: vPlayers, login: vLogin, compte: vCompte, comps: vComps, compEdit: vCompEdit, comp: vComp, compTv: vCompTv }[S.view];
+    const R = { ...MODULE.vues, offre: vOffre, players: vPlayers, login: vLogin, compte: vCompte }[S.view];
     v.innerHTML = R();
     bind[S.view] && bind[S.view](v);
     leoApres();
   }
 
-  const APP = 'le fanion.ai';
-  function curGroup() { return (S.groups || []).find(x => x.id === Store.gid) || { id: Store.gid, name: 'La gang à Pelland' }; }
+  const APP = MARQUE.nom;
+  function curGroup() { return (S.groups || []).find(x => x.id === Store.gid) || { id: Store.gid, name: MARQUE.groupeDefaut }; }
   function groupName() { return curGroup().name; }
   const ownerId = () => curGroup().owner || null;
   // Banques (joueurs, terrains, compétitions) : seul le propriétaire du groupe ajoute ou enlève
@@ -687,18 +754,13 @@
   const isOrganizer = id => !ownerId() || id === ownerId() || (curGroup().organizers || []).includes(id);
   // Qui peut organiser : le propriétaire et les organisateurs qu'il nomme (tout le monde tant qu'il n'y a pas de propriétaire)
   const canOrganize = () => isOrganizer(meId());
+  // ==== src/commun/bienvenue.js ====
   // ---------------- Accueil ----------------
   // Membres invités (ni propriétaire ni organisateur) : ces tuiles sont grisées ; survol ou toucher = explication
-  const LOCKED = {
-    courses: 'Réservé à l’organisateur : il ajoute et corrige les terrains du groupe.',
-    players: 'Réservé à l’organisateur : il ajoute les joueurs et leur cellulaire.',
-    jeux: 'Réservé à l’organisateur : il choisit les jeux, les règles et les montants du groupe.',
-    quatuors: 'Réservé à l’organisateur : il offre les dates et forme les quatuors. Vous répondez avec le lien reçu par texto.',
-    setup: 'Réservé à l’organisateur : il crée les parties. Vous les suivez en direct dans Parties en cours.',
-  };
+  const LOCKED = SPORT.verrous;
   function lockTiles(html) {
     if (canOrganize()) return html;
-    return html.replace(/<button class="tile" data-go="(courses|players|jeux|quatuors|setup)"/g, (m, k) => `<button class="tile locked" data-locked="${k}" data-tip="${esc(LOCKED[k])} Touchez pour voir un aperçu."`)
+    return html.replace(new RegExp(`<button class="tile" data-go="(${Object.keys(LOCKED).join('|')})"`, 'g'), (m, k) => `<button class="tile locked" data-locked="${k}" data-tip="${esc(LOCKED[k])} Touchez pour voir un aperçu."`)
       .replace(/(data-locked="\w+" data-tip="[^"]*"[^>]*>)/g, '$1<span class="tile-lock" aria-hidden="true"><svg viewBox="0 0 24 24" width="13" height="13"><rect x="5" y="10.5" width="14" height="10" rx="2.5" fill="currentColor"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" stroke="currentColor" stroke-width="2.4" fill="none"/></svg>Aperçu</span>');
   }
   // =====================================================================
@@ -713,26 +775,8 @@
   const isParticipant = () => !Store.needLogin && !!meId() && !canOrganize();
   const welcomeKey = () => 'pelland.welcome.' + Store.gid + '.' + meId();
   // Petits aperçus dessinés de chaque écran réservé (données d'exemple)
-  const MOCK = {
-    players: () => `<div class="mk mk-list">${[['Marc Lavoie', 'ok', 'Compte créé'], ['Julie Roy', 'ok', 'Compte créé'], ['Éric Gagnon', 'wait', 'Invité']].map(([n, c, t]) =>
-      `<div class="mk-row"><span class="mk-av">${n.split(' ').map(x => x[0]).join('')}</span><b>${n}</b><span class="mk-pill ${c}">${t}</span></div>`).join('')}<div class="mk-add">+ Ajouter un joueur et son cellulaire</div></div>`,
-    quatuors: () => `<div class="mk mk-offre"><div class="mk-date"><b>Samedi 14 juin, 8 h</b><span>Pinegrove</span></div>
-      <div class="mk-yes">${['Marc', 'Julie', 'Éric', 'Luc', 'Ana', 'Paul', 'Guy', 'Bob'].map(n => `<span>${n}</span>`).join('')}</div>
-      <div class="mk-q"><span>Quatuor 1 : Marc, Julie, Éric, Luc</span><span>Quatuor 2 : Ana, Paul, Guy, Bob</span></div></div>`,
-    setup: () => `<div class="mk mk-setup"><div class="mk-f"><span>Terrain</span><b>Pinegrove, tertres blancs</b></div><div class="mk-f"><span>Jeu</span><b>La game à Pelland</b></div>
-      <div class="mk-teams"><div class="r"><b>Rouges</b>Marc et Paul</div><div class="b"><b>Bleus</b>Julie et Luc</div></div><div class="mk-f"><span>La game commence à</span><b>10 $</b></div></div>`,
-    courses: () => `<div class="mk mk-course"><b>Pinegrove</b><span>Saint-Jean-sur-Richelieu, normale 72</span>
-      <div class="mk-holes">${[5, 3, 4, 4, 5, 3, 5, 3, 4, 4, 5, 3, 5, 4, 3, 4, 4, 4].map((p, i) => `<i><small>${i + 1}</small>${p}</i>`).join('')}</div></div>`,
-    jeux: () => `<div class="mk mk-jeu"><b>La game à Pelland</b><ul><li>Plus bas net du trou : 2 points</li><li>Skin, oiselet, press et reroll</li></ul>
-      <div class="mk-money"><span>Départ <b>10 $</b></span><span>Revirement <b>5 $</b></span><span>Normale 3 <b>5 $</b></span></div></div>`,
-  };
-  const LOCKED_INFO = {
-    players: { t: 'Inviter des joueurs', d: 'L’organisateur ajoute chaque joueur avec son cellulaire ; l’invitation part par texto.', you: 'Vous avez reçu cette invitation : votre compte est créé.' },
-    quatuors: { t: 'Parties à préparer', d: 'L’organisateur offre des dates ; l’app voit qui est disponible et forme les quatuors.', you: 'Vous recevez un texto avec un lien : cochez vos dates, c’est tout.' },
-    setup: { t: 'Créer une partie', d: 'Terrain, joueurs, équipes, jeu et montants : l’organisateur lance la partie et entre les scores.', you: 'Vous suivez la partie en direct dans Parties en cours.' },
-    courses: { t: 'Banque de terrains', d: 'Les terrains du groupe, avec leurs normales, la difficulté de chaque trou et leurs tertres.', you: 'Les coups de handicap de chacun en découlent automatiquement.' },
-    jeux: { t: 'Banque de jeux', d: 'Les règles et les montants de chaque jeu : la game à Pelland, Nassau, Vegas, skins, Wolf…', you: 'Les règles détaillées sont aussi sur lefanion.ai/regles.' },
-  };
+  const MOCK = SPORT.apercus;
+  const LOCKED_INFO = SPORT.apercuInfos;
   function lockedSheet(k) {
     const x = LOCKED_INFO[k], org = organizerOf();
     openSheet(`<div class="lk">
@@ -757,7 +801,7 @@
         <span class="wl-strap"></span>
         <div class="wl-card">
           <span class="wl-hole"></span>
-          <div class="wl-brand"><svg width="16" height="19" viewBox="0 0 26 30"><path d="M5 2v26" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="M6 3l15 5.5L6 14z" fill="#e3a90c"/></svg>le fanion.ai</div>
+          <div class="wl-brand"><svg width="16" height="19" viewBox="${MARQUE.logoVue}">${MARQUE.logo}</svg>${APP}</div>
           <div class="wl-name">${esc(me.name)}</div>
           <div class="wl-grp">${esc(groupName())}</div>
           <div class="wl-role">Participant</div>
@@ -767,13 +811,9 @@
       <p class="wl-lead">Vous faites partie de « ${esc(groupName())} » comme participant. ${org ? esc(firstName(org.name)) + ' organise' : 'L’organisateur s’occupe de tout'} ; vous, vous jouez.</p>
       <div class="wl-cols">
         <section class="wl-you"><h2>Ce que vous faites</h2><ul>
-          <li><b>Répondre aux dates</b> avec le lien reçu par texto.</li>
-          <li><b>Suivre les parties en direct</b> : scores, points et argent, trou par trou.</li>
-          <li><b>Revoir les parties jouées</b> et qui doit quoi à qui.</li>
-          <li><b>Voir le classement</b> des compétitions.</li>
-          <li><b>Poser vos questions</b> à Léo, votre caddie : touchez son visage dans le coin.</li></ul></section>
+${SPORT.bienvenueVous}</ul></section>
         <section class="wl-org"><h2>Ce que ${org ? esc(firstName(org.name)) : 'l’organisateur'} fait pour le groupe</h2><ul>
-          <li>Inviter les joueurs</li><li>Offrir les dates et former les quatuors</li><li>Créer les parties</li><li>Gérer les terrains et les jeux</li></ul>
+          ${SPORT.bienvenueOrg}</ul>
           <p>Ces tuiles sont grisées pour vous. Touchez-en une pour voir à quoi elle sert.</p></section>
       </div>
       <p class="wl-notif">🔔 En entrant, les notifications du groupe s’activent : nouvelles dates, rappels, parties et résultats. Elles restent actives tant que vous êtes membre du groupe.</p>
@@ -789,6 +829,7 @@
     wrap.tabIndex = -1; setTimeout(() => { wrap.scrollTop = 0; wrap.focus({ preventScroll: true }); }, 50);
   }
   function maybeWelcome() { if (S.view === 'home' && isParticipant() && !ls.get(welcomeKey(), 0) && !document.getElementById('welcome')) showWelcome(); }
+  // ==== src/golf/accueil.js ====
   document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-welcome]'); if (t) { e.preventDefault(); showWelcome(); } });
   function vHome() {
     $('#barTitle').innerHTML = `${APP}<small class="bar-sous">le golf entre amis</small>`;
@@ -827,7 +868,7 @@
       <p class="note">${Store.mode === 'cloud' ? 'Base partagée active : les autres joueurs suivent la partie en direct dans Parties en cours.' : 'Mode local : les parties restent sur ce téléphone.'}</p>
       ${Store.mode === 'local' && Store.error ? `<div class="warn"><b>Pourquoi le mode local :</b> ${esc(Store.error)}</div>` : ''}`;
   }
-
+  // ==== src/commun/forfait.js ====
   // ---------------- Propriétaire et forfait du groupe ----------------
   // Forfait gardé dans players/_groupe_<g> : plan = 'groupe' (16 joueurs, payé) et paidUntil (ms). Sans forfait : Gratuit, 4 joueurs.
   function planOf(gr) {
@@ -864,7 +905,7 @@
   const hasAccepted = p => !!(p && (p.acct || p.authEmail));
   function pickOrganizerSheet() {
     const cur = (curGroup().organizers || [])[0] || ownerId();
-    openSheet(`<h3>Organisateur du groupe</h3><p class="note">Il prépare les parties : dates offertes, quatuors, nouvelles parties. Le propriétaire garde le forfait.</p>
+    openSheet(`<h3>Organisateur du groupe</h3><p class="note">Il prépare les parties : dates offertes, ${SPORT.quatuors}, nouvelles parties. Le propriétaire garde le forfait.</p>
       <div class="pick-list">${(S.players || []).map(p => { const ok = p.id === ownerId() || hasAccepted(p); return `<button class="btn ${p.id === cur ? '' : 'ghost'} small ${ok ? '' : 'pick-off'}" ${ok ? `data-orgpick="${esc(p.id)}"` : 'disabled'} type="button">${esc(p.name)}${p.id === ownerId() ? ' · propriétaire' : ''}${p.id === cur ? ' ✓' : ''}${ok ? '' : '<small>Invitation pas encore acceptée</small>'}</button>`; }).join('')}</div>
       <p class="note">Seuls les joueurs qui ont accepté leur invitation (compte créé) peuvent être organisateurs.</p>
       <div class="sheet-actions"><button class="btn ghost" data-close type="button">Fermer</button></div>`, sh => {
@@ -878,29 +919,29 @@
   document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-pickorg]'); if (t) { e.preventDefault(); pickOrganizerSheet(); } });
 
   // Lien d'achat : le site transmet l'identifiant du groupe à Stripe, pour activer le bon groupe
-  function buyUrl() { return 'https://lefanion.ai/achat.html?groupe=' + encodeURIComponent(Store.gid) + '&nom=' + encodeURIComponent(groupName()); }
+  function buyUrl() { return MARQUE.site + '/achat.html?groupe=' + encodeURIComponent(Store.gid) + '&nom=' + encodeURIComponent(groupName()); }
   // Places qui restent dans le forfait (Gratuit : 4 joueurs ; Groupe : 16)
   function roomLeft() { return planOf().max - (S.players || []).length; }
   function limitSheet(wanted) {
     const pl = planOf(), own = (S.players || []).find(p => p.id === ownerId()), meOwner = !!meId() && meId() === ownerId();
     const left = Math.max(0, roomLeft());
     openSheet(`<h3>${pl.paid ? 'Le groupe est complet' : 'Passez au forfait Groupe'}</h3>
-      <p>${pl.paid ? `Le forfait ${pl.name} permet ${pl.max} joueurs.` : `Le forfait Gratuit permet ${pl.max} joueurs, pour essayer avec un quatuor.`}${wanted ? ` Vous voulez en ajouter ${wanted}, il reste ${left} place${left > 1 ? 's' : ''}.` : ''}</p>
-      ${pl.paid ? '<p class="note">Pour une ligue de plus de 16 joueurs, écrivez à bonjour@fanion.ai.</p>'
-        : `<ul class="info-list"><li>Jusqu’à 16 joueurs</li><li>Dates offertes, disponibilités et quatuors</li><li>49 $ + taxes pour la saison, au prix fondateur</li></ul>
+      <p>${pl.paid ? `Le forfait ${pl.name} permet ${pl.max} joueurs.` : `Le forfait Gratuit permet ${pl.max} joueurs, pour essayer avec ${SPORT.gratuitPour}.`}${wanted ? ` Vous voulez en ajouter ${wanted}, il reste ${left} place${left > 1 ? 's' : ''}.` : ''}</p>
+      ${pl.paid ? '<p class="note">Pour une ligue de plus de 16 joueurs, écrivez à ' + MARQUE.courriel + '.</p>'
+        : `<ul class="info-list"><li>Jusqu’à 16 joueurs</li><li>Dates offertes, disponibilités et ${SPORT.quatuors}</li><li>49 $ + taxes pour la saison, au prix fondateur</li></ul>
       ${meOwner ? '' : `<p class="note">Seul le propriétaire du groupe${own ? ', ' + esc(own.name) + ',' : ''} peut changer de forfait.</p>`}`}
       <div class="sheet-actions">${!pl.paid && meOwner ? `<a class="btn" href="${buyUrl()}" target="_blank" rel="noopener">Passer au forfait Groupe</a>` : ''}<button class="btn ghost" data-close type="button">${!pl.paid && meOwner ? 'Plus tard' : 'Compris'}</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; });
   }
 
   // Deuxième groupe avec le forfait Gratuit : même offre que pour un 5e joueur
   function deuxiemeGroupeSheet(g) {
-    const url = 'https://lefanion.ai/achat.html?groupe=' + encodeURIComponent(g.id) + '&nom=' + encodeURIComponent(g.name || '');
+    const url = MARQUE.site + '/achat.html?groupe=' + encodeURIComponent(g.id) + '&nom=' + encodeURIComponent(g.name || '');
     openSheet(`<h3>Passez au forfait Groupe</h3>
-      <p>Le forfait Gratuit permet un groupe de 4 joueurs, pour essayer avec un quatuor. Vous avez déjà « ${esc(g.name)} » : pour créer un deuxième groupe, passez-le au forfait Groupe.</p>
-      <ul class="info-list"><li>Jusqu’à 16 joueurs</li><li>Dates offertes, disponibilités et quatuors</li><li>Un autre groupe gratuit possible</li><li>49 $ + taxes pour la saison, au prix fondateur</li></ul>
+      <p>Le forfait Gratuit permet un groupe de 4 joueurs, pour essayer avec ${SPORT.gratuitPour}. Vous avez déjà « ${esc(g.name)} » : pour créer un deuxième groupe, passez-le au forfait Groupe.</p>
+      <ul class="info-list"><li>Jusqu’à 16 joueurs</li><li>Dates offertes, disponibilités et ${SPORT.quatuors}</li><li>Un autre groupe gratuit possible</li><li>49 $ + taxes pour la saison, au prix fondateur</li></ul>
       <div class="sheet-actions"><a class="btn" href="${url}" target="_blank" rel="noopener">Passer au forfait Groupe</a><button class="btn ghost" data-close type="button">Plus tard</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; });
   }
-
+  // ==== src/commun/demarrer.js ====
   // ---------------- Bien démarrer : 4 premiers pas pour un nouveau groupe (propriétaire et organisateur) ----------------
   // Le progrès est gardé sur le groupe (onb), donc le même sur tous les téléphones ; l'écran d'accueil est propre à chaque téléphone.
   async function markStep(key) {
@@ -914,9 +955,9 @@
     const onb = curGroup().onb || {}, me = meId();
     const withPhone = (S.players || []).filter(p => p.id !== me && (p.phone || p.authEmail)).length;
     return [
-      { k: 'joueurs', done: withPhone >= 3, t: 'Ajoutez vos joueurs', d: withPhone ? `${withPhone} joueur${withPhone > 1 ? 's' : ''} avec cellulaire : il en faut 3 pour un premier quatuor.` : 'Avec leur cellulaire : chacun reçoit son invitation par texto.', go: 'players', b: 'Joueurs' },
-      { k: 'offre', done: !!onb.offre || (S.offres || []).length > 0, t: 'Offrez une première date', d: 'Vos joueurs répondent par texto ; l’app forme les quatuors.', go: 'quatuors', b: 'Offrir' },
-      { k: 'partie', done: !!onb.partie, t: 'Jouez une première partie', d: 'Choisissez le terrain et le jeu ; l’app compte tout, en direct.', go: 'setup', b: 'Commencer' },
+      { k: 'joueurs', done: withPhone >= 3, t: 'Ajoutez vos joueurs', d: withPhone ? SPORT.etapeJoueurs(withPhone) : 'Avec leur cellulaire : chacun reçoit son invitation par texto.', go: 'players', b: 'Joueurs' },
+      { k: 'offre', done: !!onb.offre || (S.offres || []).length > 0, t: 'Offrez une première date', d: SPORT.etapeOffre, go: SPORT.vueDates, b: 'Offrir' },
+      { k: 'partie', done: !!onb.partie, t: 'Jouez une première partie', d: SPORT.etapePartie, go: SPORT.vuePartie, b: 'Commencer' },
       { k: 'ecran', done: standalone() || !!ls.get('pelland.onb.ecran', 0), t: 'Ajoutez l’app à votre écran d’accueil', d: 'Elle s’ouvre ensuite comme une vraie app.', act: 'ecran', b: 'Comment' },
     ];
   }
@@ -928,23 +969,23 @@
     return `<section class="card onboard"><div class="onb-head"><h3>Bien démarrer</h3><span class="onb-count">${n} / ${st.length}</span></div>
       <div class="onb-bar"><i style="width:${Math.round(n / st.length * 100)}%"></i></div>
       <ol class="onb-list">${st.map(x => `<li class="${x.done ? 'done' : x === next ? 'next' : ''}"><span class="onb-dot">${x.done ? '✓' : ''}</span><div><b>${esc(x.t)}</b>${x === next ? `<small>${esc(x.d)}</small>` : ''}</div>${x.done ? '' : x === next ? `<button class="btn small" ${x.go ? `data-go="${x.go}"` : `data-onbact="${x.act}"`} type="button">${esc(x.b)}</button>` : `<button class="onb-more" ${x.go ? `data-go="${x.go}"` : `data-onbact="${x.act}"`} type="button" aria-label="${esc(x.b)}">›</button>`}</li>`).join('')}</ol>
-      <p class="note onb-foot">Une question ? <button class="linkbtn" data-caddie type="button">Demandez à Léo, votre caddie</button> · <button class="linkbtn" data-onbhide type="button">Masquer</button></p></section>`;
+      <p class="note onb-foot">Une question ? <button class="linkbtn" data-caddie type="button">Demandez à ${MARQUE.personnage}, ${MARQUE.role}</button> · <button class="linkbtn" data-onbhide type="button">Masquer</button></p></section>`;
   }
   document.addEventListener('click', e => {
     const t = e.target.closest && e.target.closest('[data-onbact],[data-onbhide]'); if (!t) return;
     e.preventDefault();
     if (t.hasAttribute('data-onbhide')) { ls.set('pelland.onb.hide.' + Store.gid, 1); return render(); }
     const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
-    openSheet(`<h3>Le fanion.ai sur votre écran d’accueil</h3>
-      <ol class="info-list">${ios ? '<li>Ouvrez le fanion.ai dans <b>Safari</b>.</li><li>Touchez le bouton <b>Partager</b> (le carré avec une flèche vers le haut).</li><li>Choisissez <b>Sur l’écran d’accueil</b>, puis <b>Ajouter</b>.</li>'
-        : '<li>Ouvrez le fanion.ai dans <b>Chrome</b>.</li><li>Touchez le menu <b>⋮</b> en haut à droite.</li><li>Choisissez <b>Ajouter à l’écran d’accueil</b> (ou <b>Installer l’application</b>).</li>'}</ol>
-      <p class="note">L’icône du fanion apparaît avec vos autres apps. Partagez ces étapes avec vos joueurs.</p>
+    openSheet(`<h3>${MARQUE.nomMaj} sur votre écran d’accueil</h3>
+      <ol class="info-list">${ios ? '<li>Ouvrez ' + APP + ' dans <b>Safari</b>.</li><li>Touchez le bouton <b>Partager</b> (le carré avec une flèche vers le haut).</li><li>Choisissez <b>Sur l’écran d’accueil</b>, puis <b>Ajouter</b>.</li>'
+        : '<li>Ouvrez ' + APP + ' dans <b>Chrome</b>.</li><li>Touchez le menu <b>⋮</b> en haut à droite.</li><li>Choisissez <b>Ajouter à l’écran d’accueil</b> (ou <b>Installer l’application</b>).</li>'}</ol>
+      <p class="note">${MARQUE.icone} apparaît avec vos autres apps. Partagez ces étapes avec vos joueurs.</p>
       <div class="sheet-actions"><button class="btn" data-ecranok type="button">C’est fait</button><button class="btn ghost" data-close type="button">Plus tard</button></div>`, sh => {
       sh.querySelector('[data-close]').onclick = closeSheet;
       sh.querySelector('[data-ecranok]').onclick = () => { ls.set('pelland.onb.ecran', 1); closeSheet(); render(); };
     });
   });
-
+  // ==== src/commun/compte.js ====
   // ---------------- Mon compte : le compte de la personne et tous les groupes dont elle fait partie ----------------
   function groupRows(l, cur, base) {
     return `<div class="acct-groups">${l.map((x, k) => [x, base ? base.indexOf(x) : k]).map(([x, i]) => `<div class="acct-g ${x.gid === cur ? 'cur' : ''}"><div><b><span class="g-k">Groupe :</span> ${esc(x.name)}</b><small>${esc(x.playerName)} · ${x.organizer ? 'organisateur' : 'participant'}</small></div>${x.gid === cur ? '<span class="acct-cur">Groupe actuel</span>' : `<button class="btn small" data-gopen="${i}" type="button">Ouvrir</button>`}${x.gid === cur && x.owner && !S.fromLogin ? `<div class="g-manage"><button class="btn ghost small" data-pickorg type="button">${(curGroup().organizers || []).length ? 'Changer l’organisateur' : 'Nommer un organisateur'}</button>${x.archived
@@ -1047,7 +1088,7 @@
         };
       });
     }
-
+  // ==== src/commun/avis.js ====
   // ---------------- Avis des joueurs : demandés après une partie terminée ; publiés sur fanion.ai si le joueur accepte et après approbation ----------------
   const AVIS_K = 'fanion.avis.etat';   // { given: true } ou { later: date }
   function avisCard(where) {
@@ -1057,7 +1098,7 @@
     if (st.given || (st.later && Date.now() - st.later < 30 * 864e5)) return '';
     if (where === 'home' && !st.eligible) return '';
     return `<section class="card avis-card"><div class="av-stars" aria-hidden="true">★★★★★</div>
-      <h3>Le fanion.ai vous plaît ?</h3><p>Dites-le en une phrase. Avec votre accord, votre commentaire pourra paraître sur fanion.ai pour aider d’autres groupes à se lancer.</p>
+      <h3>${MARQUE.nomMaj} vous plaît ?</h3><p>Dites-le en une phrase. Avec votre accord, votre commentaire pourra paraître sur ${MARQUE.domaine} pour aider d’autres groupes à se lancer.</p>
       <div class="row"><button class="btn small" data-avis type="button">Donner mon avis</button><button class="btn ghost small" data-avislater type="button">Plus tard</button></div></section>`;
   }
   const shortName = n => { const w = String(n || '').trim().split(/\s+/); return (w[0] || '') + (w.length > 1 ? ' ' + w[w.length - 1][0].toUpperCase() + '.' : ''); };
@@ -1065,11 +1106,11 @@
     const me = (S.players || []).find(p => p.id === meId()) || { name: ls.get('pelland.me', '') };
     const old = await Store.getAvis() || {};
     let stars = old.stars || 0;
-    openSheet(`<div class="avis-sheet"><h3>Votre avis sur le fanion.ai</h3>
+    openSheet(`<div class="avis-sheet"><h3>Votre avis sur ${APP}</h3>
       <div class="av-pick" role="radiogroup" aria-label="Note sur 5">${[1, 2, 3, 4, 5].map(n => `<button type="button" role="radio" data-star="${n}" aria-label="${n} étoile${n > 1 ? 's' : ''}">★</button>`).join('')}</div>
-      <label class="fld">En une phrase, qu’est-ce que le fanion.ai change pour votre groupe ?<textarea id="avText" maxlength="280" rows="3" placeholder="ex. Plus besoin de 40 textos pour former les quatuors.">${esc(old.text || '')}</textarea></label>
+      <label class="fld">En une phrase, qu’est-ce que ${APP} change pour votre groupe ?<textarea id="avText" maxlength="280" rows="3" placeholder="${SPORT.avisExemple}">${esc(old.text || '')}</textarea></label>
       <p class="note" id="avCount"></p>
-      <label class="av-ok"><input type="checkbox" id="avOk" ${old.ok === false ? '' : 'checked'}><span>J’accepte que le fanion.ai publie ce commentaire sur fanion.ai, signé <b>${esc(shortName(me.name))}</b>, ${esc(groupName())}.</span></label>
+      <label class="av-ok"><input type="checkbox" id="avOk" ${old.ok === false ? '' : 'checked'}><span>J’accepte que ${APP} publie ce commentaire sur ${MARQUE.domaine}, signé <b>${esc(shortName(me.name))}</b>, ${esc(groupName())}.</span></label>
       <div class="sheet-actions"><button class="btn" id="avSend" type="button">Envoyer</button><button class="btn ghost" data-close type="button">Annuler</button></div></div>`, sh => {
       const paint = () => { sh.querySelectorAll('[data-star]').forEach(b => { const on = +b.dataset.star <= stars; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(+b.dataset.star === stars)); }); };
       const ta = sh.querySelector('#avText'), cnt = () => { sh.querySelector('#avCount').textContent = `${ta.value.length} / 280`; };
@@ -1089,9 +1130,9 @@
     if (t.hasAttribute('data-avis')) { avisSheet(); return; }
     ls.set(AVIS_K, { ...(ls.get(AVIS_K, {}) || {}), later: Date.now() }); render();
   });
-
+  // ==== src/commun/retour.js ====
   // ---------------- Boucle de retour : idées → équipe (console HoldingAI) → réponse et nouveautés dans l'app, sondage éclair ----------------
-  const RETOUR_API = 'https://lefanion.ai/api/retour';
+  const RETOUR_API = MARQUE.api + '/api/retour';
   const R = { idees: [], nouveautes: [], sondageDernier: null, charge: false, sondage: null };
   const JOUR = 864e5;
   const STATUT_IDEE = { recue: ['Reçue', ''], etudiee: ['À l’étude', 'etude'], prevue: ['Prévue', 'prevue'], faite: ['Faite ✓', 'faite'], non: ['Pas pour l’instant', 'non'] };
@@ -1141,7 +1182,7 @@
       return `<section class="card retour-carte"><b>✨ Nouveau : ${esc(n.titre)}</b>${n.texte ? `<p>${esc(n.texte)}</p>` : ''}
         <div class="row"><button class="btn small" type="button" data-retour="vu-nv" data-t="${new Date(n.cree).getTime()}">Super</button><button class="btn ghost small" type="button" data-idee>Proposer une idée</button></div></section>`;
     }
-    if (!R.sondage) return `<section class="card retour-carte"><b>Recommanderiez-vous le fanion.ai à un ami golfeur ?</b>
+    if (!R.sondage) return `<section class="card retour-carte"><b>Recommanderiez-vous ${APP} à ${SPORT.amiJoueur} ?</b>
         <p class="note">0 = pas du tout, 10 = sans hésiter. Une seule question.</p>
         <div class="nps" role="group" aria-label="Note de 0 à 10">${Array.from({ length: 11 }, (_, n) => `<button type="button" class="nps-n" data-note="${n}">${n}</button>`).join('')}</div>
         <div class="row"><button class="linkbtn" type="button" data-retour="sondage-plus-tard">Plus tard</button></div></section>`;
@@ -1155,7 +1196,7 @@
     retourApi({ action: 'sondage', note: n, raison: raison || null, groupe: groupName() }).catch(() => { });
     if (raison) envoyerIdee({ type: n >= 9 ? 'aime' : n <= 6 ? 'probleme' : 'idee', texte: raison, source: 'sondage' }).catch(() => { });
     render();
-    if (n >= 9) openSheet(`<h3>Merci, ça fait vraiment plaisir !</h3><p>Vous connaissez un autre groupe de golf qui court après ses joueurs ? Envoyez-lui votre lien : c’est gratuit pour un quatuor${meId() === ownerId() ? ', et vous obtenez 5 $ de rabais sur votre prochaine saison s’il passe au forfait Groupe' : ''}.</p>
+    if (n >= 9) openSheet(`<h3>Merci, ça fait vraiment plaisir !</h3><p>Vous connaissez ${SPORT.autreGroupe} qui court après ses joueurs ? Envoyez-lui votre lien : c’est gratuit pour ${SPORT.gratuitPour}${meId() === ownerId() ? ', et vous obtenez 5 $ de rabais sur votre prochaine saison s’il passe au forfait Groupe' : ''}.</p>
       <div class="sheet-actions"><button class="btn" data-refshare type="button">Partager mon lien</button><button class="btn ghost" data-close type="button">Plus tard</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; sh.querySelector('[data-refshare]').addEventListener('click', () => setTimeout(closeSheet, 300)); });
     else toast('Merci ! Votre réponse est bien reçue. L’équipe la lit.');
   }
@@ -1173,7 +1214,7 @@
         <p>${esc(i.texte)}</p>${i.reponse ? `<p class="idee-rep"><b>Réponse de l’équipe :</b> ${esc(i.reponse)}</p>` : ''}</li>`;
     }).join('')}</ul>` : '';
     openSheet(`<h3>Une idée ? Un pépin ?</h3>
-      <p class="note">Ça va directement à l’équipe du fanion.ai. On lit tout, et la réponse s’affiche ici, dans l’app.</p>
+      <p class="note">Ça va directement à l’équipe ${MARQUE.duNom}. On lit tout, et la réponse s’affiche ici, dans l’app.</p>
       <div class="seg idee-types">${Object.entries(TYPE_IDEE).map(([k, [ic, mot]]) => `<button type="button" data-itype="${k}" aria-pressed="${k === type}"><b>${ic}</b><small>${esc(mot)}</small></button>`).join('')}</div>
       <label class="fld"><span class="sr-only">Votre message</span><textarea id="ideeTexte" rows="4" maxlength="2000" placeholder="${esc(PLACE_IDEE[type])}"></textarea></label>
       <label class="av-ok"><input type="checkbox" id="ideeContact"><span>L’équipe peut me texter pour en parler.</span></label>
@@ -1210,7 +1251,7 @@
     else if (g === 'sondage-passer') { finirSondage(''); return; }
     render();
   });
-
+  // ==== src/commun/parrainage.js ====
   // ---------------- Parrainage : le propriétaire partage son lien ; les groupes créés avec ce lien sont comptés ----------------
   function refLink(code) { return location.origin + location.pathname + '?ref=' + encodeURIComponent(code || Store.gid); }
   function referralCard() {
@@ -1223,11 +1264,11 @@
   }
   document.addEventListener('click', async e => {
     const t = e.target.closest && e.target.closest('[data-refshare],[data-refcopy]'); if (!t) return;
-    const url = refLink(), text = `On organise notre golf avec ${APP} : invitations par texto, quatuors, pointage et gageures calculées. Crée ton groupe, c’est gratuit pour un quatuor :`;
+    const url = refLink(), text = SPORT.parrainage(APP);
     if (t.hasAttribute('data-refshare') && navigator.share) { try { await navigator.share({ title: APP, text, url }); } catch (x) { } return; }
     try { await navigator.clipboard.writeText(text + ' ' + url); toast('Lien copié.'); } catch (x) { openSheet(`<h3>Votre lien</h3><p class="note">Copiez-le :</p><input type="text" readonly value="${esc(url)}" onclick="this.select()"><div class="sheet-actions"><button class="btn" data-close type="button">Fermer</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; }); }
   });
-
+  // ==== src/commun/viral.js ====
   // ---------------- Effet viral : chaque joueur invité peut lancer son propre groupe, gratuit ----------------
   // Montré aux membres qui ne sont pas propriétaires d'un groupe (à l'accueil, et à la fin d'une partie).
   function ownsAGroup() { const me = meId(); return (!!me && me === ownerId()) || Store.myGroups().some(x => x.owner); }
@@ -1236,7 +1277,7 @@
     if (where === 'home' && (ls.get('pelland.viral.hide', 0) || 0) > Date.now()) return '';
     return `<section class="card viral"><div class="viral-flag" aria-hidden="true"><svg width="22" height="26" viewBox="0 0 26 30"><path d="M5 2v26" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M6 3l15 5.5L6 14z" fill="#e3a90b"/></svg></div>
       <div><h3>Vous aussi, organisez votre gang</h3>
-      <p>Créez votre propre groupe en une minute : invitations par texto, quatuors, pointage et argent calculés. <b>Gratuit pour 4 joueurs.</b></p>
+      <p>Créez votre propre groupe en une minute : ${SPORT.atouts}. <b>Gratuit pour 4 joueurs.</b></p>
       <div class="row"><button class="btn small" data-viral type="button">Créer mon groupe</button>${where === 'home' ? '<button class="btn ghost small" data-viralhide type="button">Plus tard</button>' : ''}</div>
       <p class="note">Vous restez dans « ${esc(groupName())} » : passez d’un groupe à l’autre à l’accueil.</p></div></section>`;
   }
@@ -1277,19 +1318,7 @@
       });
     });
   }
-  // Créer une partie : d'abord le type, partie normale ou compétition
-  function typePartieSheet() {
-    openSheet(`<h3>Quel type de partie ?</h3>
-      <div class="type-partie">
-        <button class="type-choix" data-tp="normale" type="button"><span aria-hidden="true">⛳</span><span><b>Partie normale</b><small>Une partie entre amis : terrain, joueurs, jeu (Nassau, skins, Vegas, match…) et montants.</small></span></button>
-        <button class="type-choix" data-tp="comp" type="button"><span aria-hidden="true">🏆</span><span><b>Compétition</b><small>Un tournoi avec classement : match play, Texas scramble, Stableford… avec équipes et handicaps.</small></span></button>
-      </div>
-      <button class="btn ghost" data-close type="button">Annuler</button>`, sh => {
-      sh.querySelector('[data-close]').onclick = closeSheet;
-      sh.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => { closeSheet(); if (b.dataset.tp === 'normale') go('setup'); else go('comps', { compLive: false }); });
-    });
-  }
-  document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-typepartie]'); if (!t) return; e.preventDefault(); typePartieSheet(); });
+  document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-typepartie]'); if (!t) return; e.preventDefault(); MODULE.nouvellePartie(); });
   document.addEventListener('click', e => {
     const t = e.target.closest && e.target.closest('[data-viral],[data-viralhide],#switchGroup'); if (!t) return;
     e.preventDefault();
@@ -1299,7 +1328,7 @@
     // Forfait Gratuit = un seul groupe : un deuxième groupe demande le forfait Groupe, comme un 5e joueur
     Store.groupeGratuit().then(g => g ? deuxiemeGroupeSheet(g) : newGroupSheet()).catch(() => newGroupSheet());
   });
-
+  // ==== src/golf/aide.js ====
   // ---------------- Petit « i » d'explication ----------------
   const info = key => `<button type="button" class="info" data-info="${key}" aria-label="Explication">i</button>`;
   const HELP = {
@@ -1320,6 +1349,7 @@
     openSheet(`<h3>${esc(t)}</h3><ul class="info-list">${lines.map(l => `<li>${esc(l)}</li>`).join('')}</ul><div class="sheet-actions"><button class="btn" data-close type="button">Compris</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; });
   }
   document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-info]'); if (!b) return; e.preventDefault(); e.stopPropagation(); showInfo(b.dataset.info); }, true);
+  // ==== src/golf/jeux.js ====
   // ---------------- Les jeux (règles) ----------------
   const GAMES_INFO = [
     { f: 'pelland', who: '4 joueurs, en équipes de deux (Rouges et Bleus)', rules: [
@@ -1411,6 +1441,7 @@
       <section class="card"><h2>Résumé</h2><ul class="info-list" id="jSum">${persoLines(j).map(r => `<li>${esc(r)}</li>`).join('')}</ul></section>
       <button class="btn" id="jSave" type="button">Enregistrer le jeu</button>`;
   }
+  // ==== src/golf/quatuors.js ====
   // ---------------- Quatuors ----------------
   function vQuatuors() {
     $('#barTitle').textContent = 'Parties à préparer';
@@ -1426,76 +1457,7 @@
             : canOrganize() ? `<button class="btn small" data-qplay="${esc(x.id)}" type="button">Jouer</button><button class="btn ghost small" data-qrem="${esc(x.id)}" type="button">Rappel</button><button class="btn ghost small" data-qask="${esc(x.id)}" type="button">Retirer</button>` : ''}</span></div>`).join('')
         : ''}</div>`;
   }
-  // ---------------- Offres de parties ----------------
-  const fmtDate = ms => new Date(ms).toLocaleString('fr-CA', { weekday: 'short', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit' }).replace(' h 00', ' h').replace(/(\d+):(\d+)/, '$1 h $2');
-  const fmtDay = ms => new Date(ms).toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' });
-  const offreReps = o => Object.keys(o).filter(k => k.startsWith('rep_')).map(k => o[k]);
-  function offresHtml() {
-    const f = S.newOffre;
-    const list = (S.offres || []).map(o => {
-      const reps = offreReps(o), past = Date.now() > o.deadline;
-      return `<div class="offre"><div class="offre-h"><b>${esc(o.course)}</b>${o.place ? `<span class="place">${esc(o.place)}</span>` : ''}<small>${past ? 'Réponses fermées' : 'Réponses avant le ' + esc(fmtDay(o.deadline))} · ${reps.length} réponse${reps.length > 1 ? 's' : ''}</small></div>
-        ${o.dates.map(dt => { const yes = reps.filter(r => (r.dates || []).includes(dt)).map(r => r.name);
-          return `<div class="offre-d"><div><b>${esc(fmtDate(dt))}</b><span>${yes.length ? esc(yes.join(', ')) : 'Personne pour l’instant'}</span>${yes.length ? `<span class="grp">${esc(groupsText(yes.length))}</span>` : ''}</div><span class="cnt ${yes.length >= 4 ? 'ok' : ''}">${yes.length}</span></div>${yes.length >= 3 && canOrganize() ? `<div class="row offre-acts"><button class="btn small" data-oauto="${esc(o.id)}|${dt}" type="button">Former les groupes</button><button class="btn ghost small" data-oquat="${esc(o.id)}|${dt}" type="button">Manuel</button></div>` : ''}`; }).join('')}
-        ${canOrganize() ? '' : '<!--'}<div class="row"><button class="btn small" data-orem="${esc(o.id)}" type="button">Rappel</button><button class="btn ghost small" data-osms="${esc(o.id)}" type="button">Renvoyer le texto</button><button class="btn ghost small" data-odel="${esc(o.id)}" type="button">${S.confirmDelO === o.id ? 'Confirmer' : 'Retirer'}</button></div>${canOrganize() ? '' : '-->'}</div>`; }).join('');
-    const form = f ? `<div class="offre-form">
-        <label>Terrain<select id="oCourse">${S.courses.map(c => `<option value="${esc(c.name)}" ${c.name === f.course ? 'selected' : ''}>${esc(c.name)}${c.sim ? ' (simulateur)' : ''}</option>`).join('')}</select></label>
-        <label>Lieu (facultatif)<input id="oPlace" type="text" value="${esc(f.place || '')}" placeholder="ex. Golf Simulateur Laval, baies 2 et 3"></label>
-        <div class="lbl">Dates offertes</div>
-        ${f.dates.map((d, i) => `<div class="row" style="flex-wrap:nowrap"><input type="datetime-local" data-od="${i}" value="${esc(d)}" style="flex:1;min-width:0"><button class="x" type="button" data-odx="${i}" aria-label="Retirer">×</button></div>`).join('')}
-        <button class="btn ghost small" id="oAddDate" type="button">+ Ajouter une date</button>
-        <label>Date butoir pour répondre<input type="date" id="oDeadline" value="${esc(f.deadline)}"></label>
-        <div class="row"><button class="btn sms-btn" id="oSend" type="button">Enregistrer et texter les joueurs</button><button class="btn ghost small" id="oCancel" type="button">Annuler</button></div></div>`
-      : canOrganize() ? `<button class="btn" id="oNew" type="button">Créer des parties</button>` : '<p class="note">Seuls le propriétaire et l’organisateur du groupe offrent des parties.</p>';
-    return `<section class="card"><h2>Parties offertes</h2><p class="note">Proposez des dates : tous les joueurs reçoivent un texto et indiquent dans l’app les dates où ils sont disponibles, avant la date butoir.</p>${form}${list}</section>`;
-  }
-  // Rappels : à ceux qui n'ont pas répondu, ou aux joueurs disponibles pour une date
-  function reminderSheet(o) {
-    const me = L.norm(ls.get('pelland.me', '') || ''), reps = offreReps(o), answered = new Set(reps.map(r => L.norm(r.name)));
-    const course = o.course.replace(/^Club de golf /i, '') + (o.place ? ' – ' + o.place : ''), link = `${location.origin + location.pathname}?offre=${o.id}`, past = Date.now() > o.deadline;
-    const byNames = names => (S.players || []).filter(p => L.norm(p.name) !== me && names.has(L.norm(p.name)));
-    const noAns = (S.players || []).filter(p => L.norm(p.name) !== me && !answered.has(L.norm(p.name)));
-    const choices = [];
-    if (!past) choices.push({ label: 'Ceux qui n’ont pas encore répondu', ps: noAns, text: `Rappel – ${groupName()} : tu n’as pas encore indiqué tes disponibilités pour les parties à ${course}. Réponds avant le ${fmtDay(o.deadline)} : ${link}` });
-    if (!past) choices.push({ label: 'Tous les joueurs du groupe', ps: (S.players || []).filter(p => L.norm(p.name) !== me), text: `Rappel – ${groupName()} : parties offertes à ${course} : ${o.dates.map(fmtDate).join(', ')}. Indique tes disponibilités : ${link}` });
-    o.dates.filter(dt => dt > Date.now() - 3600e3).forEach(dt => { const yes = new Set(reps.filter(r => (r.dates || []).includes(dt)).map(r => L.norm(r.name)));
-      if (yes.size) choices.push({ label: `Joueurs du ${fmtDate(dt)}`, ps: byNames(yes), text: `Rappel – ${groupName()} : on joue ${fmtDate(dt)} à ${course}. À bientôt sur le terrain !` }); });
-    const draw = (sh, sel) => {
-      const c = sel != null ? choices[sel] : null;
-      sh.innerHTML = `<h3>Rappel</h3>
-        ${choices.length ? `<div class="list">${choices.map((x, i) => `<button class="item rem-opt ${sel === i ? 'on' : ''}" data-rc="${i}" type="button"><b>${esc(x.label)}</b><span>${x.ps.length} joueur${x.ps.length > 1 ? 's' : ''}${x.ps.length ? ' : ' + esc(x.ps.map(p => p.name.split(' ')[0]).join(', ')) : ''}</span></button>`).join('')}</div>` : '<p class="note">Aucun rappel à envoyer pour l’instant.</p>'}
-        ${c ? `<label>Message<textarea id="rmMsg" rows="4">${esc(c.text)}</textarea></label>${c.ps.some(p => !p.phone) ? `<p class="warn" style="margin:6px 0">Pas de numéro pour ${esc(c.ps.filter(p => !p.phone).map(p => p.name).join(', '))}.</p>` : ''}` : ''}
-        <div class="row"><button class="btn small" id="rmGo" type="button" ${c && c.ps.some(p => p.phone) ? '' : 'disabled'}>Envoyer le texto${c ? ` (${c.ps.filter(p => p.phone).length})` : ''}</button><button class="btn ghost small" data-close type="button">Annuler</button></div>`;
-      sh.querySelectorAll('[data-rc]').forEach(bt => bt.onclick = () => draw(sh, +bt.dataset.rc));
-      sh.querySelector('[data-close]').onclick = closeSheet;
-      const go = sh.querySelector('#rmGo'); if (go) go.onclick = () => { if (!c) return; const txt = sh.querySelector('#rmMsg').value; closeSheet();
-        Push.notify({ title: 'Rappel – ' + groupName(), body: txt.replace(/^Rappel – [^:]*: /, '').slice(0, 200), url: './?offre=' + o.id, tag: 'rappel-' + o.id, playerIds: c.ps.map(p => p.id) });
-        openSms(c.ps.filter(p => p.phone).map(p => p.phone), txt); };
-    };
-    openSheet('', sh => draw(sh, choices.length === 1 ? 0 : null));
-  }
-  function offreSms(o) {
-    const me = L.norm(ls.get('pelland.me', '') || '');
-    const nums = (S.players || []).filter(p => p.phone && L.norm(p.name) !== me).map(p => p.phone);
-    const missing = (S.players || []).filter(p => !p.phone && L.norm(p.name) !== me).map(p => p.name);
-    const body = [`${groupName()} (${APP}) – parties offertes à ${o.course.replace(/^Club de golf /i, '')}${o.place ? ' – ' + o.place : ''} :`, ...o.dates.map(d => '• ' + fmtDate(d)),
-      `Indique tes disponibilités avant le ${fmtDay(o.deadline)} : ${location.origin + location.pathname}?offre=${o.id}`].join('\n');
-    if (missing.length) toast(`Pas de numéro pour ${missing.join(', ')}.`);
-    openSms(nums, body);
-  }
-  function vOffre() {
-    $('#barTitle').textContent = 'Disponibilités';
-    const o = S.offre;
-    if (o === undefined) { Store.getOffre(S.offreId).then(x => { S.offre = x; if (S.view === 'offre') render(); }); return '<p class="note">Chargement…</p>'; }
-    if (!o) return '<section class="card"><h2>Offre introuvable</h2><p class="note">Elle a peut-être été retirée.</p></section>';
-    const me = ls.get('pelland.me', '') || '', key = 'rep_' + presKey(me), mine = (o[key] || {}).dates || [], past = Date.now() > o.deadline;
-    const sel = S.offreSel || (S.offreSel = mine.slice());
-    return `<section class="card"><h2>${esc(o.course)}</h2>${o.place ? `<p class="note" style="margin-top:-6px">${esc(o.place)}</p>` : ''}
-      <p class="note">${past ? 'La date butoir est passée : les réponses sont fermées.' : `Cochez les dates où vous êtes disponible, avant le <b>${esc(fmtDay(o.deadline))}</b>.`}</p>
-      <div class="dispo">${o.dates.map(dt => `<button type="button" class="dispo-d" data-dispo="${dt}" aria-pressed="${sel.includes(dt)}" ${past ? 'disabled' : ''}><b>${sel.includes(dt) ? '✓' : ''}</b><span>${esc(fmtDate(dt))}</span></button>`).join('')}</div>
-      <div class="row dispo-btns">${past ? '' : `<button class="btn" id="dispoSave" type="button">Enregistrer</button>`}<button class="btn ghost" id="dispoCancel" type="button">${past ? 'Retour' : 'Annuler'}</button></div>
-      ${o[key] ? `<p class="note">Réponse enregistrée${sel.length ? '' : ' : aucune date'}.</p>` : ''}</section>`;
-  }
+
   // Tailles des groupes : le plus de 4 possible, des groupes de 3 au besoin (5 → 4 + 1 en attente)
   // « 1 quatuor de 4 et 1 de 3 · 1 en attente »
   function groupsText(n) {
@@ -1564,6 +1526,84 @@
       });
     draw();
   }
+  function draftFromQuatuor(x) {
+    const d = newDraft(), me = L.norm(ls.get('pelland.me', '') || '');
+
+    x.players.forEach((n, i) => { if (d.players[i]) { d.players[i].name = n; d.players[i].custom = false; } });
+    const r = x.players.findIndex(n => L.norm(n) === me); if (r >= 0) d.responsable = r;
+    return d;
+  }
+  // ==== src/commun/offres.js ====
+  // ---------------- Offres de parties ----------------
+  const fmtDate = ms => new Date(ms).toLocaleString('fr-CA', { weekday: 'short', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit' }).replace(' h 00', ' h').replace(/(\d+):(\d+)/, '$1 h $2');
+  const fmtDay = ms => new Date(ms).toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' });
+  const offreReps = o => Object.keys(o).filter(k => k.startsWith('rep_')).map(k => o[k]);
+  function offresHtml() {
+    const f = S.newOffre;
+    const list = (S.offres || []).map(o => {
+      const reps = offreReps(o), past = Date.now() > o.deadline;
+      return `<div class="offre"><div class="offre-h"><b>${esc(o.course)}</b>${o.place ? `<span class="place">${esc(o.place)}</span>` : ''}<small>${past ? 'Réponses fermées' : 'Réponses avant le ' + esc(fmtDay(o.deadline))} · ${reps.length} réponse${reps.length > 1 ? 's' : ''}</small></div>
+        ${o.dates.map(dt => { const yes = reps.filter(r => (r.dates || []).includes(dt)).map(r => r.name);
+          return `<div class="offre-d"><div><b>${esc(fmtDate(dt))}</b><span>${yes.length ? esc(yes.join(', ')) : 'Personne pour l’instant'}</span>${yes.length ? `<span class="grp">${esc(MODULE.groupesTexte(yes.length))}</span>` : ''}</div><span class="cnt ${yes.length >= 4 ? 'ok' : ''}">${yes.length}</span></div>${yes.length >= 3 && canOrganize() ? `<div class="row offre-acts"><button class="btn small" data-oauto="${esc(o.id)}|${dt}" type="button">Former les groupes</button><button class="btn ghost small" data-oquat="${esc(o.id)}|${dt}" type="button">Manuel</button></div>` : ''}`; }).join('')}
+        ${canOrganize() ? '' : '<!--'}<div class="row"><button class="btn small" data-orem="${esc(o.id)}" type="button">Rappel</button><button class="btn ghost small" data-osms="${esc(o.id)}" type="button">Renvoyer le texto</button><button class="btn ghost small" data-odel="${esc(o.id)}" type="button">${S.confirmDelO === o.id ? 'Confirmer' : 'Retirer'}</button></div>${canOrganize() ? '' : '-->'}</div>`; }).join('');
+    const form = f ? `<div class="offre-form">
+        <label>Terrain<select id="oCourse">${S.courses.map(c => `<option value="${esc(c.name)}" ${c.name === f.course ? 'selected' : ''}>${esc(c.name)}${c.sim ? ' (simulateur)' : ''}</option>`).join('')}</select></label>
+        <label>Lieu (facultatif)<input id="oPlace" type="text" value="${esc(f.place || '')}" placeholder="${SPORT.lieuExemple}"></label>
+        <div class="lbl">Dates offertes</div>
+        ${f.dates.map((d, i) => `<div class="row" style="flex-wrap:nowrap"><input type="datetime-local" data-od="${i}" value="${esc(d)}" style="flex:1;min-width:0"><button class="x" type="button" data-odx="${i}" aria-label="Retirer">×</button></div>`).join('')}
+        <button class="btn ghost small" id="oAddDate" type="button">+ Ajouter une date</button>
+        <label>Date butoir pour répondre<input type="date" id="oDeadline" value="${esc(f.deadline)}"></label>
+        <div class="row"><button class="btn sms-btn" id="oSend" type="button">Enregistrer et texter les joueurs</button><button class="btn ghost small" id="oCancel" type="button">Annuler</button></div></div>`
+      : canOrganize() ? `<button class="btn" id="oNew" type="button">Créer des parties</button>` : '<p class="note">Seuls le propriétaire et l’organisateur du groupe offrent des parties.</p>';
+    return `<section class="card"><h2>Parties offertes</h2><p class="note">Proposez des dates : tous les joueurs reçoivent un texto et indiquent dans l’app les dates où ils sont disponibles, avant la date butoir.</p>${form}${list}</section>`;
+  }
+  // Rappels : à ceux qui n'ont pas répondu, ou aux joueurs disponibles pour une date
+  function reminderSheet(o) {
+    const me = L.norm(ls.get('pelland.me', '') || ''), reps = offreReps(o), answered = new Set(reps.map(r => L.norm(r.name)));
+    const course = o.course.replace(/^Club de golf /i, '') + (o.place ? ' – ' + o.place : ''), link = `${location.origin + location.pathname}?offre=${o.id}`, past = Date.now() > o.deadline;
+    const byNames = names => (S.players || []).filter(p => L.norm(p.name) !== me && names.has(L.norm(p.name)));
+    const noAns = (S.players || []).filter(p => L.norm(p.name) !== me && !answered.has(L.norm(p.name)));
+    const choices = [];
+    if (!past) choices.push({ label: 'Ceux qui n’ont pas encore répondu', ps: noAns, text: `Rappel – ${groupName()} : tu n’as pas encore indiqué tes disponibilités pour les parties à ${course}. Réponds avant le ${fmtDay(o.deadline)} : ${link}` });
+    if (!past) choices.push({ label: 'Tous les joueurs du groupe', ps: (S.players || []).filter(p => L.norm(p.name) !== me), text: `Rappel – ${groupName()} : parties offertes à ${course} : ${o.dates.map(fmtDate).join(', ')}. Indique tes disponibilités : ${link}` });
+    o.dates.filter(dt => dt > Date.now() - 3600e3).forEach(dt => { const yes = new Set(reps.filter(r => (r.dates || []).includes(dt)).map(r => L.norm(r.name)));
+      if (yes.size) choices.push({ label: `Joueurs du ${fmtDate(dt)}`, ps: byNames(yes), text: `Rappel – ${groupName()} : on joue ${fmtDate(dt)} à ${course}. À bientôt sur le terrain !` }); });
+    const draw = (sh, sel) => {
+      const c = sel != null ? choices[sel] : null;
+      sh.innerHTML = `<h3>Rappel</h3>
+        ${choices.length ? `<div class="list">${choices.map((x, i) => `<button class="item rem-opt ${sel === i ? 'on' : ''}" data-rc="${i}" type="button"><b>${esc(x.label)}</b><span>${x.ps.length} joueur${x.ps.length > 1 ? 's' : ''}${x.ps.length ? ' : ' + esc(x.ps.map(p => p.name.split(' ')[0]).join(', ')) : ''}</span></button>`).join('')}</div>` : '<p class="note">Aucun rappel à envoyer pour l’instant.</p>'}
+        ${c ? `<label>Message<textarea id="rmMsg" rows="4">${esc(c.text)}</textarea></label>${c.ps.some(p => !p.phone) ? `<p class="warn" style="margin:6px 0">Pas de numéro pour ${esc(c.ps.filter(p => !p.phone).map(p => p.name).join(', '))}.</p>` : ''}` : ''}
+        <div class="row"><button class="btn small" id="rmGo" type="button" ${c && c.ps.some(p => p.phone) ? '' : 'disabled'}>Envoyer le texto${c ? ` (${c.ps.filter(p => p.phone).length})` : ''}</button><button class="btn ghost small" data-close type="button">Annuler</button></div>`;
+      sh.querySelectorAll('[data-rc]').forEach(bt => bt.onclick = () => draw(sh, +bt.dataset.rc));
+      sh.querySelector('[data-close]').onclick = closeSheet;
+      const go = sh.querySelector('#rmGo'); if (go) go.onclick = () => { if (!c) return; const txt = sh.querySelector('#rmMsg').value; closeSheet();
+        Push.notify({ title: 'Rappel – ' + groupName(), body: txt.replace(/^Rappel – [^:]*: /, '').slice(0, 200), url: './?offre=' + o.id, tag: 'rappel-' + o.id, playerIds: c.ps.map(p => p.id) });
+        openSms(c.ps.filter(p => p.phone).map(p => p.phone), txt); };
+    };
+    openSheet('', sh => draw(sh, choices.length === 1 ? 0 : null));
+  }
+  function offreSms(o) {
+    const me = L.norm(ls.get('pelland.me', '') || '');
+    const nums = (S.players || []).filter(p => p.phone && L.norm(p.name) !== me).map(p => p.phone);
+    const missing = (S.players || []).filter(p => !p.phone && L.norm(p.name) !== me).map(p => p.name);
+    const body = [`${groupName()} (${APP}) – parties offertes à ${o.course.replace(/^Club de golf /i, '')}${o.place ? ' – ' + o.place : ''} :`, ...o.dates.map(d => '• ' + fmtDate(d)),
+      `Indique tes disponibilités avant le ${fmtDay(o.deadline)} : ${location.origin + location.pathname}?offre=${o.id}`].join('\n');
+    if (missing.length) toast(`Pas de numéro pour ${missing.join(', ')}.`);
+    openSms(nums, body);
+  }
+  function vOffre() {
+    $('#barTitle').textContent = 'Disponibilités';
+    const o = S.offre;
+    if (o === undefined) { Store.getOffre(S.offreId).then(x => { S.offre = x; if (S.view === 'offre') render(); }); return '<p class="note">Chargement…</p>'; }
+    if (!o) return '<section class="card"><h2>Offre introuvable</h2><p class="note">Elle a peut-être été retirée.</p></section>';
+    const me = ls.get('pelland.me', '') || '', key = 'rep_' + presKey(me), mine = (o[key] || {}).dates || [], past = Date.now() > o.deadline;
+    const sel = S.offreSel || (S.offreSel = mine.slice());
+    return `<section class="card"><h2>${esc(o.course)}</h2>${o.place ? `<p class="note" style="margin-top:-6px">${esc(o.place)}</p>` : ''}
+      <p class="note">${past ? 'La date butoir est passée : les réponses sont fermées.' : `Cochez les dates où vous êtes disponible, avant le <b>${esc(fmtDay(o.deadline))}</b>.`}</p>
+      <div class="dispo">${o.dates.map(dt => `<button type="button" class="dispo-d" data-dispo="${dt}" aria-pressed="${sel.includes(dt)}" ${past ? 'disabled' : ''}><b>${sel.includes(dt) ? '✓' : ''}</b><span>${esc(fmtDate(dt))}</span></button>`).join('')}</div>
+      <div class="row dispo-btns">${past ? '' : `<button class="btn" id="dispoSave" type="button">Enregistrer</button>`}<button class="btn ghost" id="dispoCancel" type="button">${past ? 'Retour' : 'Annuler'}</button></div>
+      ${o[key] ? `<p class="note">Réponse enregistrée${sel.length ? '' : ' : aucune date'}.</p>` : ''}</section>`;
+  }
   // Dates offertes (Parties à préparer) avec les joueurs qui se sont dits disponibles
   function offreDates() {
     const out = [];
@@ -1572,14 +1612,7 @@
       out.push({ key: o.id + '|' + dt, course: o.course, label: `${o.course.replace(/^Club de golf /i, '')} – ${fmtDate(dt)}`, names }); }));
     return out.sort((a, b) => +a.key.split('|')[1] - +b.key.split('|')[1]);
   }
-  function draftFromQuatuor(x) {
-    const d = newDraft(), me = L.norm(ls.get('pelland.me', '') || '');
-
-    x.players.forEach((n, i) => { if (d.players[i]) { d.players[i].name = n; d.players[i].custom = false; } });
-    const r = x.players.findIndex(n => L.norm(n) === me); if (r >= 0) d.responsable = r;
-    return d;
-  }
-
+  // ==== src/golf/nouvelle-partie.js ====
   // ---------------- Nouvelle partie ----------------
   function newDraft() {
     return {
@@ -1735,8 +1768,6 @@
     return S.players.filter(p => !taken.includes(L.norm(p.name))).map(p => `<option value="${esc(p.name)}"></option>`).join('');
   }
   function money(v) { const x = parseFloat(String(v || '').replace(',', '.').replace(/[^0-9.]/g, '')); return isNaN(x) ? 0 : x; }
-  // « 20 » → « 20,00 » ; vide reste vide
-  function fmtPhone(d) { d = String(d || '').replace(/\D/g, ''); if (d.length === 11 && d[0] === '1') d = d.slice(1); return d.length === 10 ? `${d.slice(0, 3)} ${d.slice(3, 6)}-${d.slice(6)}` : d; }
   function fmtIn(v) { if (String(v || '').trim() === '') return ''; return money(v).toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   // 15 $ ; les cents seulement s'il y en a (2,50 $)
   const fmt$ = x => { const n = Number(x || 0); const d = Number.isInteger(Math.round(n * 100) / 100) ? 0 : 2; return n.toLocaleString('fr-CA', { minimumFractionDigits: d, maximumFractionDigits: d }) + ' $'; };
@@ -1781,6 +1812,19 @@
     return `<div class="teams">${teams.map((t, k) => `<div class="team t${k} ${lead === k ? 'lead' : ''}"><span class="step tn">${L.TEAMS[k]}</span><b>${t.map(i => esc(players[i].name)).join(' et ')}</b>${pts ? `<span class="tp num">${pts[k]} <small>pts</small>${money ? ` <small class="money">· ${money[k]} $</small>` : ''}</span>` : ''}<span class="note">index ${t.map(i => String(players[i].index).replace('.', ',')).join(' et ')}</span></div>`).join('')}</div>`;
   }
 
+  // Créer une partie : d'abord le type, partie normale ou compétition
+  function typePartieSheet() {
+    openSheet(`<h3>Quel type de partie ?</h3>
+      <div class="type-partie">
+        <button class="type-choix" data-tp="normale" type="button"><span aria-hidden="true">⛳</span><span><b>Partie normale</b><small>Une partie entre amis : terrain, joueurs, jeu (Nassau, skins, Vegas, match…) et montants.</small></span></button>
+        <button class="type-choix" data-tp="comp" type="button"><span aria-hidden="true">🏆</span><span><b>Compétition</b><small>Un tournoi avec classement : match play, Texas scramble, Stableford… avec équipes et handicaps.</small></span></button>
+      </div>
+      <button class="btn ghost" data-close type="button">Annuler</button>`, sh => {
+      sh.querySelector('[data-close]').onclick = closeSheet;
+      sh.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => { closeSheet(); if (b.dataset.tp === 'normale') go('setup'); else go('comps', { compLive: false }); });
+    });
+  }
+  // ==== src/golf/rejoindre.js ====
   // ---------------- Rejoindre ----------------
   function vJoin() {
     $('#barTitle').textContent = 'Rejoindre';
@@ -1790,7 +1834,7 @@
       <button class="btn" id="joinBtn" type="button">Ouvrir la partie</button>
       ${Store.mode === 'local' ? '<div class="warn">En mode local, seules les parties créées sur ce téléphone sont accessibles.</div>' : ''}</section>`;
   }
-
+  // ==== src/golf/partie.js ====
   // ---------------- Partie ----------------
   function vGame() {
     const g = S.game;
@@ -1905,6 +1949,15 @@
       <div class="legend"><span>★ responsable de la partie (il entre les scores)</span><span>${BALL} coup reçu · petit chiffre = net</span><span>Calcul : ↓ plus bas net · ↑ plus haut net · R/B équipe qui reçoit · ×2 press · ×4 reroll · S skin · O oiselet · C cabane · $ normale 3 · = résultat net</span><span>Noms à la couleur de l'équipe : <b class="tc1">Bleus</b> · <b class="tc0">Rouges</b></span><span>${g.players.map((p, i) => `<b class="tc${teamOf(g, i)}">${esc(ini[i])}</b> ${esc(p.name)}`).join(' · ')}</span><span class="narrow-only">Sous chaque trou : statut (Normal, Press, Reroll) et calcul des points</span></div>`;
   }
 
+  function respActions(g, owner, note) {
+    if (owner) return '';
+    if (!(Store.mode === 'cloud' && Store.email)) return '';
+    const r = g.players[g.responsable];
+    return S.confirmClaim === g.id
+      ? `<div class="row game-actions"><button class="btn small" data-claim type="button">Oui, je deviens responsable</button><button class="btn ghost small" data-cancelclaim type="button">Annuler</button></div>`
+      : `<div class="row game-actions"><button class="btn ghost small light" data-askclaim type="button">Devenir responsable de cette partie</button>${note ? `<span class="note light">${r ? 'Responsable : ' + esc(r.name) + '. ' : ''}pour entrer les scores, la terminer ou l'effacer</span>` : ''}</div>`;
+  }
+  // ==== src/golf/historique.js ====
   // ---------------- Historique ----------------
   let historyCache = null;
   function vHistory() {
@@ -1950,15 +2003,15 @@
           : `<button class="btn ghost small" data-askdelgame="${esc(g.id)}" type="button">Effacer</button>`) : ''}</div>`;
     }).join('')}</div>`;
   }
-
+  // ==== src/commun/connexion.js ====
   // ---------------- Terrains ----------------
   function vLogin() {
-    $('#barTitle').innerHTML = `${APP}<small class="bar-sous">le golf entre amis</small>`;
+    $('#barTitle').innerHTML = `${APP}<small class="bar-sous">${MARQUE.slogan}</small>`;
     $('#back').hidden = true;
     const refQ = new URLSearchParams(location.search).get('ref');
     const groups = S.groups || [];
     const refGroup = refQ && groups.find(g => g.id === refQ);
-    const hero = `<div class="hero"><h1>${APP}</h1><p>Le golf entre amis : pointage, jeux et parties à venir.</p></div>`;
+    const hero = `<div class="hero"><h1>${APP}</h1><p>${MARQUE.accroche}</p></div>`;
     // Pas encore connecté : le compte HoldingAI (le même pour toutes les apps HoldingAI)
     if (!Store.uid) return hero + `<section class="card"><h2>Connexion</h2>
         <p class="note">Un seul compte pour toutes les apps de L’Établi : votre cellulaire et votre mot de passe. Albert s’en occupe.</p>
@@ -1967,7 +2020,7 @@
         <p class="note" id="loginMsg">${esc(S.loginMsg || Store.error || '')}</p></section>`;
     // Connecté, mais ce cellulaire n'est inscrit dans aucun groupe : invitation à demander, ou nouveau groupe
     const nom = Store.nom || '';
-    return hero + `${refQ ? `<div class="ref-hello">${refGroup ? `Recommandé par <b>${esc(refGroup.name)}</b>. ` : ''}Créez votre groupe : c’est gratuit pour un quatuor, et vos joueurs reçoivent l’invitation par texto.</div>` : ''}
+    return hero + `${refQ ? `<div class="ref-hello">${refGroup ? `Recommandé par <b>${esc(refGroup.name)}</b>. ` : ''}Créez votre groupe : c’est gratuit pour ${SPORT.gratuitPour}, et vos joueurs reçoivent l’invitation par texto.</div>` : ''}
       <section class="card"><h2>${nom ? 'Bienvenue, ' + esc(nom.split(' ')[0]) + ' !' : 'Bienvenue !'}</h2>
         <p class="note">Votre cellulaire${Store.e164 ? ' (' + esc(fmtPhone(Store.e164.slice(2))) + ')' : ''} n’est inscrit dans aucun groupe pour l’instant.</p>
         <p class="note"><b>Invité par un organisateur ?</b> Demandez-lui de vérifier votre cellulaire dans Joueurs, puis rouvrez le lien de son texto.</p>
@@ -1981,7 +2034,7 @@
       </section>
       <p class="note" style="text-align:center"><button class="linkbtn" id="haiOut" type="button">Changer de compte</button></p>`;
   }
-
+  // ==== src/commun/banque.js ====
   // ---------- Import de joueurs depuis Excel (ou CSV) : nom + cellulaire ----------
   function loadXLSX() {
     if (window.XLSX) return Promise.resolve(window.XLSX);
@@ -2087,6 +2140,10 @@
   }
   // Statut d'invitation d'un joueur : compte créé, invité en attente, ou sans cellulaire
   // Notifications de chaque joueur, pour l'organisateur (lu dans subs du groupe)
+
+  // « 20 » → « 20,00 » ; vide reste vide
+  function fmtPhone(d) { d = String(d || '').replace(/\D/g, ''); if (d.length === 11 && d[0] === '1') d = d.slice(1); return d.length === 10 ? `${d.slice(0, 3)} ${d.slice(3, 6)}-${d.slice(6)}` : d; }
+  // ==== src/commun/notifications.js ====
   const NOTIF = { actif: ['ok', '🔔 Notifications actives', 'Il reçoit les alertes du groupe.'], bloque: ['bad', '🔕 Notifications bloquées', 'Il les a bloquées sur son téléphone : il ne reçoit rien. Parlez-lui, ou retirez-le du groupe.'],
     a_activer: ['wait', '🔕 Notifications pas activées', 'Il n’a pas encore accepté les notifications sur son téléphone.'], a_installer: ['wait', '🔕 App pas sur l’écran d’accueil', 'Sur iPhone, il doit ajouter l’app à l’écran d’accueil pour recevoir les alertes.'],
     non_supporte: ['bad', '🔕 Téléphone sans notifications', 'Son navigateur ne reçoit pas les notifications.'] };
@@ -2109,6 +2166,7 @@
     if (p.phone || p.phoneHint) return ' <span class="pl-st wait" title="Le texto d’invitation a pu être envoyé ; le joueur n’a pas encore créé son compte">Invité · en attente</span>';
     return ' <span class="pl-st none" title="Ajoutez son cellulaire pour l’inviter">Sans cellulaire</span>';
   }
+  // ==== src/golf/terrains.js ====
   function vCourses() {
     $('#barTitle').textContent = 'Terrains';
     const ilya = t => { const j = Math.round((Date.now() - t) / 864e5); return j < 1 ? 'aujourd’hui' : j === 1 ? 'hier' : `il y a ${j} jours`; };
@@ -2140,6 +2198,7 @@
       ${(Store.retired || []).length ? `<section class="card"><h3>Terrains effacés</h3><p class="note">Ils n’apparaissent plus dans la banque ni dans Nouvelle partie. Les parties déjà jouées gardent leur terrain.</p>
         <div class="list">${Store.retired.map(c => `<div class="item"><b>${esc(c.name)}</b>${isProprio() ? `<button class="btn ghost small" data-unretire="${esc(c.id)}" type="button">Remettre</button>` : ''}</div>`).join('')}</div></section>` : ''}`;
   }
+  // ==== src/golf/terrains-web.js ====
   // ---------------- Terrains trouvés sur le web : région → clubs → carte préparée → révision et approbation ----------------
   const TERRAINS_API = 'https://lefanion.ai/api/terrains';
   const REGIONS_QC = ['Montréal', 'Laval', 'Laurentides', 'Lanaudière', 'Montérégie', 'Cantons-de-l’Est', 'Centre-du-Québec', 'Mauricie', 'Québec (Capitale-Nationale)', 'Charlevoix', 'Chaudière-Appalaches', 'Outaouais', 'Abitibi-Témiscamingue', 'Saguenay–Lac-Saint-Jean', 'Bas-Saint-Laurent', 'Gaspésie', 'Côte-Nord'];
@@ -2195,8 +2254,6 @@
     if (ad && (ad.state || ad.country)) return { region: [ad.state || ad.county, ad.country].filter(Boolean).join(', '), ville: ad.city || ad.town || ad.village || '' };
     return { region: `environs de ${lat.toFixed(2)}, ${lng.toFixed(2)}`, ville: '' };
   }
-  const P = { admin: false, mine: [], todo: [], charge: false };
-  const BANQUE_MAX = 64;
   // ---- Léo garde les cartes à jour : il revérifie chaque terrain sur le web environ une fois par saison
   const VERIF_JOURS = 300, VERIF_PAR_JOUR = 2;
   const derniereVerif = c => Number(c.verifieLe || c.approuveLe || 0);
@@ -2397,7 +2454,7 @@
         ? `<div class="row retire-row"><span class="note">Effacer « ${esc(c.name)} » de la banque du groupe ?</span><button class="btn small" id="retireOk" type="button" style="background:var(--red)">Effacer</button><button class="btn ghost small" id="retireNo" type="button">Annuler</button></div>`
         : `<button class="btn ghost danger-txt" id="retireCourse" type="button">Effacer ce terrain</button>`) : ''}`;
   }
-
+  // ==== src/golf/lecture-carte.js ====
   // ---------------- Lecture de la carte (photo ou PDF) ----------------
   const loadScript = (() => { const done = {}; return src => done[src] || (done[src] = new Promise((ok, ko) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => { delete done[src]; ko(new Error('connexion requise pour lire la carte')); }; document.head.appendChild(s); })); })();
   async function fileToCanvas(file, max = 2200) {
@@ -2467,6 +2524,7 @@
   // =====================================================================
   // Interactions
   // =====================================================================
+  // ==== src/commun/liaisons.js ====
   const bind = {
     compte(v) { bindCompte(v); },
     login(v) {
@@ -2490,6 +2548,128 @@
         catch (e) { toast('Enregistrement impossible : ' + e.message); }
       };
     },
+    players(v) {
+      if (!S.notifsAt || Date.now() - S.notifsAt > 60e3) { S.notifsAt = Date.now(); chargerNotifs(); }
+      if (S.pMode === 'inviter' && !S.pFocused && roomLeft() > 0) { S.pFocused = true; setTimeout(() => { const i = $('#newPlayer'); if (i) i.focus(); }, 80); }
+      v.querySelectorAll('[data-org]').forEach(b => b.onclick = async () => {
+        // un seul organisateur (en plus du propriétaire) : en nommer un nouveau remplace l'ancien
+        const gr = { ...curGroup() }, id = b.dataset.org, cur = (gr.organizers || [])[0];
+        if (cur !== id && !hasAccepted(S.players.find(p => p.id === id))) return toast('Ce joueur n’a pas encore accepté son invitation (compte pas créé).');
+        gr.organizers = cur === id ? [] : [id];
+        try { await Store.saveGroup(gr); S.groups = await Store.listGroups(); render(); } catch (e) { toast('Impossible : ' + e.message); }
+      });
+      const co = $('#claimOwner'); if (co) co.onclick = async () => {
+        const me = S.players.find(p => L.norm(p.name) === L.norm(ls.get('pelland.me', '') || ''));
+        if (!me) return toast('Connectez-vous d’abord.');
+        const gr = { ...curGroup(), owner: me.id };
+        try { await Store.saveGroup(gr); S.groups = await Store.listGroups(); render(); } catch (e) { toast('Impossible : ' + e.message); }
+      };
+      const add = async () => {
+        const n = $('#newPlayer').value.trim(); if (!n) return;
+        if (S.players.some(p => L.norm(p.name) === L.norm(n))) return toast(`${n} est déjà dans la liste.`);
+        const near = duplicateMap(S.players.concat([{ id: '__new', name: n }]))['__new'];
+        if (near && S.confirmAdd !== n) { S.confirmAdd = n; return toast(`Ressemble à ${near.join(', ')}. Touchez Ajouter de nouveau pour confirmer.`); }
+        S.confirmAdd = null;
+        if (roomLeft() <= 0) return limitSheet();
+        if ((S.bank || S.players).length >= BANQUE_MAX) return toast(`La banque de joueurs est pleine (${BANQUE_MAX}).`);
+        try { const np = await Store.savePlayer(n, (S.bank || S.players).length); const ph = $('#newPhone').value.trim(); if (ph) await Store.setPhone(np, ph); S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); render(); if (ph) inviteText(n, ph, np.id); else setTimeout(() => $('#newPlayer') && $('#newPlayer').focus(), 50); }
+        catch (e) { toast('Ajout impossible : ' + e.message); }
+      };
+      if ($('#addPlayer')) $('#addPlayer').onclick = add;
+      const xf = $('#xlsFile'); if (xf) xf.onchange = async () => { const f = xf.files[0]; xf.value = ''; if (f) importPlayersFile(f); };
+      if ($('#newPlayer')) $('#newPlayer').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); add(); } };
+      v.querySelectorAll('[data-askdel]').forEach(b => b.onclick = () => { S.confirmDel = b.dataset.askdel; render(); });
+      if (canOrganize() && !S.bankAt) { S.bankAt = 1; Store.listBank().then(l => { S.bank = l; if (S.view === 'players') render(); }).catch(() => { }); }
+      v.querySelectorAll('[data-membre]').forEach(b => b.onclick = async () => {
+        if (roomLeft() <= 0) return limitSheet(S.players.length + 1);
+        b.disabled = true; const p = (S.bank || []).find(x => x.id === b.dataset.membre);
+        try { await Store.setMembre(b.dataset.membre, true); S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); toast(`${p ? p.name : 'Le joueur'} est dans le groupe.`); render(); }
+        catch (e) { b.disabled = false; toast('Impossible : ' + e.message); }
+      });
+      v.querySelectorAll('[data-bankdel]').forEach(b => b.onclick = async () => {
+        const p = (S.bank || []).find(x => x.id === b.dataset.bankdel); if (!p) return;
+        if (S.confirmBankDel !== p.id) { S.confirmBankDel = p.id; b.textContent = 'Enlever ?'; b.classList.add('danger-txt'); return; }
+        b.disabled = true;
+        try { await Store.deletePlayer(p.id, (S.bank || []).length); S.bank = await Store.listBank(); S.confirmBankDel = null; toast(`${p.name} est enlevé de la banque.`); render(); }
+        catch (e) { b.disabled = false; toast('Impossible : ' + e.message); }
+      });
+      v.querySelectorAll('[data-reinv]').forEach(b => b.onclick = () => { const p = (S.bank || []).find(x => x.id === b.dataset.reinv); if (p) inviteText(p.name, p.phone, p.id); });
+      if (canOrganize() && !S.retiredPlAt) { S.retiredPlAt = 1; Store.retiredPlayers().then(l => { S.retiredPl = l; if (l.length && S.view === 'players') render(); }).catch(() => { }); }
+      v.querySelectorAll('[data-remettre]').forEach(b => b.onclick = async () => {
+        const x = S.retiredPl[+b.dataset.remettre]; if (!x) return;
+        if (roomLeft() <= 0) return toast(`Le groupe est complet (${S.players.length} / ${planOf().max}).`);
+        b.disabled = true;
+        try {
+          const np = await Store.savePlayer(x.name, S.players.length);
+          if (x.phone && x.phone.length >= 10) { try { await Store.setPhone(np, x.phone); } catch (e) { } }
+          S.retiredPl = S.retiredPl.filter(y => y !== x); await Store.setRetiredPlayers(S.retiredPl);
+          S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); toast(`${x.name} est de retour dans le groupe.`); render();
+          if (x.phone) inviteText(x.name, x.phone, np && np.id);
+        } catch (e) { b.disabled = false; toast('Impossible : ' + e.message); }
+      });
+      v.querySelectorAll('[data-oublier]').forEach(b => b.onclick = async () => {
+        const x = S.retiredPl[+b.dataset.oublier]; if (!x) return;
+        S.retiredPl = S.retiredPl.filter(y => y !== x); try { await Store.setRetiredPlayers(S.retiredPl); } catch (e) { } toast(`${x.name} est enlevé de la banque.`); render();
+      });
+      v.querySelectorAll('[data-phone]').forEach(b => b.onclick = () => {
+        const pl = S.players.find(x => x.id === b.dataset.phone);
+        openSheet(`<h3>Téléphone de ${esc(pl.name)}</h3>
+          <p class="note">${pl.phone ? `Numéro actuel : <b style="font-size:20px">${esc(fmtPhone(pl.phone))}</b>` : pl.authEmail ? `Numéro actuel : se termine par <b>${esc(pl.phoneHint || '')}</b>. Entrez le numéro complet une fois ci-dessous et touchez Enregistrer : il s’affichera ensuite.` : 'Aucun numéro pour l’instant.'}</p>
+          <label>${pl.authEmail ? 'Nouveau numéro' : 'Numéro'}<input id="phIn" type="tel" inputmode="tel" placeholder="450 555-1234" value="${esc(pl.phone ? fmtPhone(pl.phone) : '')}"></label>
+          <p class="note">Ce numéro sert à se connecter. Il est visible seulement par les joueurs du groupe.</p>
+          ${Store.phonesBlocked ? '<div class="warn">La base a refusé d’enregistrer ce numéro. Réessayez, ou écrivez à ' + MARQUE.courriel + '.</div>' : ''}
+          <div class="row"><button class="btn small" id="phSave" type="button">Enregistrer</button><button class="btn ghost small" data-close type="button">Annuler</button></div>`, sh => {
+          sh.querySelector('[data-close]').onclick = closeSheet;
+          sh.querySelector('#phSave').onclick = async () => {
+            try { const first = !pl.authEmail, ph = sh.querySelector('#phIn').value; await Store.setPhone(pl, ph); closeSheet(); S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); toast('Téléphone enregistré.'); render(); if (first) inviteText(pl.name, ph, pl.id); }
+            catch (e) { toast(e.message); }
+          };
+          setTimeout(() => { const i = sh.querySelector('#phIn'); if (i) { i.focus(); i.select(); } }, 50);
+        });
+      });
+      v.querySelectorAll('[data-rename]').forEach(b => b.onclick = () => {
+        const pl = S.players.find(x => x.id === b.dataset.rename);
+        openSheet(`<h3>Modifier le nom</h3>
+          <label>Prénom et nom<input id="rnIn" type="text" autocapitalize="words" value="${esc(pl.name)}"></label>
+          <p class="note">Les parties déjà jouées gardent l’ancien nom.</p>
+          <div class="row"><button class="btn small" id="rnSave" type="button">Enregistrer</button><button class="btn ghost small" data-close type="button">Annuler</button></div>`, sh => {
+          sh.querySelector('[data-close]').onclick = closeSheet;
+          sh.querySelector('#rnSave').onclick = async () => {
+            const nm = sh.querySelector('#rnIn').value.trim().replace(/\s+/g, ' ');
+            if (!nm) return toast('Entrez un nom.');
+            if (S.players.some(x => x.id !== pl.id && L.norm(x.name) === L.norm(nm))) return toast('Ce nom est déjà dans le groupe.');
+            try { const self = pl.id === meId(); await Store.renamePlayer(pl.id, nm); if (self) ls.set('pelland.me', nm); closeSheet(); S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); toast('Nom modifié.'); render(); }
+            catch (e) { toast('Impossible : ' + e.message); }
+          };
+          setTimeout(() => { const i = sh.querySelector('#rnIn'); if (i) { i.focus(); i.select(); } }, 50);
+        });
+      });
+      const sm = v.querySelector('[data-selmode]'); if (sm) sm.onclick = () => { S.selMode = !S.selMode; S.sel = []; S.confirmBulk = false; render(); };
+      v.querySelectorAll('[data-selp]').forEach(c => c.onchange = () => { const id = c.dataset.selp; S.sel = (S.sel || []).filter(x => x !== id); if (c.checked) S.sel.push(id); S.confirmBulk = false; render(); });
+      const sa = v.querySelector('[data-selall]'); if (sa) sa.onclick = () => { const all = S.players.filter(canRemove).map(p => p.id); S.sel = (S.sel || []).length === all.length ? [] : all; S.confirmBulk = false; render(); };
+      const ba = v.querySelector('[data-bulkask]'); if (ba) ba.onclick = () => { S.confirmBulk = true; render(); };
+      const bc = v.querySelector('[data-bulkcancel]'); if (bc) bc.onclick = () => { S.confirmBulk = false; render(); };
+      const bd = v.querySelector('[data-bulkdel]'); if (bd) bd.onclick = async () => {
+        const ids = (S.sel || []).slice(); let ok = 0;
+        for (const id of ids) { try { await Store.setMembre(id, false); ok++; } catch (e) { } }
+        S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); S.sel = []; S.confirmBulk = false; S.selMode = false;
+        toast(ok === ids.length ? `${ok} joueur${ok > 1 ? 's' : ''} retiré${ok > 1 ? 's' : ''}.` : `${ok} sur ${ids.length} retirés : réessayez pour les autres.`); render();
+      };
+      v.querySelectorAll('[data-canceldel]').forEach(b => b.onclick = () => { S.confirmDel = null; render(); });
+      v.querySelectorAll('[data-delp]').forEach(b => b.onclick = async () => {
+        const p = S.players.find(x => x.id === b.dataset.delp);
+        try { await Store.setMembre(b.dataset.delp, false); S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); S.confirmDel = null; toast(`${p ? p.name : 'Le joueur'} est retiré du groupe ; il reste dans la banque.`); render(); } catch (e) { toast('Retrait impossible : ' + e.message); }
+      });
+    },
+  };
+
+  function commonNav(v) {
+    v.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go, b.dataset.go === 'setup' ? { draft: null } : b.dataset.go === 'players' ? { pMode: b.dataset.pmode || 'banque' } : b.dataset.go === 'comps' ? { compLive: !!b.dataset.clive } : b.dataset.new ? { editCourse: null } : {}));
+    v.querySelectorAll('[data-open]').forEach(b => b.onclick = () => MODULE.ouvrir(b.dataset.open));
+  }
+  // ==== src/golf/liaisons.js ====
+  // Interactions des écrans du golf
+  Object.assign(bind, {
     jeux(v) {
       commonNav(v);
       const jn = v.querySelector('[data-jnew]'); if (jn) jn.onclick = () => askNewGame();
@@ -2571,119 +2751,6 @@
       v.querySelectorAll('[data-qdel]').forEach(b => b.onclick = async () => {
         const list = S.quatuors.filter(q => q.id !== b.dataset.qdel);
         try { await Store.saveQuatuors(list); S.quatuors = list; S.confirmDelQ = null; render(); } catch (e) { toast('Retrait impossible : ' + e.message); }
-      });
-    },
-    players(v) {
-      if (!S.notifsAt || Date.now() - S.notifsAt > 60e3) { S.notifsAt = Date.now(); chargerNotifs(); }
-      if (S.pMode === 'inviter' && !S.pFocused && roomLeft() > 0) { S.pFocused = true; setTimeout(() => { const i = $('#newPlayer'); if (i) i.focus(); }, 80); }
-      v.querySelectorAll('[data-org]').forEach(b => b.onclick = async () => {
-        // un seul organisateur (en plus du propriétaire) : en nommer un nouveau remplace l'ancien
-        const gr = { ...curGroup() }, id = b.dataset.org, cur = (gr.organizers || [])[0];
-        if (cur !== id && !hasAccepted(S.players.find(p => p.id === id))) return toast('Ce joueur n’a pas encore accepté son invitation (compte pas créé).');
-        gr.organizers = cur === id ? [] : [id];
-        try { await Store.saveGroup(gr); S.groups = await Store.listGroups(); render(); } catch (e) { toast('Impossible : ' + e.message); }
-      });
-      const co = $('#claimOwner'); if (co) co.onclick = async () => {
-        const me = S.players.find(p => L.norm(p.name) === L.norm(ls.get('pelland.me', '') || ''));
-        if (!me) return toast('Connectez-vous d’abord.');
-        const gr = { ...curGroup(), owner: me.id };
-        try { await Store.saveGroup(gr); S.groups = await Store.listGroups(); render(); } catch (e) { toast('Impossible : ' + e.message); }
-      };
-      const add = async () => {
-        const n = $('#newPlayer').value.trim(); if (!n) return;
-        if (S.players.some(p => L.norm(p.name) === L.norm(n))) return toast(`${n} est déjà dans la liste.`);
-        const near = duplicateMap(S.players.concat([{ id: '__new', name: n }]))['__new'];
-        if (near && S.confirmAdd !== n) { S.confirmAdd = n; return toast(`Ressemble à ${near.join(', ')}. Touchez Ajouter de nouveau pour confirmer.`); }
-        S.confirmAdd = null;
-        if (roomLeft() <= 0) return limitSheet();
-        if ((S.bank || S.players).length >= BANQUE_MAX) return toast(`La banque de joueurs est pleine (${BANQUE_MAX}).`);
-        try { const np = await Store.savePlayer(n, (S.bank || S.players).length); const ph = $('#newPhone').value.trim(); if (ph) await Store.setPhone(np, ph); S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); render(); if (ph) inviteText(n, ph, np.id); else setTimeout(() => $('#newPlayer') && $('#newPlayer').focus(), 50); }
-        catch (e) { toast('Ajout impossible : ' + e.message); }
-      };
-      if ($('#addPlayer')) $('#addPlayer').onclick = add;
-      const xf = $('#xlsFile'); if (xf) xf.onchange = async () => { const f = xf.files[0]; xf.value = ''; if (f) importPlayersFile(f); };
-      if ($('#newPlayer')) $('#newPlayer').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); add(); } };
-      v.querySelectorAll('[data-askdel]').forEach(b => b.onclick = () => { S.confirmDel = b.dataset.askdel; render(); });
-      if (canOrganize() && !S.bankAt) { S.bankAt = 1; Store.listBank().then(l => { S.bank = l; if (S.view === 'players') render(); }).catch(() => { }); }
-      v.querySelectorAll('[data-membre]').forEach(b => b.onclick = async () => {
-        if (roomLeft() <= 0) return limitSheet(S.players.length + 1);
-        b.disabled = true; const p = (S.bank || []).find(x => x.id === b.dataset.membre);
-        try { await Store.setMembre(b.dataset.membre, true); S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); toast(`${p ? p.name : 'Le joueur'} est dans le groupe.`); render(); }
-        catch (e) { b.disabled = false; toast('Impossible : ' + e.message); }
-      });
-      v.querySelectorAll('[data-bankdel]').forEach(b => b.onclick = async () => {
-        const p = (S.bank || []).find(x => x.id === b.dataset.bankdel); if (!p) return;
-        if (S.confirmBankDel !== p.id) { S.confirmBankDel = p.id; b.textContent = 'Enlever ?'; b.classList.add('danger-txt'); return; }
-        b.disabled = true;
-        try { await Store.deletePlayer(p.id, (S.bank || []).length); S.bank = await Store.listBank(); S.confirmBankDel = null; toast(`${p.name} est enlevé de la banque.`); render(); }
-        catch (e) { b.disabled = false; toast('Impossible : ' + e.message); }
-      });
-      v.querySelectorAll('[data-reinv]').forEach(b => b.onclick = () => { const p = (S.bank || []).find(x => x.id === b.dataset.reinv); if (p) inviteText(p.name, p.phone, p.id); });
-      if (canOrganize() && !S.retiredPlAt) { S.retiredPlAt = 1; Store.retiredPlayers().then(l => { S.retiredPl = l; if (l.length && S.view === 'players') render(); }).catch(() => { }); }
-      v.querySelectorAll('[data-remettre]').forEach(b => b.onclick = async () => {
-        const x = S.retiredPl[+b.dataset.remettre]; if (!x) return;
-        if (roomLeft() <= 0) return toast(`Le groupe est complet (${S.players.length} / ${planOf().max}).`);
-        b.disabled = true;
-        try {
-          const np = await Store.savePlayer(x.name, S.players.length);
-          if (x.phone && x.phone.length >= 10) { try { await Store.setPhone(np, x.phone); } catch (e) { } }
-          S.retiredPl = S.retiredPl.filter(y => y !== x); await Store.setRetiredPlayers(S.retiredPl);
-          S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); toast(`${x.name} est de retour dans le groupe.`); render();
-          if (x.phone) inviteText(x.name, x.phone, np && np.id);
-        } catch (e) { b.disabled = false; toast('Impossible : ' + e.message); }
-      });
-      v.querySelectorAll('[data-oublier]').forEach(b => b.onclick = async () => {
-        const x = S.retiredPl[+b.dataset.oublier]; if (!x) return;
-        S.retiredPl = S.retiredPl.filter(y => y !== x); try { await Store.setRetiredPlayers(S.retiredPl); } catch (e) { } toast(`${x.name} est enlevé de la banque.`); render();
-      });
-      v.querySelectorAll('[data-phone]').forEach(b => b.onclick = () => {
-        const pl = S.players.find(x => x.id === b.dataset.phone);
-        openSheet(`<h3>Téléphone de ${esc(pl.name)}</h3>
-          <p class="note">${pl.phone ? `Numéro actuel : <b style="font-size:20px">${esc(fmtPhone(pl.phone))}</b>` : pl.authEmail ? `Numéro actuel : se termine par <b>${esc(pl.phoneHint || '')}</b>. Entrez le numéro complet une fois ci-dessous et touchez Enregistrer : il s’affichera ensuite.` : 'Aucun numéro pour l’instant.'}</p>
-          <label>${pl.authEmail ? 'Nouveau numéro' : 'Numéro'}<input id="phIn" type="tel" inputmode="tel" placeholder="450 555-1234" value="${esc(pl.phone ? fmtPhone(pl.phone) : '')}"></label>
-          <p class="note">Ce numéro sert à se connecter. Il est visible seulement par les joueurs du groupe.</p>
-          ${Store.phonesBlocked ? '<div class="warn">La base a refusé d’enregistrer ce numéro. Réessayez, ou écrivez à bonjour@fanion.ai.</div>' : ''}
-          <div class="row"><button class="btn small" id="phSave" type="button">Enregistrer</button><button class="btn ghost small" data-close type="button">Annuler</button></div>`, sh => {
-          sh.querySelector('[data-close]').onclick = closeSheet;
-          sh.querySelector('#phSave').onclick = async () => {
-            try { const first = !pl.authEmail, ph = sh.querySelector('#phIn').value; await Store.setPhone(pl, ph); closeSheet(); S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); toast('Téléphone enregistré.'); render(); if (first) inviteText(pl.name, ph, pl.id); }
-            catch (e) { toast(e.message); }
-          };
-          setTimeout(() => { const i = sh.querySelector('#phIn'); if (i) { i.focus(); i.select(); } }, 50);
-        });
-      });
-      v.querySelectorAll('[data-rename]').forEach(b => b.onclick = () => {
-        const pl = S.players.find(x => x.id === b.dataset.rename);
-        openSheet(`<h3>Modifier le nom</h3>
-          <label>Prénom et nom<input id="rnIn" type="text" autocapitalize="words" value="${esc(pl.name)}"></label>
-          <p class="note">Les parties déjà jouées gardent l’ancien nom.</p>
-          <div class="row"><button class="btn small" id="rnSave" type="button">Enregistrer</button><button class="btn ghost small" data-close type="button">Annuler</button></div>`, sh => {
-          sh.querySelector('[data-close]').onclick = closeSheet;
-          sh.querySelector('#rnSave').onclick = async () => {
-            const nm = sh.querySelector('#rnIn').value.trim().replace(/\s+/g, ' ');
-            if (!nm) return toast('Entrez un nom.');
-            if (S.players.some(x => x.id !== pl.id && L.norm(x.name) === L.norm(nm))) return toast('Ce nom est déjà dans le groupe.');
-            try { const self = pl.id === meId(); await Store.renamePlayer(pl.id, nm); if (self) ls.set('pelland.me', nm); closeSheet(); S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); toast('Nom modifié.'); render(); }
-            catch (e) { toast('Impossible : ' + e.message); }
-          };
-          setTimeout(() => { const i = sh.querySelector('#rnIn'); if (i) { i.focus(); i.select(); } }, 50);
-        });
-      });
-      const sm = v.querySelector('[data-selmode]'); if (sm) sm.onclick = () => { S.selMode = !S.selMode; S.sel = []; S.confirmBulk = false; render(); };
-      v.querySelectorAll('[data-selp]').forEach(c => c.onchange = () => { const id = c.dataset.selp; S.sel = (S.sel || []).filter(x => x !== id); if (c.checked) S.sel.push(id); S.confirmBulk = false; render(); });
-      const sa = v.querySelector('[data-selall]'); if (sa) sa.onclick = () => { const all = S.players.filter(canRemove).map(p => p.id); S.sel = (S.sel || []).length === all.length ? [] : all; S.confirmBulk = false; render(); };
-      const ba = v.querySelector('[data-bulkask]'); if (ba) ba.onclick = () => { S.confirmBulk = true; render(); };
-      const bc = v.querySelector('[data-bulkcancel]'); if (bc) bc.onclick = () => { S.confirmBulk = false; render(); };
-      const bd = v.querySelector('[data-bulkdel]'); if (bd) bd.onclick = async () => {
-        const ids = (S.sel || []).slice(); let ok = 0;
-        for (const id of ids) { try { await Store.setMembre(id, false); ok++; } catch (e) { } }
-        S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); S.sel = []; S.confirmBulk = false; S.selMode = false;
-        toast(ok === ids.length ? `${ok} joueur${ok > 1 ? 's' : ''} retiré${ok > 1 ? 's' : ''}.` : `${ok} sur ${ids.length} retirés : réessayez pour les autres.`); render();
-      };
-      v.querySelectorAll('[data-canceldel]').forEach(b => b.onclick = () => { S.confirmDel = null; render(); });
-      v.querySelectorAll('[data-delp]').forEach(b => b.onclick = async () => {
-        const p = S.players.find(x => x.id === b.dataset.delp);
-        try { await Store.setMembre(b.dataset.delp, false); S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); S.confirmDel = null; toast(`${p ? p.name : 'Le joueur'} est retiré du groupe ; il reste dans la banque.`); render(); } catch (e) { toast('Retrait impossible : ' + e.message); }
       });
     },
     home(v) {
@@ -3027,12 +3094,9 @@
         catch (e) { S.presenceBlocked = true; render(); }
       });
       v.querySelectorAll('[data-hole]').forEach(b => b.onclick = () => { const h = +b.dataset.hole; if (isOwner() && isAlt(S.game)) commit([{ type: 'goto', hole: h }], false); else if (isOwner()) holeSheet(h); else { S.game.currentHole = h; render(); } });
-    }
-  };
-  function commonNav(v) {
-    v.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go, b.dataset.go === 'setup' ? { draft: null } : b.dataset.go === 'players' ? { pMode: b.dataset.pmode || 'banque' } : b.dataset.go === 'comps' ? { compLive: !!b.dataset.clive } : b.dataset.new ? { editCourse: null } : {}));
-    v.querySelectorAll('[data-open]').forEach(b => b.onclick = () => openGame(b.dataset.open));
-  }
+    },
+  });
+  // ==== src/golf/actions-partie.js ====
 
   // Invitation : lien direct vers la partie, envoyé avec le menu Partager de l'iPhone
   function inviteLink(g) { return location.origin + location.pathname + '?partie=' + encodeURIComponent(g.id); } // sans « cadre »
@@ -3191,7 +3255,7 @@
     else reply = isOwner() ? 'Je n\'ai pas compris. Exemple : « Trou 3, Marc 4, Luc 5 ».' : 'Je n\'ai pas compris. Exemple : « Qui a des coups au 7 ? »';
     setReply(reply); Voice.say(reply);
   }
-
+  // ==== src/commun/feuilles.js ====
   // ---------------- Feuilles (saisie manuelle) ----------------
   function openSheet(html, bindFn) {
     const w = $('#sheetWrap'), s = $('#sheet');
@@ -3200,31 +3264,6 @@
     bindFn(s);
   }
   function closeSheet() { $('#sheetWrap').hidden = true; }
-  // Saisie manuelle : les 4 scores du trou et la skin, en une seule fois.
-  // Gain par joueur de l'équipe qui mène : game + revirements + normales 3 (net) + points × $/point
-  function leaderMoney(g) {
-    const t = L.teamPoints(g).tot, d = Math.abs(t[0] - t[1]), k = t[0] > t[1] ? 0 : 1, o = 1 - k, p3 = L.par3Results(g);
-    const stake = money(g.stake), lc = L.leadChanges(g), lcv = money(g.leadChangeValue), pp = g.perPoint == null || g.perPoint === '' ? 1 : money(g.perPoint);
-    const parts = [[stake, 'game'], [lc * lcv, `${lc} revirement${lc > 1 ? 's' : ''}`], [p3.money[k] - p3.money[o], 'normales 3'], [d * pp, `${d} pt${d > 1 ? 's' : ''} × ${fmt$(pp)}`]];
-    return { t, d, k, tie: t[0] === t[1], parts, tot: parts.reduce((a, x) => a + x[0], 0) };
-  }
-  // Texto aux joueurs : ouvre Messages avec les numéros et le résumé de la partie
-  function smsSummary(g) {
-    if (isAlt(g)) return smsSummaryNeuf(g);
-    const m = leaderMoney(g), T = L.getTeams(g);
-    const played = Object.keys(g.scores || {}).filter(x => (g.scores[x] || []).some(v => v != null)).map(Number);
-    const last = played.length ? Math.max(...played) : 0, done = g.status === 'terminée';
-    const date = new Date(g.createdAt || Date.now()).toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' });
-    const lines = [`${groupName()} – ${gameName(g)} – ${g.course.name.replace(/^Club de golf /i, '')}, ${date}`];
-    lines.push(done ? 'Résultat final :' : last ? `Après ${last} trou${last > 1 ? 's' : ''} :` : 'La partie commence.');
-    if (last) {
-      if (m.tie) lines.push(`Égalité, ${m.t[0]} points chacun.`);
-      else lines.push(`${L.TEAMS[m.k]} ${done ? 'gagnent' : 'mènent'} par ${m.d} point${m.d > 1 ? 's' : ''} nets (Bleus ${m.t[1]} · Rouges ${m.t[0]}).`, `${done ? 'Gain' : 'Gain en ce moment'} : ${fmt$(m.tot)} par joueur pour les ${L.TEAMS[m.k]}.`);
-    }
-    lines.push(`Bleus : ${T[1].map(i => g.players[i].name).join(', ')}`, `Rouges : ${T[0].map(i => g.players[i].name).join(', ')}`);
-    lines.push(inviteLink(g));
-    return lines.join('\n');
-  }
   // Texto d'invitation quand on ajoute un joueur avec son téléphone
   function inviteText(name, phone, id) {
     const d = String(phone || '').replace(/\D/g, ''); if (d.length < 10) return;
@@ -3236,15 +3275,10 @@
   }
   function inviteSms(name, d, id) {
     const url = location.origin + location.pathname + (id ? '?joueur=' + encodeURIComponent(id) : '');
-    const body = `Salut ${name.split(' ')[0]} ! Tu as été invité à te joindre au groupe « ${groupName()} » sur ${APP}, l’app de golf entre amis. Ouvre l’app : ${url} — ton nom est déjà choisi. La première fois, crée ton compte avec ton cellulaire (${fmtPhone(d)}) : tu reçois un code par texto, puis tu choisis un mot de passe. Sur iPhone : bouton Partager, puis « Sur l’écran d’accueil ».`;
+    const body = `Salut ${name.split(' ')[0]} ! Tu as été invité à te joindre au groupe « ${groupName()} » sur ${APP}, ${MARQUE.description}. Ouvre l’app : ${url} — ton nom est déjà choisi. La première fois, crée ton compte avec ton cellulaire (${fmtPhone(d)}) : tu reçois un code par texto, puis tu choisis un mot de passe. Sur iPhone : bouton Partager, puis « Sur l’écran d’accueil ».`;
     openSms([d], body);
   }
-  // Lignes de la carte selon les trous joués (18, aller ou retour)
-  function scoreRows(g, row, sumRow) {
-    const [h0, h1] = L.holeRange(g), rows = a => Array.from({ length: 9 }, (_, i) => row(a + i)).join('');
-    if (h0 === 1 && h1 === 18) return rows(1) + sumRow('Aller', 1, 9) + rows(10) + sumRow('Retour', 10, 18) + sumRow('Total', 1, 18, true);
-    return rows(h0) + sumRow('Total', h0, h1, true);
-  }
+  // ==== src/golf/neuf-points.js ====
   // ---------------- Le 9 points (3 joueurs) ----------------
   const isAlt = g => !!g && L.formatOf(g) !== 'pelland';
   const fmtPts = x => String(Math.round(x * 10) / 10).replace('.', ',').replace('-', '−');
@@ -3389,8 +3423,8 @@
           : '<button class="btn ghost small" data-askdelthis type="button">Effacer la partie</button>'}</div>` : ''}
       <div class="legend"><span>★ responsable de la partie (il entre les scores)</span><span>${BALL} coup reçu · petit chiffre = net</span><span>${esc(ruleText(g))} Touchez la ligne sous un trou pour le détail.</span><span>${g.players.map((p, i) => `<b>${esc(ini[i])}</b> ${esc(p.name)}`).join(' · ')}</span></div>`;
   }
+  // ==== src/golf/presences.js ====
   // ---------------- Présences ----------------
-  const presKey = name => L.norm(name).replace(/[^a-z0-9]+/g, '-');
   function myIndex(g) { const me = L.norm(ls.get('pelland.me', '') || ''); return g.players.findIndex(p => L.norm(p.name) === me); }
   function presenceHtml(g) {
     const pr = S.presence || {}, started = Object.values(g.scores || {}).some(r => (r || []).some(v => v != null));
@@ -3436,6 +3470,7 @@
   //   rounds?:[{date, courseId, course, tee}], ryder?:{sides, sessions}, tableau?:{entrants, seeding, consolation, manual},
   //   scores:{ <équipe | équipe@ronde | match>: { <trou>: [scores] } } }
   // =====================================================================
+  // ==== src/golf/competitions.js ====
   const CLASSES_LETTRES = ['A', 'B', 'C', 'D'];
   const toParTxt = x => x === 0 ? 'Par' : (x > 0 ? '+' : '−') + Math.abs(x);
   const parseIdx = v => { const n = parseFloat(String(v == null ? '' : v).replace(',', '.')); return isNaN(n) ? null : n; };
@@ -3568,7 +3603,7 @@
   const fmtPt = x => String(x).replace('.5', ',5');
   const drivesTxt = (c, r) => { const min = (c.minDrives || 0) * (r.rounds ? r.rounds.length : 1); return r.t.p.map((p, i) => `${prenom(p.name)} ${r.drives[i]}${min && r.drives[i] < min ? '⚠' : ''}`).join(' · '); };
   const sumHtml = (c, r) => `<span>${r.thru ? `Après ${r.thru} trou${r.thru > 1 ? 's' : ''}` : 'Aucun score'}</span><b class="${eff(c) !== 'stableford' && r.toPar < 0 ? 'under' : ''}">${!r.thru ? '' : eff(c) === 'stableford' ? r.pts + ' pts' : toParTxt(r.toPar)}</b>`;
-
+  // ==== src/golf/ryder.js ====
   // ---------- Coupe Ryder : deux camps, sessions de matchs ----------
   const RY_TYPES = { quatre: 'Quatre balles (meilleure balle, 2 contre 2)', alterne: 'Coups alternés (une balle, 2 contre 2)', simple: 'Simples (1 contre 1)' };
   const RY_COURT = { quatre: 'Quatre balles', alterne: 'Coups alternés', simple: 'Simples' };
@@ -3587,7 +3622,7 @@
     const [A, B] = c.ryder.sides.map(s => s.p.map(p => p.id)), k = type === 'simple' ? 1 : 2, n = Math.floor(Math.min(A.length, B.length) / k);
     return Array.from({ length: n }, (_, i) => ({ id: uid6(), a: A.slice(i * k, i * k + k), b: B.slice(i * k, i * k + k) }));
   }
-
+  // ==== src/golf/tableau.js ====
   // ---------- Tableau à élimination ----------
   // Ordre des têtes de série dans un tableau de taille 2^k (1 contre 16, 8 contre 9, …)
   function seedOrder(n) { let o = [1]; while (o.length < n) { const m = o.length * 2 + 1; o = o.flatMap(x => [x, m - x]); } return o; }
@@ -3634,7 +3669,7 @@
     return { seeds, main, conso };
   }
   const tbName = (c, p, pend) => { if (pend) return '<i class="tb-tbd">à déterminer</i>'; if (!p) return '<i class="tb-tbd">—</i>'; const s = tbSeeds(c).indexOf(p) + 1; return `${s ? `<small class="tb-seed">${s}</small>` : ''}${esc(p.name)}`; };
-
+  // ==== src/golf/merite.js ====
   // ---------- Ordre du mérite : points selon la position, cumulés sur la saison ----------
   const MERIT_PTS = [100, 80, 65, 55, 50, 45, 40, 36, 32, 29, 26, 24, 22, 20, 18, 16, 14, 12, 10, 8];
   // Une compétition compte dans l'ordre du mérite seulement une fois terminée
@@ -3724,7 +3759,7 @@
       ${merit.length ? `<section class="card"><table class="cm-lb merit"><thead><tr><th>Pos.</th><th>Joueur</th><th>Comp.</th><th>Pts</th></tr></thead><tbody>${merit.map(x => `<tr class="${x.pos === 1 ? 'lead' : ''}"><td>${x.pos}</td><td>${esc(x.name)}</td><td>${x.n}</td><td class="tp">${x.pts}</td></tr>`).join('')}</tbody></table></section>` : `<p class="note">Aucun point cette saison : les points apparaissent dès qu’une compétition de ${year} est terminée.</p>`}
       <div class="row"><button class="btn ghost small" data-merit="${year - 1}" type="button">‹ ${year - 1}</button>${year < new Date().getFullYear() ? `<button class="btn ghost small" data-merit="${year + 1}" type="button">${year + 1} ›</button>` : ''}</div>`;
   }
-
+  // ==== src/golf/competition-edition.js ====
   // ---------- Création et modification ----------
   const blankTeam = n => ({ id: uid6(), dep: '', p: Array.from({ length: n }, () => ({ name: '', index: '' })) });
   const teamSizeOf = d => ['texas', 'scramble'].includes(d.format) ? (d.format === 'scramble' ? 4 : d.teamSize || 4) : 2;
@@ -3834,7 +3869,7 @@
       };
     });
   }
-
+  // ==== src/golf/competition-affichage.js ====
   // ---------- Affichage d'une compétition ----------
   function compHead(c) {
     const info = c.format === 'ryder' ? 'Coupe Ryder · match play net' : c.format === 'tableau' ? `Tableau à élimination · match play net, 100 % de l’écart` : eff(c) === 'texas' ? `${c.format === 'scramble' ? 'Scramble à 4' : 'Texas scramble'} · équipes de ${c.teamSize || 4}${c.minDrives ? ` · ${c.minDrives} départ(s) minimum par joueur` : ''}` : `${c.format === 'invite' ? 'Membre-invité · ' : ''}${eff(c) === 'coups' ? 'Meilleure balle nette en coups' : eff(c) === 'stableford' ? 'Stableford, meilleure balle nette' : 'Match play, meilleure balle nette'} · ${c.allowance} % du handicap`;
@@ -3930,7 +3965,7 @@
       <tbody>${r.holes.map(hh => `<tr><td>${hh.h}</td><td>${hh.par}</td><td>${hh.si}</td>${r.ps.map((p, i) => { const k = L.strokesOnHole(p.ph, hh.si); return `<td class="cm-in">${k > 0 ? `<i class="dots">${'•'.repeat(Math.min(k, 3))}</i>` : ''}<input data-cms="${hh.h}.${i}" type="text" inputmode="numeric" maxlength="2" value="${hh.s[i] == null ? '' : esc(hh.s[i])}" aria-label="Trou ${hh.h}, ${esc(p.name)}"></td>`; }).join('')}<td class="cm-best ${hh.best != null && hh.best < hh.par ? 'under' : ''}">${hh.best == null ? '' : hh.best}${eff(c) === 'stableford' && hh.sp != null ? `<small>${hh.sp} pt${hh.sp > 1 ? 's' : ''}</small>` : ''}</td></tr>`).join('')}</tbody></table></div>
       <p class="note">Entrez les scores bruts. Les points (•) sont les coups reçus avec le plein handicap de jeu ; la colonne Équipe montre le meilleur score net du trou.${eff(c) !== 'match' ? '' : ' En match play, l’app recalcule les coups de chaque match à partir du plus bas handicap des quatre joueurs.'}</p>`;
   }
-
+  // ==== src/golf/ecran-tele.js ====
   // ---------- Écran télé : classement plein écran, en direct, les classes défilent ----------
   function vCompTv() {
     const c = S.comp; if (!c) return '<p class="note">Chargement…</p>';
@@ -3942,7 +3977,7 @@
     else inner = boardHtml(c, null);
     return `<div class="tv"><div class="tv-top"><h1>${esc(c.name)}</h1><span>${esc(c.course.name)} · ${esc(dateLong(c.date))}</span><span class="tv-live">● En direct</span><button class="btn ghost small" data-tvquit type="button">Fermer</button></div><div class="tv-body">${inner}</div></div>`;
   }
-
+  // ==== src/golf/impressions.js ====
   // ---------- Impressions : cartes de pointage et affiches de voiturette ----------
   function imprimer(c, kind) {
     const tee = compTee(c), holes = c.course.holes, par = h => L.holePar(c.course, tee, h);
@@ -4145,12 +4180,12 @@
       S.tvTimer = setInterval(() => { if (S.view !== 'compTv') return clearInterval(S.tvTimer); if (!body || body.scrollHeight <= body.clientHeight + 4) return; body.scrollTop = body.scrollTop + body.clientHeight >= body.scrollHeight - 4 ? 0 : body.scrollTop + body.clientHeight * 0.85; }, 12000);
     }
   });
-
-  const SMS_API = 'https://lefanion.ai/api/sms';
+  // ==== src/commun/textos-push.js ====
+  const SMS_API = MARQUE.api + '/api/sms';
   // =====================================================================
   // Notifications de l'app (Web Push) : gratuites, envoyées par le serveur Fanion aux membres abonnés du groupe
   // =====================================================================
-  const PUSH_API = 'https://lefanion.ai/api/push', PUSH_KEY = 'BOTntJP973w0RiGfVtYr4Lh2Edy0_GwQeqtkp4tLXHez-BEiVKdv0DiBHlKY-0WgPi6zOGeKhdbbBmrH6s_JXzU';
+  const PUSH_API = MARQUE.api + '/api/push', PUSH_KEY = 'BOTntJP973w0RiGfVtYr4Lh2Edy0_GwQeqtkp4tLXHez-BEiVKdv0DiBHlKY-0WgPi6zOGeKhdbbBmrH6s_JXzU';
   const Push = {
     supported() { return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; },
     // iPhone : les notifications n'existent que pour l'app ajoutée à l'écran d'accueil
@@ -4228,7 +4263,7 @@
     if (!install && !Push.supported()) return '';
     return `<section class="card push-card"><span class="push-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 3a6 6 0 0 0-6 6v3.6L4.3 15.4A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6z" fill="currentColor"/><path d="M9.5 19a2.5 2.5 0 0 0 5 0" fill="currentColor"/></svg></span>
       <div><h3>Activez les notifications du groupe</h3><p>Elles sont obligatoires pour les membres : nouvelles dates, rappels, début des parties et résultats. Elles restent actives tant que vous êtes dans le groupe.</p>
-      ${bloque ? '<p class="note"><b>Elles sont bloquées sur ce téléphone.</b> Permettez-les dans les réglages : iPhone, Réglages → Notifications → le fanion.ai ; Android, appui long sur l’icône du fanion.ai → Infos sur l’appli → Notifications. Puis rouvrez l’app.</p>'
+      ${bloque ? '<p class="note"><b>Elles sont bloquées sur ce téléphone.</b> Permettez-les dans les réglages : iPhone, Réglages → Notifications → ' + APP + ' ; Android, appui long sur l’icône ' + MARQUE.duNom + ' → Infos sur l’appli → Notifications. Puis rouvrez l’app.</p>'
         : `<div class="row">${install ? '<button class="btn small" data-onbact="ecran" type="button">Ajouter l’app à l’écran d’accueil</button>' : '<button class="btn small" data-pushon type="button">Activer les notifications</button>'}</div>`}
       ${install ? '<p class="note">Sur iPhone, les notifications fonctionnent une fois l’app ajoutée à l’écran d’accueil. Ouvrez-la ensuite par son icône.</p>' : ''}</div></section>`;
   }
@@ -4239,108 +4274,7 @@
     try { await Push.enable(); toast('Notifications activées.'); } catch (x) { toast(x.message); Push.signaler(); }
     render();
   });
-  // ---------------- Le Caddie : l'agent qui répond aux questions (API Claude, par le serveur Fanion) ----------------
-  const CADDIE_API = 'https://lefanion.ai/api/caddie';
-  const SCREENS = { home: 'Accueil', players: 'Inviter des joueurs', quatuors: 'Parties à préparer', setup: 'Créer une partie', jeux: 'Banque de jeux', courses: 'Banque de terrains', live: 'Parties en cours', history: 'Parties et compétitions jouées', comps: 'Banque de compétitions', compte: 'Mon compte' };
-  let caddieReady = null;
-  async function caddieStatus() {
-    if (caddieReady !== null) return caddieReady;
-    try { const r = await fetch(CADDIE_API + '/status'); caddieReady = !!(await r.json()).ready; } catch (e) { caddieReady = false; }
-    return caddieReady;
-  }
-  function caddieMsg(m) {
-    let t = String(m.content || ''), go = null;
-    t = t.replace(/\[\[ecran:([a-z]+)\]\]/g, (x, k) => { if (SCREENS[k]) go = k; return ''; }).trim();
-    const html = esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
-    return `<div class="cad-msg ${m.role === 'assistant' ? 'bot' : 'me'}">${html}${go && m.role === 'assistant' ? `<button class="btn small cad-go" data-cadgo="${go}" type="button">Aller à : ${SCREENS[go]}</button>` : ''}</div>`;
-  }
-  async function openCaddie() {
-    S.caddie = S.caddie || [{ role: 'assistant', content: `Bonjour${firstName(ls.get('pelland.me', '')) ? ' ' + firstName(ls.get('pelland.me', '')) : ''} ! Moi, c’est Léo, votre caddie. Posez-moi vos questions sur l’app, les règles des jeux ou les forfaits.` }];
-    const ready = Store.mode === 'cloud' && await caddieStatus();
-    const draw = sh => {
-      sh.innerHTML = `<div class="cad-id"><span class="cad-av" aria-hidden="true">${window.CaddieGuide ? CaddieGuide.avatar() : ''}</span><div><h3>Léo</h3><p class="note">Votre caddie. Posez votre question sur l’app.</p></div></div>
-        <div class="cad-log" id="cadLog">${S.caddie.map(caddieMsg).join('')}${S.caddieBusy ? '<div class="cad-msg bot busy">…</div>' : ''}</div>
-        ${ready ? `<form class="cad-form" id="cadForm"><input id="cadIn" type="text" placeholder="Votre question" autocomplete="off" ${S.caddieBusy ? 'disabled' : ''}><button class="btn small" type="submit" ${S.caddieBusy ? 'disabled' : ''}>Envoyer</button></form>
-          ${S.caddie.length < 2 ? `<div class="cad-sugg">${['Comment inviter mes joueurs ?', 'Comment marche la press ?', 'Combien coûte le forfait Groupe ?'].map(q => `<button class="chip" data-cadq="${esc(q)}" type="button">${esc(q)}</button>`).join('')}</div>` : ''}`
-        : '<p class="note">Léo arrive bientôt. En attendant, écrivez-nous : nous répondons rapidement.</p>'}
-        ${window.CaddieGuide && !Store.needLogin ? '<p class="note cad-visite"><button class="linkbtn" data-leovisite type="button">Revoir la visite avec Léo</button> · <button class="linkbtn" data-idee type="button">Proposer une idée à l’équipe</button></p>' : ''}
-        <div class="sheet-actions"><a class="btn ghost" href="${caddieMail()}">Écrire à l’équipe</a><button class="btn ghost" data-close type="button">Fermer</button></div>`;
-      sh.querySelector('[data-close]').onclick = closeSheet;
-      sh.querySelectorAll('[data-cadgo]').forEach(b => b.onclick = () => { closeSheet(); go(b.dataset.cadgo); });
-      sh.querySelectorAll('[data-cadq]').forEach(b => b.onclick = () => ask(b.dataset.cadq, sh));
-      const vis = sh.querySelector('[data-leovisite]'); if (vis) vis.onclick = () => { closeSheet(); setTimeout(leoVisite, 200); };
-      const f = sh.querySelector('#cadForm'); if (f) f.onsubmit = e => { e.preventDefault(); const v = sh.querySelector('#cadIn').value.trim(); if (v) ask(v, sh); };
-      const log = sh.querySelector('#cadLog'); if (log) log.scrollTop = log.scrollHeight;
-      const i = sh.querySelector('#cadIn'); if (i && !S.caddieBusy) setTimeout(() => i.focus(), 50);
-    };
-    const ask = async (q, sh) => {
-      S.caddie.push({ role: 'user', content: q }); S.caddieBusy = true; draw(sh);
-      try {
-        const tok = await Store.token();
-        const r = await fetch(CADDIE_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify({ messages: S.caddie.slice(1) }) });
-        const d = await r.json().catch(() => ({}));
-        S.caddie.push({ role: 'assistant', content: r.ok && d.text ? d.text : (d.error || 'Je n’ai pas pu répondre.') + ' Vous pouvez écrire à l’équipe avec le bouton ci-dessous.' });
-      } catch (e) { S.caddie.push({ role: 'assistant', content: 'Pas de réseau pour l’instant. Réessayez dans un moment.' }); }
-      S.caddieBusy = false; if (!$('#sheetWrap').hidden) draw(sh);
-    };
-    openSheet('', sh => draw(sh));
-  }
-  function caddieMail() {
-    const conv = (S.caddie || []).slice(1).map(m => (m.role === 'user' ? 'Moi : ' : 'Léo : ') + m.content.replace(/\[\[ecran:[a-z]+\]\]/g, '')).join('\n\n');
-    const body = `Groupe : ${groupName()}\nJoueur : ${ls.get('pelland.me', '') || ''}\n\n${conv ? 'Ma conversation avec Léo, le caddie :\n\n' + conv + '\n\n' : ''}Ma question :\n`;
-    return 'mailto:bonjour@fanion.ai?subject=' + encodeURIComponent('le fanion.ai – question') + '&body=' + encodeURIComponent(body.slice(0, 1800));
-  }
-  document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-caddie]'); if (t) { e.preventDefault(); openCaddie(); } });
 
-  // ---------------- Léo, le caddie en personne : visage dans le coin, salut à l'arrivée, visite guidée ----------------
-  let leo = null;
-  const LEO_CACHE = ['game', 'setup', 'compEdit', 'comp', 'compTv', 'offre', 'login', 'join', 'jeuEdit', 'course'];   // écrans de saisie : on ne cache rien
-  const ssGet = k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } };
-  const ssSet = k => { try { sessionStorage.setItem(k, '1'); } catch (e) { } };
-  const visiteKey = () => 'fanion.leo.visite.' + (Store.uid || meId() || '');
-  function leoApres() {
-    if (!window.CaddieGuide) return;
-    const off = Store.needLogin || !meId() || LEO_CACHE.includes(S.view);
-    if (off) { if (leo) leo.cacher(true); return; }
-    if (!leo) leo = CaddieGuide.presence({ surFace: () => openCaddie(), label: 'Parler à Léo, votre caddie' });
-    leo.cacher(false);
-    document.body.classList.add('avec-leo');
-    if (S.view !== 'home' || document.getElementById('welcome') || document.querySelector('.cd-fond')) return;
-    // Première fois : la visite (propriétaire et organisateurs ; les participants ont leur accueil) ; sinon un mot à chaque ouverture
-    if (canOrganize() && !ls.get(visiteKey(), 0)) { ls.set(visiteKey(), Date.now()); setTimeout(leoVisite, 600); return; }
-    if (ssGet('fanion.leo.salut') || carteRetourChoix()) return;   // une seule chose à la fois : la carte de retour passe avant le salut
-    ssSet('fanion.leo.salut');
-    setTimeout(() => { if (S.view === 'home' && !document.querySelector('.cd-fond, #welcome')) leo.dire(leoMessage()); }, 1200);
-  }
-  function leoMessage() {
-    const h = new Date().getHours(), salut = h < 12 ? 'Bonjour' : h < 18 ? 'Bon après-midi' : 'Bonsoir', nom = firstName(ls.get('pelland.me', ''));
-    const today = new Date().toISOString().slice(0, 10);
-    const live = (S.historyList || []).filter(g => g.status !== 'terminée').length;
-    const compAuj = (S.compList || []).filter(c => c.date === today).length;
-    const nbJ = (S.players || []).length;
-    let texte, bouton = null, action = null;
-    if (live) { texte = `${live} partie${live > 1 ? 's' : ''} en cours dans le groupe.`; bouton = 'Suivre en direct'; action = () => go('live'); }
-    else if (compAuj) { texte = `Une compétition se joue aujourd’hui. Bonne chance !`; bouton = 'Voir le classement'; action = () => go('comps', { compLive: true }); }
-    else if (canOrganize() && nbJ < 4) { texte = `Il vous faut au moins 4 joueurs pour un quatuor. On les invite ?`; bouton = 'Inviter des joueurs'; action = () => go('players', { pMode: 'banque' }); }
-    else if (canOrganize()) { texte = 'Prêt pour la prochaine ronde ? Offrez des dates et je forme les quatuors.'; bouton = 'Parties à préparer'; action = () => go('quatuors'); }
-    else texte = 'Tout est en ordre. Touchez mon visage si vous avez une question.';
-    return { titre: `${salut}${nom ? ', ' + nom : ''} !`, texte, bouton, action, duree: 9000 };
-  }
-  function leoVisite() {
-    if (!window.CaddieGuide) return;
-    const nom = firstName(ls.get('pelland.me', ''));
-    CaddieGuide.ouvrir({
-      etapes: [
-        { puce: 'Bonjour !', titre: `Bienvenue${nom ? ', ' + nom : ''} ! Moi, c’est Léo, votre caddie.`, texte: `Je vous fais faire le tour de « ${groupName()} » en six coups. Ça prend une minute.` },
-        { puce: 'Étape 1', titre: 'Inviter des joueurs', texte: 'Le nom et le cellulaire de chacun : l’invitation part par texto. Chaque joueur crée son compte une fois, pour tous ses groupes.' },
-        { puce: 'Étape 2', titre: 'Parties à préparer', texte: 'Offrez quelques dates. Chacun coche les siennes, et je forme les quatuors à la date butoir.' },
-        { puce: 'Étapes 3 et 4', titre: 'Créer une partie, la suivre en direct', texte: 'Terrain, équipes, jeu et montants. Un joueur entre les scores ; les autres suivent la partie sur leur téléphone.' },
-        { puce: 'Étapes 5 et 6', titre: 'Compétitions et résultats', texte: 'Membre-membre, membre-invité, scrambles, Coupe Ryder ou tableau à élimination, avec le classement en direct. À la fin, je dis qui doit quoi à qui.' },
-        { puce: 'Les banques', titre: 'Joueurs, terrains, jeux, compétitions', texte: 'Tout ce que le groupe bâtit reste là pour la prochaine saison : vos terrains, vos jeux maison, vos formats.' },
-      ],
-      fin: { titre: 'Une question ? Je suis dans le coin.', texte: 'Touchez mon visage en bas à droite, n’importe quand. On commence par inviter vos joueurs ?', bouton: (S.players || []).length < 4 ? 'Inviter des joueurs' : 'C’est parti', action: () => { if ((S.players || []).length < 4) go('players', { pMode: 'banque' }); } },
-    });
-  }
   async function smsService() {
     if (S.smsReady != null) return S.smsReady;
     try { const r = await fetch(SMS_API + '/status'); S.smsReady = r.ok && !!(await r.json()).ready; } catch (e) { S.smsReady = false; }
@@ -4364,7 +4298,104 @@
     const url = ios ? `sms:/open?addresses=${nums.join(',')}&body=${body}` : `sms:${nums.join(',')}?body=${body}`;
     window.__lastSms = url; (window.top || window).location.href = url;
   }
+  // ==== src/commun/caddie.js ====
+  // ---------------- Le Caddie : l'agent qui répond aux questions (API Claude, par le serveur Fanion) ----------------
+  const CADDIE_API = MARQUE.api + '/api/caddie';
+  const SCREENS = SPORT.ecrans;
+  let caddieReady = null;
+  async function caddieStatus() {
+    if (caddieReady !== null) return caddieReady;
+    try { const r = await fetch(CADDIE_API + '/status'); caddieReady = !!(await r.json()).ready; } catch (e) { caddieReady = false; }
+    return caddieReady;
+  }
+  function caddieMsg(m) {
+    let t = String(m.content || ''), go = null;
+    t = t.replace(/\[\[ecran:([a-z]+)\]\]/g, (x, k) => { if (SCREENS[k]) go = k; return ''; }).trim();
+    const html = esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
+    return `<div class="cad-msg ${m.role === 'assistant' ? 'bot' : 'me'}">${html}${go && m.role === 'assistant' ? `<button class="btn small cad-go" data-cadgo="${go}" type="button">Aller à : ${SCREENS[go]}</button>` : ''}</div>`;
+  }
+  async function openCaddie() {
+    S.caddie = S.caddie || [{ role: 'assistant', content: `Bonjour${firstName(ls.get('pelland.me', '')) ? ' ' + firstName(ls.get('pelland.me', '')) : ''} ! Moi, c’est ${MARQUE.personnage}, ${MARQUE.role}. ${SPORT.leoAccueil}` }];
+    const ready = Store.mode === 'cloud' && await caddieStatus();
+    const draw = sh => {
+      sh.innerHTML = `<div class="cad-id"><span class="cad-av" aria-hidden="true">${window.CaddieGuide ? CaddieGuide.avatar() : ''}</span><div><h3>${MARQUE.personnage}</h3><p class="note">${MARQUE.roleMaj}. Posez votre question sur l’app.</p></div></div>
+        <div class="cad-log" id="cadLog">${S.caddie.map(caddieMsg).join('')}${S.caddieBusy ? '<div class="cad-msg bot busy">…</div>' : ''}</div>
+        ${ready ? `<form class="cad-form" id="cadForm"><input id="cadIn" type="text" placeholder="Votre question" autocomplete="off" ${S.caddieBusy ? 'disabled' : ''}><button class="btn small" type="submit" ${S.caddieBusy ? 'disabled' : ''}>Envoyer</button></form>
+          ${S.caddie.length < 2 ? `<div class="cad-sugg">${SPORT.questionsLeo.map(q => `<button class="chip" data-cadq="${esc(q)}" type="button">${esc(q)}</button>`).join('')}</div>` : ''}`
+        : '<p class="note">' + MARQUE.personnage + ' arrive bientôt. En attendant, écrivez-nous : nous répondons rapidement.</p>'}
+        ${window.CaddieGuide && !Store.needLogin ? '<p class="note cad-visite"><button class="linkbtn" data-leovisite type="button">Revoir la visite avec ' + MARQUE.personnage + '</button> · <button class="linkbtn" data-idee type="button">Proposer une idée à l’équipe</button></p>' : ''}
+        <div class="sheet-actions"><a class="btn ghost" href="${caddieMail()}">Écrire à l’équipe</a><button class="btn ghost" data-close type="button">Fermer</button></div>`;
+      sh.querySelector('[data-close]').onclick = closeSheet;
+      sh.querySelectorAll('[data-cadgo]').forEach(b => b.onclick = () => { closeSheet(); go(b.dataset.cadgo); });
+      sh.querySelectorAll('[data-cadq]').forEach(b => b.onclick = () => ask(b.dataset.cadq, sh));
+      const vis = sh.querySelector('[data-leovisite]'); if (vis) vis.onclick = () => { closeSheet(); setTimeout(leoVisite, 200); };
+      const f = sh.querySelector('#cadForm'); if (f) f.onsubmit = e => { e.preventDefault(); const v = sh.querySelector('#cadIn').value.trim(); if (v) ask(v, sh); };
+      const log = sh.querySelector('#cadLog'); if (log) log.scrollTop = log.scrollHeight;
+      const i = sh.querySelector('#cadIn'); if (i && !S.caddieBusy) setTimeout(() => i.focus(), 50);
+    };
+    const ask = async (q, sh) => {
+      S.caddie.push({ role: 'user', content: q }); S.caddieBusy = true; draw(sh);
+      try {
+        const tok = await Store.token();
+        const r = await fetch(CADDIE_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify({ messages: S.caddie.slice(1) }) });
+        const d = await r.json().catch(() => ({}));
+        S.caddie.push({ role: 'assistant', content: r.ok && d.text ? d.text : (d.error || 'Je n’ai pas pu répondre.') + ' Vous pouvez écrire à l’équipe avec le bouton ci-dessous.' });
+      } catch (e) { S.caddie.push({ role: 'assistant', content: 'Pas de réseau pour l’instant. Réessayez dans un moment.' }); }
+      S.caddieBusy = false; if (!$('#sheetWrap').hidden) draw(sh);
+    };
+    openSheet('', sh => draw(sh));
+  }
+  function caddieMail() {
+    const conv = (S.caddie || []).slice(1).map(m => (m.role === 'user' ? 'Moi : ' : MARQUE.personnage + ' : ') + m.content.replace(/\[\[ecran:[a-z]+\]\]/g, '')).join('\n\n');
+    const body = `Groupe : ${groupName()}\nJoueur : ${ls.get('pelland.me', '') || ''}\n\n${conv ? 'Ma conversation avec ' + MARQUE.personnage + ', ' + MARQUE.leRole + ' :\n\n' + conv + '\n\n' : ''}Ma question :\n`;
+    return 'mailto:' + MARQUE.courriel + '?subject=' + encodeURIComponent(APP + ' – question') + '&body=' + encodeURIComponent(body.slice(0, 1800));
+  }
+  document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-caddie]'); if (t) { e.preventDefault(); openCaddie(); } });
+  // ==== src/commun/leo.js ====
+  // ---------------- Léo, le caddie en personne : visage dans le coin, salut à l'arrivée, visite guidée ----------------
+  let leo = null;
+  const LEO_CACHE = ['game', 'setup', 'compEdit', 'comp', 'compTv', 'offre', 'login', 'join', 'jeuEdit', 'course'];   // écrans de saisie : on ne cache rien
+  const ssGet = k => { try { return sessionStorage.getItem(k); } catch (e) { return null; } };
+  const ssSet = k => { try { sessionStorage.setItem(k, '1'); } catch (e) { } };
+  const visiteKey = () => 'fanion.leo.visite.' + (Store.uid || meId() || '');
+  function leoApres() {
+    if (!window.CaddieGuide) return;
+    const off = Store.needLogin || !meId() || LEO_CACHE.includes(S.view);
+    if (off) { if (leo) leo.cacher(true); return; }
+    if (!leo) leo = CaddieGuide.presence({ surFace: () => openCaddie(), label: 'Parler à ' + MARQUE.personnage + ', ' + MARQUE.role });
+    leo.cacher(false);
+    document.body.classList.add('avec-leo');
+    if (S.view !== 'home' || document.getElementById('welcome') || document.querySelector('.cd-fond')) return;
+    // Première fois : la visite (propriétaire et organisateurs ; les participants ont leur accueil) ; sinon un mot à chaque ouverture
+    if (canOrganize() && !ls.get(visiteKey(), 0)) { ls.set(visiteKey(), Date.now()); setTimeout(leoVisite, 600); return; }
+    if (ssGet('fanion.leo.salut') || carteRetourChoix()) return;   // une seule chose à la fois : la carte de retour passe avant le salut
+    ssSet('fanion.leo.salut');
+    setTimeout(() => { if (S.view === 'home' && !document.querySelector('.cd-fond, #welcome')) leo.dire(leoMessage()); }, 1200);
+  }
+  function leoMessage() {
+    const h = new Date().getHours(), salut = h < 12 ? 'Bonjour' : h < 18 ? 'Bon après-midi' : 'Bonsoir', nom = firstName(ls.get('pelland.me', ''));
+    const today = new Date().toISOString().slice(0, 10);
+    const live = (S.historyList || []).filter(g => g.status !== 'terminée').length;
+    const compAuj = (S.compList || []).filter(c => c.date === today).length;
+    const nbJ = (S.players || []).length;
+    let texte, bouton = null, action = null;
+    if (live) { texte = `${live} partie${live > 1 ? 's' : ''} en cours dans le groupe.`; bouton = 'Suivre en direct'; action = () => go('live'); }
+    else if (compAuj) { texte = `Une compétition se joue aujourd’hui. Bonne chance !`; bouton = 'Voir le classement'; action = () => go('comps', { compLive: true }); }
+    else if (canOrganize() && nbJ < 4) { texte = `Il vous faut au moins 4 joueurs pour ${SPORT.gratuitPour}. On les invite ?`; bouton = 'Inviter des joueurs'; action = () => go('players', { pMode: 'banque' }); }
+    else if (canOrganize()) { texte = SPORT.leoProchaine; bouton = SPORT.leoBouton; action = () => go(SPORT.vueDates); }
+    else texte = 'Tout est en ordre. Touchez mon visage si vous avez une question.';
+    return { titre: `${salut}${nom ? ', ' + nom : ''} !`, texte, bouton, action, duree: 9000 };
+  }
+  function leoVisite() {
+    if (!window.CaddieGuide) return;
+    const nom = firstName(ls.get('pelland.me', ''));
+    CaddieGuide.ouvrir({
+      etapes: SPORT.visite(nom),
+      fin: { titre: 'Une question ? Je suis dans le coin.', texte: 'Touchez mon visage en bas à droite, n’importe quand. On commence par inviter vos joueurs ?', bouton: (S.players || []).length < 4 ? 'Inviter des joueurs' : 'C’est parti', action: () => { if ((S.players || []).length < 4) go('players', { pMode: 'banque' }); } },
+    });
+  }
   // Texto : les joueurs de la partie sont cochés ; on peut ajouter des joueurs d'une autre partie (ou du groupe)
+  // ==== src/golf/pointage.js ====
   async function textPlayers(g) {
     const me = L.norm(ls.get('pelland.me', '') || '');
     const inGame = new Set(g.players.map(p => L.norm(p.name)));
@@ -4521,24 +4552,113 @@
     });
   }
 
+  // Saisie manuelle : les 4 scores du trou et la skin, en une seule fois.
+  // Gain par joueur de l'équipe qui mène : game + revirements + normales 3 (net) + points × $/point
+  function leaderMoney(g) {
+    const t = L.teamPoints(g).tot, d = Math.abs(t[0] - t[1]), k = t[0] > t[1] ? 0 : 1, o = 1 - k, p3 = L.par3Results(g);
+    const stake = money(g.stake), lc = L.leadChanges(g), lcv = money(g.leadChangeValue), pp = g.perPoint == null || g.perPoint === '' ? 1 : money(g.perPoint);
+    const parts = [[stake, 'game'], [lc * lcv, `${lc} revirement${lc > 1 ? 's' : ''}`], [p3.money[k] - p3.money[o], 'normales 3'], [d * pp, `${d} pt${d > 1 ? 's' : ''} × ${fmt$(pp)}`]];
+    return { t, d, k, tie: t[0] === t[1], parts, tot: parts.reduce((a, x) => a + x[0], 0) };
+  }
+  // Texto aux joueurs : ouvre Messages avec les numéros et le résumé de la partie
+  function smsSummary(g) {
+    if (isAlt(g)) return smsSummaryNeuf(g);
+    const m = leaderMoney(g), T = L.getTeams(g);
+    const played = Object.keys(g.scores || {}).filter(x => (g.scores[x] || []).some(v => v != null)).map(Number);
+    const last = played.length ? Math.max(...played) : 0, done = g.status === 'terminée';
+    const date = new Date(g.createdAt || Date.now()).toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' });
+    const lines = [`${groupName()} – ${gameName(g)} – ${g.course.name.replace(/^Club de golf /i, '')}, ${date}`];
+    lines.push(done ? 'Résultat final :' : last ? `Après ${last} trou${last > 1 ? 's' : ''} :` : 'La partie commence.');
+    if (last) {
+      if (m.tie) lines.push(`Égalité, ${m.t[0]} points chacun.`);
+      else lines.push(`${L.TEAMS[m.k]} ${done ? 'gagnent' : 'mènent'} par ${m.d} point${m.d > 1 ? 's' : ''} nets (Bleus ${m.t[1]} · Rouges ${m.t[0]}).`, `${done ? 'Gain' : 'Gain en ce moment'} : ${fmt$(m.tot)} par joueur pour les ${L.TEAMS[m.k]}.`);
+    }
+    lines.push(`Bleus : ${T[1].map(i => g.players[i].name).join(', ')}`, `Rouges : ${T[0].map(i => g.players[i].name).join(', ')}`);
+    lines.push(inviteLink(g));
+    return lines.join('\n');
+  }
+  // Lignes de la carte selon les trous joués (18, aller ou retour)
+  function scoreRows(g, row, sumRow) {
+    const [h0, h1] = L.holeRange(g), rows = a => Array.from({ length: 9 }, (_, i) => row(a + i)).join('');
+    if (h0 === 1 && h1 === 18) return rows(1) + sumRow('Aller', 1, 9) + rows(10) + sumRow('Retour', 10, 18) + sumRow('Total', 1, 18, true);
+    return rows(h0) + sumRow('Total', h0, h1, true);
+  }
+  // ==== src/golf/module.js ====
+  // =====================================================================
+  // Le module golf, vu du tronc commun : écrans, navigation, données au démarrage, liens d'ouverture
+  // =====================================================================
+  const MODULE = {
+    vues: { home: vHome, jeux: vJeux, jeuEdit: vJeuEdit, quatuors: vQuatuors, setup: vSetup, game: vGame, join: vJoin, history: vHistory, live: vHistory, courses: vCourses, course: vCourse, clubs: vClubs, comps: vComps, compEdit: vCompEdit, comp: vComp, compTv: vCompTv },
+    // Avant de changer d'écran : on arrête de suivre en direct ce qu'on quitte
+    quitter(view) {
+      if (S.unwatch && view !== 'game') { S.unwatch(); S.unwatch = null; S.game = null; }
+      if (S.unwatchPres && view !== 'game') { S.unwatchPres(); S.unwatchPres = null; }
+      if (S.unwatchComp && view !== 'comp' && view !== 'compEdit') { S.unwatchComp(); S.unwatchComp = null; }
+      if (view === 'comps') S.compList = null;
+    },
+    avant(view) {
+      if (view !== 'game' && view !== 'setup' && Voice.wake) Voice.setWake(false);
+    },
+    // Après avoir changé d'écran
+    aller(view, opts) {
+      if (view === 'setup' && !S.offres) Store.listOffres().then(l => { S.offres = l; if (S.view === 'setup') render(); });
+      if (view === 'quatuors') { Store.listOffres().then(l => { S.offres = l; if (S.view === 'quatuors') render(); }); Store.listQuatuors().then(l => { S.quatuors = l; }); }
+      if (view === 'course' && 'editCourse' in opts) { S.cardImgs = []; S.cardStatus = ''; }
+      if (view === 'history' || view === 'live') { S.historyList = null; S.confirmDelGame = null; }
+      if (view === 'setup') { setHeard('Touchez le micro et dites les joueurs et leurs index.'); setReply(''); }
+      if (view === 'game') { setHeard('Appuyez sur le micro et parlez.'); setReply(''); }
+    },
+    // Bouton retour : vrai si le module s'en occupe (sinon : accueil)
+    retour() {
+      if (S.view === 'course') go(S.editCourse && S.editCourse.web ? 'clubs' : S.draft ? 'setup' : 'courses', { editCourse: null });
+      else if (S.view === 'clubs') go('courses');
+      else if (S.view === 'compTv') go('comp');
+      else if (S.view === 'comp' && S.compMatch) { S.compMatch = null; render(); }
+      else if (S.view === 'comp') go('comps');
+      else if (S.view === 'compEdit') { if (S.compDraft && S.compDraft.id) openComp(S.compDraft.id); else go('comps'); }
+      else return false;
+      return true;
+    },
+    phrase(text) { handle(text); },
+    ouvrir(id) { openGame(id); },
+    nouvellePartie() { typePartieSheet(); },
+    groupesTexte(n) { return groupsText(n); },
+    // Démarrage : copie gardée sur l'appareil, puis chargement à jour
+    depuisCopie(snap) {
+      Object.assign(S, { quatuors: snap.quatuors || [], jeux: snap.jeux || [], courses: [...(snap.courses || []), ...(window.QC_COURSES || []).filter(q => !(snap.courses || []).some(c => c.id === q.id) && !(snap.retired || []).includes(q.id))].sort((x, y) => x.name.localeCompare(y.name, 'fr')) });
+    },
+    async charger() {
+      const [courses, quatuors, jeux] = await Promise.all([Store.listCourses().catch(() => []), Store.listQuatuors().catch(() => []), Store.listJeux().catch(() => [])]);
+      return { courses, quatuors, jeux };
+    },
+    garder(d, garde) { Object.assign(S, { courses: garde(d.courses, S.courses), quatuors: garde(d.quatuors, S.quatuors), jeux: garde(d.jeux, S.jeux) }); },
+    ensuite() { setTimeout(chargerPropositions, 1200); },   // terrains proposés : en attente pour le groupe, à approuver pour l'équipe Fanion
+    copie(d) { return { quatuors: d.quatuors, jeux: d.jeux, courses: d.courses.filter(c => !(window.QC_COURSES || []).some(q => q === c)), retired: (Store.retired || []).map(c => c.id) }; },
+    // Ouverture par un lien (?partie=…) ou par le raccourci Siri ; vrai si le module s'en occupe
+    lien(params) {
+      const code = (params.get('partie') || params.get('code') || '').toUpperCase();
+      if (code) openGame(code);
+      else if (params.has('ecoute') || params.has('pelland')) {
+        // Ouverture par le raccourci Siri : reprendre la dernière partie et écouter
+        const last = ls.get('pelland.lastGame', null);
+        if (last) openGame(last); else render();
+      } else return false;
+      return true;
+    },
+  };
+  // ==== src/commun/demarrage.js ====
+
   // =====================================================================
   // Démarrage
   // =====================================================================
-  $('#back').onclick = () => {
-    if (S.view === 'course') go(S.editCourse && S.editCourse.web ? 'clubs' : S.draft ? 'setup' : 'courses', { editCourse: null });
-    else if (S.view === 'clubs') go('courses');
-    else if (S.view === 'compTv') go('comp');
-    else if (S.view === 'comp' && S.compMatch) { S.compMatch = null; render(); }
-    else if (S.view === 'comp') go('comps');
-    else if (S.view === 'compEdit') { if (S.compDraft && S.compDraft.id) openComp(S.compDraft.id); else go('comps'); }
-    else go('home');
-  };
+  $('#back').onclick = () => { if (!MODULE.retour()) go('home'); };
+
   $('#acctBtn').onclick = () => { if (S.view !== 'compte') go('compte'); };
   $('#micBtn').onclick = () => Voice.ptt();
   $('#wakeBtn').onclick = () => Voice.setWake(!Voice.wake);
-  $('#typeForm').onsubmit = e => { e.preventDefault(); const t = $('#typeInput').value.trim(); if (t) { $('#typeInput').value = ''; handle(t); } };
+  $('#typeForm').onsubmit = e => { e.preventDefault(); const t = $('#typeInput').value.trim(); if (t) { $('#typeInput').value = ''; MODULE.phrase(t); } };
   $('#typeInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('#typeForm').requestSubmit(); } });
-  Voice.onText = text => handle(text);
+  Voice.onText = text => MODULE.phrase(text);
   if ('speechSynthesis' in window) speechSynthesis.getVoices();
 
   // Réseau perdu / retrouvé : on l'indique ; les scores en attente partent au retour du réseau (Store.flush)
@@ -4555,9 +4675,9 @@
     // Menu d'Albert (compte HoldingAI), en haut à droite, comme dans toutes les apps HoldingAI
     if (Store.mode === 'cloud') {
       window.HOLDINGAI_PORTE = Store.uid
-        ? { app: 'fanion', nomApp: 'Le Fanion', personnage: 'Léo', prenom: Store.nom || '', connecte: true,
+        ? { app: MARQUE.id, nomApp: MARQUE.nomApp, personnage: MARQUE.personnage, prenom: Store.nom || '', connecte: true,
             liens: Store.noGroup ? [] : [{ texte: 'Mes groupes et forfait', action: () => go('compte') }], surDeconnexion: () => Store.logout() }
-        : { app: 'fanion', nomApp: 'Le Fanion', personnage: 'Léo', barriere: true };
+        : { app: MARQUE.id, nomApp: MARQUE.nomApp, personnage: MARQUE.personnage, barriere: true };
       if (!Store.uid && window.HoldingAIPorte) try { HoldingAIPorte.barriere(); } catch (e) { }
     }
     if (Store.needLogin) {
@@ -4572,34 +4692,27 @@
     const plain = !['partie', 'code', 'offre', 'compte', 'ecoute', 'pelland', 'joueur'].some(k => params0.has(k));
     const snap = plain ? ls.get(snapK, null) : null;
     if (snap && snap.players && snap.players.length) {
-      Object.assign(S, { players: snap.players, quatuors: snap.quatuors || [], jeux: snap.jeux || [], groups: snap.groups || [], courses: [...(snap.courses || []), ...(window.QC_COURSES || []).filter(q => !(snap.courses || []).some(c => c.id === q.id) && !(snap.retired || []).includes(q.id))].sort((x, y) => x.name.localeCompare(y.name, 'fr')) });
+      Object.assign(S, { players: snap.players, groups: snap.groups || [] }); MODULE.depuisCopie(snap);
       render();
     }
-    const [courses, players, quatuors, jeux, groups] = await Promise.all([
-      Store.listCourses().catch(() => []), Store.listPlayers().catch(() => []), Store.listQuatuors().catch(() => []),
-      Store.listJeux().catch(() => []), Store.listGroups().catch(() => [])]);
+    const [donnees, players, groups] = await Promise.all([MODULE.charger(), Store.listPlayers().catch(() => []), Store.listGroups().catch(() => [])]);
     // Hors ligne : la base ne répond pas ; on garde la copie de l'appareil plutôt que des listes vides
     const garde = (v, old) => (v && v.length) || navigator.onLine !== false || !old ? v : old;
-    Object.assign(S, { courses: garde(courses, S.courses), players: garde(players, S.players), quatuors: garde(quatuors, S.quatuors), jeux: garde(jeux, S.jeux), groups: garde(groups, S.groups) });
+    Object.assign(S, { players: garde(players, S.players), groups: garde(groups, S.groups) }); MODULE.garder(donnees, garde);
     setTimeout(chargerRetour, 800);
-    setTimeout(chargerPropositions, 1200);   // terrains proposés : en attente pour le groupe, à approuver pour l'équipe Fanion   // boucle de retour : réponses de l'équipe, nouveautés, sondage (sans retarder l'ouverture)
-    if (navigator.onLine !== false) try { ls.set(snapK, { players, quatuors, jeux, groups, courses: courses.filter(c => !(window.QC_COURSES || []).some(q => q === c)), retired: (Store.retired || []).map(c => c.id), at: Date.now() }); } catch (e) { }
+    MODULE.ensuite();
+    if (navigator.onLine !== false) try { ls.set(snapK, { players, groups, ...MODULE.copie(donnees), at: Date.now() }); } catch (e) { }
     // Groupes créés avant le compteur : on l'initialise une fois avec le nombre de joueurs
     // (le compteur de joueurs est tenu par la base)
     Push.refresh().catch(() => { });
     // Groupes du joueur (sans les groupes supprimés ni archivés pour le lien « Changer de groupe »)
     Store.myGroupList().then(l => { S.myPlayers = l; if (S.view === 'home' && l.some(x => !x.archived && x.gid !== Store.gid)) render(); }).catch(() => { });
     const params = new URLSearchParams(location.search);
-    const code = (params.get('partie') || params.get('code') || '').toUpperCase();
     const offreId = params.get('offre');
     if (params.get('compte')) { history.replaceState(null, '', location.pathname); go('compte', { fromLogin: true }); return; }
     if (curGroup().deleted) { toast('Ce groupe a été supprimé par son propriétaire. Choisissez un autre groupe.'); go('compte', { fromLogin: true }); return; }
     if (offreId) go('offre', { offreId });
-    else if (code) openGame(code);
-    else if (params.has('ecoute') || params.has('pelland')) {
-      // Ouverture par le raccourci Siri : reprendre la dernière partie et écouter
-      const last = ls.get('pelland.lastGame', null);
-      if (last) openGame(last); else render();
-    } else if (!snap || (S.view === 'home' && !document.querySelector('#sheetWrap:not([hidden]), #welcome'))) render();
+    else if (MODULE.lien(params)) { }
+    else if (!snap || (S.view === 'home' && !document.querySelector('#sheetWrap:not([hidden]), #welcome'))) render();
   })();
 })();

@@ -1,0 +1,29 @@
+/* l’échange.ai : couleurs (les variables de styles.css) et quelques éléments propres aux soirées. */
+:root { --green: #1f5fbf; --bar: #13203a; --flag: #e3a90c; --bg: #eef1f6; --line: #d3d9e4; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --green: #6aa4ff; --green-ink: #06101f; --bar: #0a101c; --bg: #0d121b; --surface: #161d2a; --line: #2a3446; }
+}
+input[type=date], input[type=time] { width: 100%; min-height: 46px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; background: var(--bg); color: var(--ink); font: inherit; font-size: 17px; }
+.rq-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.rq-tete p { margin: 4px 0 0; color: var(--muted); }
+.rq-rep { display: grid; gap: 10px; }
+.rq-manche h3 { margin: 0 0 8px; font-family: var(--display); }
+.rq-manche.now { border: 2px solid var(--green); }
+.rq-match { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+.rq-match:first-of-type { border-top: 0; }
+.rq-match .btn { grid-column: 1 / -1; justify-self: start; }
+.rq-ter { grid-row: span 2; font-family: var(--display); font-weight: 700; font-size: 15px; color: var(--green); min-width: 74px; }
+.rq-eq { display: flex; justify-content: space-between; gap: 8px; font-size: 16px; }
+.rq-eq b { font-family: var(--display); font-size: 20px; }
+.rq-eq.gagne { font-weight: 600; }
+.rq-repos { margin: 8px 0 0; }
+.rq-suite, .rq-presents { margin: 12px 0; }
+.rq-suite summary, .rq-presents summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
+.rq-chk { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rq-cls { width: 100%; border-collapse: collapse; font-size: 15px; }
+.rq-cls th, .rq-cls td { padding: 7px 6px; border-bottom: 1px solid var(--line); text-align: right; }
+.rq-cls th:nth-child(2), .rq-cls td:nth-child(2) { text-align: left; }
+.rq-cls tr.moi td { font-weight: 700; }
+.rq-lieu { display: grid; grid-template-columns: 1fr auto; text-align: left; }
+.rq-lieu span:not(.pill) { grid-column: 1; color: var(--muted); font-size: 14px; }
+.rq-lieu .pill { grid-row: 1 / span 2; grid-column: 2; align-self: center; }

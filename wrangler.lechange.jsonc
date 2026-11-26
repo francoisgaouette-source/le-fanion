@@ -1,0 +1,12 @@
+// Cloudflare (app.lechange.ai) : l'échange.ai, l'app des sports de raquette (sœur du Fanion, même dépôt).
+// Construite par « node outils/assembler.js raquette » dans dist/raquette/, puis publiée telle quelle sur app.lechange.ai (lechange.ai : le site, plus tard).
+// Cloudflare → Workers & Pages → Create → Import a repository (pelland) :
+//   Build command : node outils/assembler.js raquette
+//   Deploy command : npx wrangler deploy -c wrangler.lechange.jsonc
+// Les services /api (textos, notifications, assistant) viendront plus tard (worker.js à rendre multi-app).
+{
+  "name": "lechange",
+  "compatibility_date": "2026-10-23",
+  "assets": { "directory": "./dist/raquette" },
+  "routes": [{ "pattern": "app.lechange.ai", "custom_domain": true }]
+}

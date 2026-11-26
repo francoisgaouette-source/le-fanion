@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="fr-CA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>l’échange.ai</title>
+<meta name="theme-color" content="#13203a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="L’Échange">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
+<script>
+/* Sur ordinateur : l'app s'affiche dans un cadre de la taille d'un iPhone, pour avoir exactement la même vue. */
+(function () {
+  if (window.top !== window || window.innerWidth < 700 || /[?&]plein=1/.test(location.search)) return;
+  window.PELLAND_FRAMED = true;
+  var q = location.search ? location.search + '&cadre=1' : '?cadre=1';
+  document.addEventListener('DOMContentLoaded', function () {
+    document.body.innerHTML = '<div class="phone-frame"><iframe src="' + location.pathname + q + location.hash + '" title="l’échange.ai"></iframe></div>';
+    document.body.className = 'framed';
+    // Retour de connexion HoldingAI : le cadre a reçu le code, on l'enlève de l'adresse affichée
+    if (/[?&]state=/.test(location.search)) history.replaceState(null, '', location.pathname + location.hash);
+  });
+})();
+</script>
+<style>
+body.framed { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #0e1813; }
+.phone-frame { width: 402px; height: min(874px, calc(100vh - 32px)); border-radius: 44px; padding: 12px; background: #000; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.phone-frame iframe { width: 100%; height: 100%; border: 0; border-radius: 34px; background: #fff; display: block; }
+</style>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="raquette.css">
+</head>
+<body>
+<header class="bar">
+  <button class="bar-back" id="back" hidden aria-label="Retour">‹</button>
+  <div class="bar-title" id="barTitle">l’échange.ai</div>
+  <button class="bar-idee" id="ideeBtn" data-idee type="button" hidden aria-label="Une idée ? Un pépin ? Dites-le à l’équipe">💡 <span>Idée ou pépin ?</span></button>
+  <div class="bar-badge" id="dbBadge"></div>
+  <button class="bar-acct" id="acctBtn" type="button" hidden aria-label="Mon compte"><span id="acctIni"></span></button>
+  <button type="button" class="hai-porte-btn" data-hai-porte aria-label="Mon compte (Albert, L’Établi)" title="Mon compte"></button>
+</header>
+<main id="view"></main>
+
+<section class="dock" id="dock" hidden>
+  <div class="dock-lines">
+    <div class="heard" id="heard">Appuyez sur le micro et parlez.</div>
+    <div class="reply" id="reply"></div>
+  </div>
+  <form class="dock-row" id="typeForm" autocomplete="off">
+    <button type="button" class="wake" id="wakeBtn" aria-pressed="false" title="Écoute continue du mot « Pelland »">
+      <span class="wake-dot"></span><span>Pelland</span>
+    </button>
+    <input id="typeInput" type="text" placeholder="Ou écrivez / dictez ici" enterkeyhint="send">
+    <button type="button" class="mic" id="micBtn" aria-label="Parler">
+      <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path fill="currentColor" d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 1 0-7 0v6A3.5 3.5 0 0 0 12 15Zm6-3.5a1 1 0 1 0-2 0 4 4 0 0 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.91V20H8.5a1 1 0 1 0 0 2h7a1 1 0 1 0 0-2H13v-2.59A6 6 0 0 0 18 11.5Z"/></svg>
+    </button>
+  </form>
+</section>
+
+<div class="sheet-wrap" id="sheetWrap" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+<div class="toast" id="toast" hidden></div>
+
+<!-- Sans projet Supabase (config.js), l'app fonctionne en mode local sur cet appareil. -->
+<script src="install-gate.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.2/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="holdingai.js"></script>
+<script src="https://compte.letabli.ai/porte.js" charset="utf-8" defer></script>
+<script src="logic.js"></script>
+<script src="app.js"></script>
+<script>if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});</script>
+<script>
+/* Mise à jour automatique : l'app installée sur l'écran d'accueil reste ouverte en arrière-plan pendant des jours.
+   À chaque retour dans l'app (et aux 30 minutes), on regarde si une nouvelle version est en ligne ; si oui, on recharge.
+   On attend si la personne est en train d'écrire ou si une fenêtre est ouverte. */
+(function () {
+  if (location.protocol === 'file:' || !window.fetch) return;
+  var ENTETES = ['./'], TEXTES = [], OUVERT = '#sheetWrap:not([hidden]), #welcome';
+  var base = null, dernier = 0, attente = null;
+  function lire() {
+    var e = ENTETES.map(function (f) { return fetch(f, { method: 'HEAD', cache: 'no-store' }).then(function (r) { if (!r.ok) throw 0; return (r.headers.get('etag') || r.headers.get('last-modified') || '').replace(/^W\//, ''); }); });
+    var t = TEXTES.map(function (f) { return fetch(f, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw 0; return r.text(); }); });
+    return Promise.all(e.concat(t)).then(function (a) { return a.join('|'); });
+  }
+  function occupe() {
+    var a = document.activeElement;
+    if (a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return true;
+    return !!document.querySelector(OUVERT);
+  }
+  function recharger(sig) {
+    if (occupe()) { clearTimeout(attente); attente = setTimeout(function () { recharger(sig); }, 20000); return; }
+    try {
+      var d = JSON.parse(sessionStorage.getItem('maj.auto') || '{}');
+      // Jamais deux fois pour la même version, ni plus d'une fois aux 5 minutes : pas de boucle possible
+      if (d.sig === sig || Date.now() - (d.t || 0) < 300000) return;
+      sessionStorage.setItem('maj.auto', JSON.stringify({ sig: sig, t: Date.now() }));
+    } catch (x) { return; }
+    location.reload();
+  }
+  function verifier() {
+    if (document.visibilityState !== 'visible' || navigator.onLine === false || Date.now() - dernier < 60000) return;
+    dernier = Date.now();
+    lire().then(function (sig) {
+      if (!sig.replace(/\|/g, '')) return;
+      if (base === null) { base = sig; return; }
+      if (sig !== base) recharger(sig);
+    }).catch(function () { dernier = 0; });
+  }
+  window.addEventListener('load', verifier);
+  document.addEventListener('visibilitychange', verifier);
+  window.addEventListener('pageshow', function (e) { if (e.persisted) verifier(); });
+  window.addEventListener('online', verifier);
+  setInterval(verifier, 1800000);
+})();
+</script>
+</body>
+</html>
