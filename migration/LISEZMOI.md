@@ -13,3 +13,9 @@ Ensuite, chaque joueur qui se connecte avec HoldingAI (avec le cellulaire inscri
 (`mes_groupes` / `relier_joueur`), et le déclencheur lui rend ses parties, son avis et son rôle d'administrateur.
 
 Non copié : les comptes Firebase eux-mêmes, les abonnements aux notifications (chacun les réactive) et les marqueurs « groupe gratuit ».
+
+## Fait le 25 novembre 2026, 20 h 30
+Copie faite depuis Google Cloud Shell (compte de François, sans clé de service) : 3 groupes (dont « Patate », supprimé),
+5 joueurs, 5 cellulaires, 2 parties, 1 terrain, 1 avis, 1 administrateur, 6 anciens comptes. Une présence orpheline
+(partie ASSY effacée) a été laissée de côté. La table temporaire `depot_import` a été supprimée.
+Vérifié : en se connectant avec HoldingAI, François retrouve son groupe ; ses parties, son avis et son rôle d'administrateur lui sont revenus.
