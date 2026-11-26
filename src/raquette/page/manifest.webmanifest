@@ -1,6 +1,6 @@
 {
-  "name": "App raquette",
-  "short_name": "Raquette",
+  "name": "l’échange.ai",
+  "short_name": "L’Échange",
   "lang": "fr-CA",
   "start_url": "./",
   "display": "standalone",

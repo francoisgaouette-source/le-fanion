@@ -9,7 +9,7 @@ node outils/assembler.js raquette            # construit l'app raquette dans dis
 node outils/tests-raquette.js                # teste les règles des six sports et les rotations
 ```
 
-Pour essayer l'app raquette sur l'ordinateur : `node outils/assembler.js raquette`, puis servir `dist/raquette/`
+Pour essayer l’échange.ai (l'app raquette) sur l'ordinateur : `node outils/assembler.js raquette`, puis servir `dist/raquette/`
 (ex. `python3 -m http.server -d dist/raquette 8000` et ouvrir http://localhost:8000/?plein=1). Sans projet
 Supabase, elle fonctionne en mode local.
 

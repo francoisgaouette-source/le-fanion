@@ -1,5 +1,5 @@
 {
-  "_aFaire": "Nom, domaine, site (services /api), courriel et personnage à choisir avant le lancement (étape 5).",
+  "_aFaire": "Personnage de l’assistant (Léo pour l’instant), projet Supabase et client HoldingAI : à faire avant le lancement (étape 5).",
   "sortie": "dist/raquette/app.js",
   "page": "raquette/page",
   "copier": [
@@ -11,14 +11,14 @@
     "icon-512.png"
   ],
   "marque": {
-    "id": "raquette",
-    "nom": "l’app raquette",
-    "nomMaj": "L’app raquette",
-    "duNom": "de l’app raquette",
-    "nomApp": "App raquette (nom à venir)",
-    "domaine": "",
-    "site": "",
-    "courriel": "bonjour@fanion.ai",
+    "id": "lechange",
+    "nom": "l’échange.ai",
+    "nomMaj": "L’échange.ai",
+    "duNom": "de l’échange.ai",
+    "nomApp": "L’Échange",
+    "domaine": "lechange.ai",
+    "site": "https://lechange.ai",
+    "courriel": "bonjour@lechange.ai",
     "slogan": "les sports de raquette entre amis",
     "accroche": "Pickleball, tennis, badminton, padel, squash, tennis de table : soirées, rotations et pointage.",
     "description": "l’app des sports de raquette entre amis",
@@ -27,7 +27,7 @@
     "role": "votre assistant",
     "roleMaj": "Votre assistant",
     "leRole": "l’assistant",
-    "icone": "L’icône de l’app",
+    "icone": "L’icône de l’échange",
     "logoVue": "0 0 26 30",
     "logo": "<circle cx=\"13\" cy=\"11\" r=\"8\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\"/><path d=\"M13 19v9\" stroke=\"currentColor\" stroke-width=\"2.6\" stroke-linecap=\"round\"/><circle cx=\"21\" cy=\"25\" r=\"3\" fill=\"#e3a90c\"/>"
   },
