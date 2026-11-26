@@ -4,7 +4,7 @@
 //   ANTHROPIC_API_KEY (le Caddie : l'agent qui répond aux questions dans l'app)
 //   VAPID_PRIVATE_JWK (notifications de l'app : clé privée VAPID, format JWK)
 // Sécurité : seuls les membres connectés peuvent texter, et seulement les numéros de leur propre groupe. Maximum 30 numéros par envoi.
-// Connexion : compte HoldingAI (jeton de compte.holdingai.app), lu dans Supabase « Le Fanion » avec le jeton du membre (règles RLS).
+// Connexion : compte HoldingAI (jeton de compte.letabli.ai), lu dans Supabase « Le Fanion » avec le jeton du membre (règles RLS).
 
 const ORIGINS = ['https://francoisgaouette-source.github.io', 'https://lefanion.ai', 'https://www.lefanion.ai', 'https://app.lefanion.ai',
   // Anciennes adresses : encore acceptées pendant la transition vers lefanion.ai
@@ -317,12 +317,39 @@ Réponds par : {"name":"…","city":"…","holes":[{"par":4,"si":7}, … 18 trou
   return { name: String(data.name || nom).slice(0, 90), city: String(data.city || ville || '').slice(0, 60), holes, tees, carte, cartePage: page, confiance: ['haute', 'moyenne', 'basse'].includes(data.confiance) ? data.confiance : 'basse', notes: String(data.notes || '').slice(0, 600), alertes, sources: urls.slice(0, 6) };
 }
 
+
+// Service worker de déménagement, servi seulement sur app.fanion.ai (voir fetch plus bas).
+const NOUVELLE_APP = 'https://app.lefanion.ai/';
+const PAGE_DEMENAGEMENT = `<!doctype html><html lang="fr-CA"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Le Fanion a déménagé</title>
+<style>body{margin:0;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#FAF6EF;color:#1D1B18;display:flex;min-height:100vh;align-items:center;justify-content:center}main{max-width:420px;padding:32px 24px}h1{font-size:26px;line-height:1.2;margin:0 0 12px}a.b{display:block;text-align:center;background:#B3302A;color:#fff;text-decoration:none;font-weight:600;padding:14px 20px;border-radius:999px;margin:20px 0}ol{padding-left:20px;color:#6B665E}</style></head>
+<body><main><h1>Le Fanion a déménagé</h1><p>L'app est maintenant à <b>app.lefanion.ai</b>. Ton compte, tes groupes et tes parties y sont déjà : tu n'as qu'à te reconnecter.</p>
+<a class="b" href="https://app.lefanion.ai/">Ouvrir app.lefanion.ai</a>
+<ol><li>Ouvre le lien ci-dessus dans Safari (iPhone) ou Chrome (Android).</li><li>Installe l'app sur ton écran d'accueil, comme la première fois.</li><li>Supprime l'ancienne icône du Fanion.</li></ol></main></body></html>`;
+const SW_DEMENAGEMENT = `
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.map(k => caches.delete(k)))).then(() => self.clients.claim())));
+const PAGE = ${JSON.stringify(PAGE_DEMENAGEMENT)};
+self.addEventListener('fetch', e => {
+  if (e.request.mode === 'navigate') e.respondWith(new Response(PAGE, { headers: { 'Content-Type': 'text/html; charset=utf-8' } }));
+});
+self.addEventListener('push', e => {
+  let d = {}; try { d = e.data ? e.data.json() : {}; } catch (x) { d = { body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'Le Fanion', { body: d.body || '', icon: '${NOUVELLE_APP}icon-192.png', tag: d.tag || undefined, data: { url: '${NOUVELLE_APP}' }, lang: 'fr-CA' }));
+});
+self.addEventListener('notificationclick', e => { e.notification.close(); e.waitUntil(self.clients.openWindow('${NOUVELLE_APP}')); });
+`;
+
 export default {
   async fetch(req, env, ctx) {
     // Déménagement vers lefanion.ai (même structure que les autres apps de L'Établi) :
     // les pages de l'ancien domaine redirigent pour de bon; l'API /api/ répond encore sur les deux.
     {
       const u = new URL(req.url), h = u.hostname;
+      // Les apps déjà installées depuis app.fanion.ai : leur service worker ne suit pas les redirections.
+      // On leur sert un service worker de déménagement qui affiche « Le Fanion a déménagé » et garde les notifications.
+      if (h === 'app.fanion.ai' && u.pathname.endsWith('/sw.js')) {
+        return new Response(SW_DEMENAGEMENT, { headers: { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' } });
+      }
       const cible = h === 'app.fanion.ai' ? 'app.lefanion.ai' : (h === 'fanion.ai' || h === 'www.fanion.ai') ? 'lefanion.ai' : h === 'www.lefanion.ai' ? 'lefanion.ai' : null;
       if (cible && (h === 'app.fanion.ai' || !u.pathname.startsWith('/api/'))) return Response.redirect('https://' + cible + u.pathname + u.search, 301);
     }
