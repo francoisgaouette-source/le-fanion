@@ -23,6 +23,8 @@
   document.addEventListener('DOMContentLoaded', function () {
     document.body.innerHTML = '<div class="phone-frame"><iframe src="' + location.pathname + q + location.hash + '" title="Fanion"></iframe></div>';
     document.body.className = 'framed';
+    // Retour de connexion HoldingAI : le cadre a reçu le code, on l'enlève de l'adresse affichée
+    if (/[?&]state=/.test(location.search)) history.replaceState(null, '', location.pathname + location.hash);
   });
 })();
 </script>

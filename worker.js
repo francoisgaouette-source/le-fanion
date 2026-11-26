@@ -5,9 +5,7 @@
 //   VAPID_PRIVATE_JWK (notifications de l'app : clé privée VAPID, format JWK)
 // Sécurité : seuls les membres connectés peuvent texter, et seulement les numéros de leur propre groupe. Maximum 30 numéros par envoi.
 // Connexion : compte HoldingAI (jeton de compte.holdingai.app), lu dans Supabase « Le Fanion » avec le jeton du membre (règles RLS).
-// Les jetons Firebase des anciennes versions de l'app restent acceptés pendant la transition (données Firestore).
 
-const PROJECT = 'pelland';
 const ORIGINS = ['https://francoisgaouette-source.github.io', 'https://fanion.ai', 'https://www.fanion.ai', 'https://app.fanion.ai'];
 const MAX_TO = 30, MAX_LEN = 1200;
 
@@ -46,43 +44,19 @@ async function haiGroup(tok, uid) {
   if (!l.length) throw new Error('membre sans groupe'); return l[0].group_id;
 }
 
-// --- Vérification du jeton : HoldingAI, ou Firebase (RS256) pendant la transition ---
-let KEYS = null, KEYS_AT = 0;
-async function googleKeys() {
-  if (KEYS && Date.now() - KEYS_AT < 3600e3) return KEYS;
-  const r = await fetch('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com');
-  KEYS = (await r.json()).keys; KEYS_AT = Date.now(); return KEYS;
-}
+// --- Vérification du jeton : compte HoldingAI seulement ---
 const b64u = s => { s = s.replace(/-/g, '+').replace(/_/g, '/'); s += '='.repeat((4 - s.length % 4) % 4); return Uint8Array.from(atob(s), c => c.charCodeAt(0)); };
 async function verifyToken(tok) {
   const [h, p, sig] = (tok || '').split('.'); if (!sig) throw new Error('jeton manquant');
   const head = JSON.parse(new TextDecoder().decode(b64u(h))), pay = JSON.parse(new TextDecoder().decode(b64u(p)));
-  if (pay.iss === HAI_ISS) return verifyHai(h, p, sig, head, pay);
-  const jwk = (await googleKeys()).find(k => k.kid === head.kid); if (!jwk) throw new Error('clé inconnue');
-  const key = await crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
-  const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64u(sig), new TextEncoder().encode(h + '.' + p));
-  const now = Date.now() / 1000;
-  if (!ok || pay.aud !== PROJECT || pay.iss !== 'https://securetoken.google.com/' + PROJECT || pay.exp < now) throw new Error('jeton invalide');
-  if (!['password', 'phone'].includes((pay.firebase || {}).sign_in_provider)) throw new Error('membre requis');
-  return pay;
+  if (pay.iss !== HAI_ISS) throw new Error('jeton inconnu');
+  return verifyHai(h, p, sig, head, pay);
 }
 
-// --- Numéros du groupe du membre (lus avec son jeton, donc selon les règles Firestore) ---
-const FS = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents`;
-async function knownPhones(tok, uid, who) {
-  if (who && who.kind === 'hai') {
-    const g = await haiGroup(tok, uid);
-    return new Set((await sbGet(tok, 'telephones?select=phone&group_id=eq.' + encodeURIComponent(g))).map(x => String(x.phone || '').replace(/\D/g, '').slice(-10)).filter(Boolean));
-  }
-  const a = await fetch(`${FS}/auth/${uid}`, { headers: { Authorization: 'Bearer ' + tok } });
-  if (!a.ok) throw new Error('membre sans groupe');
-  const g = (((await a.json()).fields || {}).groupId || {}).stringValue; if (!g) throw new Error('membre sans groupe');
-  const r = await fetch(`${FS}:runQuery`, { method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'phones' }], where: { fieldFilter: { field: { fieldPath: 'groupId' }, op: 'EQUAL', value: { stringValue: g } } } } }) });
-  if (!r.ok) throw new Error('lecture des numéros refusée');
-  const set = new Set();
-  (await r.json()).forEach(x => { const v = (((x.document || {}).fields || {}).phone || {}).stringValue; if (v) set.add(v.replace(/\D/g, '').slice(-10)); });
-  return set;
+// --- Numéros du groupe du membre (lus avec son jeton, donc selon les règles de la base) ---
+async function knownPhones(tok, uid) {
+  const g = await haiGroup(tok, uid);
+  return new Set((await sbGet(tok, 'telephones?select=phone&group_id=eq.' + encodeURIComponent(g))).map(x => String(x.phone || '').replace(/\D/g, '').slice(-10)).filter(Boolean));
 }
 
 async function sendSms(env, to, body) {
@@ -141,35 +115,13 @@ async function sendPush(env, sub, data) {
 }
 
 // Envoie une notification aux membres d'un groupe abonnés (subs/<uid>_<groupe>), sauf à l'expéditeur
-async function pushGroup(env, tok, uid, data, who) {
-  if (who && who.kind === 'hai') {
-    const g = await haiGroup(tok, uid);
-    if (g !== data.groupId) throw new Error('groupe non autorisé');
-    const only = Array.isArray(data.playerIds) && data.playerIds.length ? new Set(data.playerIds) : null;
-    const membres = new Set((await sbGet(tok, 'joueurs?select=id&group_id=eq.' + encodeURIComponent(g))).map(x => x.id));
-    const subs = (await sbGet(tok, 'abonnements_push?select=uid,player_id,sub&group_id=eq.' + encodeURIComponent(g)))
-      .map(x => ({ uid: x.uid, playerId: x.player_id, sub: x.sub })).filter(x => x.sub && x.sub.endpoint && x.uid !== uid && (!only || only.has(x.playerId)) && membres.has(x.playerId));
-    const msg = { title: String(data.title || 'le fanion.ai').slice(0, 80), body: String(data.body || '').slice(0, 240), url: String(data.url || './').slice(0, 300), tag: data.tag ? String(data.tag).slice(0, 60) : undefined };
-    const res = await Promise.all(subs.map(x => sendPush(env, x.sub, msg).catch(() => 0)));
-    return { sent: res.filter(s => s >= 200 && s < 300).length, total: subs.length, gone: res.filter(s => s === 404 || s === 410).length };
-  }
-  const a = await fetch(`${FS}/auth/${uid}`, { headers: { Authorization: 'Bearer ' + tok } });
-  if (!a.ok) throw new Error('membre sans groupe');
-  const g = (((await a.json()).fields || {}).groupId || {}).stringValue;
-  if (!g || g !== data.groupId) throw new Error('groupe non autorisé');
-  const r = await fetch(`${FS}:runQuery`, { method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'subs' }], where: { fieldFilter: { field: { fieldPath: 'groupId' }, op: 'EQUAL', value: { stringValue: g } } }, limit: 200 } }) });
-  if (!r.ok) throw new Error('lecture des abonnements refusée');
+async function pushGroup(env, tok, uid, data) {
+  const g = await haiGroup(tok, uid);
+  if (g !== data.groupId) throw new Error('groupe non autorisé');
   const only = Array.isArray(data.playerIds) && data.playerIds.length ? new Set(data.playerIds) : null;
-  // Seulement les joueurs encore membres du groupe : un joueur retiré ne reçoit plus rien de ce groupe
-  let membres = null;
-  try {
-    const pr = await fetch(`${FS}:runQuery`, { method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'players' }], where: { fieldFilter: { field: { fieldPath: 'groupId' }, op: 'EQUAL', value: { stringValue: g } } }, limit: 500 } }) });
-    if (pr.ok) membres = new Set((await pr.json()).map(x => x.document && x.document.name && x.document.name.split('/').pop()).filter(Boolean));
-  } catch (e) { }
-  const subs = (await r.json()).map(x => (x.document || {}).fields).filter(Boolean).map(f => ({ uid: (f.uid || {}).stringValue, playerId: (f.playerId || {}).stringValue, sub: (() => { try { return JSON.parse((f.sub || {}).stringValue); } catch (e) { return null; } })() }))
-    .filter(x => x.sub && x.sub.endpoint && x.uid !== uid && (!only || only.has(x.playerId)) && (!membres || !membres.size || membres.has(x.playerId)));
+  const membres = new Set((await sbGet(tok, 'joueurs?select=id&group_id=eq.' + encodeURIComponent(g))).map(x => x.id));
+  const subs = (await sbGet(tok, 'abonnements_push?select=uid,player_id,sub&group_id=eq.' + encodeURIComponent(g)))
+    .map(x => ({ uid: x.uid, playerId: x.player_id, sub: x.sub })).filter(x => x.sub && x.sub.endpoint && x.uid !== uid && (!only || only.has(x.playerId)) && membres.has(x.playerId));
   const msg = { title: String(data.title || 'le fanion.ai').slice(0, 80), body: String(data.body || '').slice(0, 240), url: String(data.url || './').slice(0, 300), tag: data.tag ? String(data.tag).slice(0, 60) : undefined };
   const res = await Promise.all(subs.map(x => sendPush(env, x.sub, msg).catch(() => 0)));
   return { sent: res.filter(s => s >= 200 && s < 300).length, total: subs.length, gone: res.filter(s => s === 404 || s === 410).length };
@@ -184,7 +136,7 @@ Pour amener la personne au bon écran, ajoute à la fin une ligne [[ecran:CLE]] 
 L'accueil présente 6 étapes : 1 Inviter des joueurs, 2 Parties à préparer, 3 Créer une partie, 4 Parties en cours, 5 Compétitions en cours, 6 Parties et compétitions jouées (deux onglets : Parties, avec résultats et qui doit quoi ; Compétitions, avec le classement final) ; puis les banques : joueurs, terrains, jeux et compétitions. Pour un membre invité, les étapes 1 à 3 et les banques sont réservées à l'organisateur (grisées).
 
 L'APP
-- Compte : la première fois, « Créer mon compte » (il faut un cellulaire) : on entre son cellulaire, on reçoit un code à 6 chiffres par texto, on le confirme, puis on choisit un mot de passe (6 caractères ou plus). Ensuite on se connecte avec son cellulaire et son mot de passe, sans code, et on arrive dans « Mon compte » pour choisir son groupe. Un seul compte pour tous ses groupes : chaque groupe où ce cellulaire est inscrit apparaît dans « Mon compte » (bouton rond avec ses initiales en haut à droite : forfait du groupe, notifications, mot de passe, groupes, Se déconnecter ; aussi accessible par « Changer de groupe » sur l'accueil). Mot de passe oublié : « Mot de passe oublié ? » sur l'écran de connexion (nouveau code, puis nouveau mot de passe). Le cellulaire doit être celui inscrit pour ce joueur dans Joueurs ; sinon l'organisateur le corrige avec le bouton ☎ du joueur. Si le code ne vient pas : vérifier le numéro, attendre une minute, « Renvoyer le code ».
+- Compte : on se connecte avec son compte HoldingAI, le même pour toutes les apps HoldingAI : bouton « Continuer avec HoldingAI », puis Albert, le majordome de HoldingAI, s'occupe du cellulaire et du mot de passe (la première fois, il crée le compte en un instant avec le cellulaire). Mot de passe oublié ou cellulaire à changer : « Mon compte » → « Gérer » (chez Albert). Ensuite on arrive dans « Mon compte » pour choisir son groupe. Un seul compte pour tous ses groupes : chaque groupe où ce cellulaire est inscrit apparaît dans « Mon compte » (bouton rond avec ses initiales en haut à droite : forfait du groupe, notifications, groupes, Se déconnecter ; aussi accessible par « Changer de groupe » sur l'accueil). Le cellulaire du compte HoldingAI doit être celui inscrit pour ce joueur dans Joueurs ; sinon l'organisateur le corrige avec le bouton ☎ du joueur.
 - Ajouter l'app à l'écran d'accueil : iPhone, dans Safari, bouton Partager puis « Sur l'écran d'accueil ». Android, dans Chrome, menu ⋮ puis « Ajouter à l'écran d'accueil ».
 - Notifications : obligatoires pour les membres d'un groupe. L'organisateur voit dans Joueurs qui reçoit les notifications (🔔 actives, 🔕 bloquées ou pas activées) pour parler au joueur ou le retirer du groupe. Elles s'activent en entrant dans le groupe (après avoir accepté l'invitation) et on ne peut pas les désactiver ; elles s'arrêtent seulement quand on n'est plus membre du groupe. Si le téléphone les bloque, il faut les permettre dans ses réglages (iPhone : Réglages → Notifications → le fanion.ai ; sur iPhone, l'app doit être ajoutée à l'écran d'accueil).
 - Compétitions (Banque de compétitions) : membre-membre en match play, Stableford ou en coups ; membre-invité (match play, Stableford ou coups) ; Texas scramble (départs minimums par joueur) ; scramble à 4 (25-20-15-10 %) ; Coupe Ryder du groupe (deux camps, sessions de quatre balles à 90 %, coups alternés à 50 % de la somme, simples à 100 % ; 1 point par match gagné, ½ par nul ; le premier camp à dépasser la moitié des points gagne) ; tableau à élimination en match play net (têtes de série par index, tirage ou ordre, exemptions des meilleures têtes de série, consolation possible, gagnant indiqué à la main pour trous supplémentaires ou forfait). Les formats en coups et Stableford peuvent se jouer sur plusieurs rondes (cumul et classement par ronde). « ⚖ Former les équipes » : équipes équilibrées A-B-C-D en serpentin selon l'index, ou tirage au sort ; en Coupe Ryder, deux camps équilibrés. Dans une compétition : « 📺 Écran télé » (classement plein écran en direct, défile tout seul), « 🖨 Cartes de pointage » et « 🖨 Affiches de voiturette » à imprimer ; un départ (heure ou trou) peut être noté pour chaque équipe. Ordre du mérite de la saison (Banque de compétitions) : points selon la position dans chaque compétition terminée (100, 80, 65, 55, 50…), Coupe Ryder 60 / 30, tableau 100 / 80 / 65 / 50.
@@ -201,7 +153,7 @@ L'APP
 - Pendant la partie : toucher un trou pour entrer les scores ; Press et Reroll avant le départ du trou, ou après avec « Modifier le trou » ; « Modifier les montants » pour changer les mises ; « Texto aux joueurs » ; « Terminer la partie » à la fin (elle va dans Parties jouées).
 - Hors réseau : les scores restent sur le téléphone et partent au retour du signal.
 - Handicap de parcours = index × slope ÷ 113 + (évaluation − normale), arrondi. Les coups vont d'abord aux trous les plus difficiles.
-- Plusieurs groupes : même compte, même mot de passe ; « Changer de groupe » sur l'accueil. Créer son propre groupe : « Créer mon groupe ».
+- Plusieurs groupes : même compte HoldingAI ; « Changer de groupe » sur l'accueil. Créer son propre groupe : « Créer mon groupe ».
 - Parrainage : le propriétaire partage son lien depuis l'accueil ; chaque groupe parrainé qui passe au forfait Groupe lui donne 5 $ de rabais sur sa prochaine saison (les rabais s'additionnent).
 - Installation obligatoire sur téléphone : ouverte dans le navigateur d'un cellulaire, le fanion.ai affiche « Installez le fanion.ai » et reste bloquée tant qu'elle n'est pas ouverte depuis son icône (iPhone : Safari → Partager → Sur l'écran d'accueil → Ajouter ; Android : Chrome → menu ⋮ → Installer l'application). Dans Messenger, Facebook ou un autre navigateur intégré, il faut d'abord ouvrir le lien dans Safari ou Chrome. Sur ordinateur, elle s'ouvre normalement.
 
@@ -225,9 +177,9 @@ LES JEUX (tout au net, avec handicap ; montants par joueur)
 - Jeux maison : dans Les jeux, « Ajouter un jeu ».
 Les règles détaillées sont sur fanion.ai/regles/.`;
 
-// Console HoldingAI : reçoit les questions posées au Caddie (le jeton Firebase du membre y est revérifié)
+// Console HoldingAI : reçoit les questions posées au Caddie (le jeton HoldingAI du membre y est revérifié)
 const JOURNAL_CADDIE = 'https://gandliltstmtfsmsjaew.supabase.co/functions/v1/journal-caddie';
-// Boucle de retour (idées, réponses de l'équipe, nouveautés, sondage) : notée dans la console HoldingAI, jeton Firebase revérifié là-bas
+// Boucle de retour (idées, réponses de l'équipe, nouveautés, sondage) : notée dans la console HoldingAI, jeton HoldingAI revérifié là-bas
 const RETOUR_FANION = 'https://gandliltstmtfsmsjaew.supabase.co/functions/v1/retour-fanion';
 const RATE = new Map();
 function tooMany(uid) {
@@ -256,13 +208,7 @@ async function avisPublies() {
     const l = r.ok ? await r.json() : [];
     if (l.length) return l.filter(f => f.text).map(f => ({ stars: Math.max(1, Math.min(5, +f.stars || 5)), text: String(f.text).slice(0, 280), name: String(f.name || '').slice(0, 40), groupName: String(f.group_name || '').slice(0, 60), at: +f.at || 0 }));
   } catch (e) { }
-  const body = { structuredQuery: { from: [{ collectionId: 'avis' }], where: { fieldFilter: { field: { fieldPath: 'approved' }, op: 'EQUAL', value: { booleanValue: true } } }, limit: 30 } };
-  const r = await fetch(`https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents:runQuery`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (!r.ok) return [];
-  const v = f => f && (f.stringValue ?? f.integerValue ?? f.booleanValue);
-  return (await r.json()).filter(x => x.document).map(x => x.document.fields).filter(f => v(f.ok) === true && v(f.text))
-    .map(f => ({ stars: Math.max(1, Math.min(5, +v(f.stars) || 5)), text: String(v(f.text)).slice(0, 280), name: String(v(f.name) || '').slice(0, 40), groupName: String(v(f.groupName) || '').slice(0, 60), at: +v(f.at) || 0 }))
-    .sort((a, b) => b.at - a.at);
+  return [];
 }
 
 

@@ -17,7 +17,7 @@
   // Hors ligne : les parties sont gardées sur le téléphone et envoyées au retour du réseau (file d'attente).
   // =====================================================================
   const CFG = window.FANION_CONFIG || window.APP_CONFIG || {};
-  // Lignes de la base → objets de l'app (mêmes champs qu'avec Firestore)
+  // Lignes de la base → objets de l'app (mêmes champs qu'avant)
   const rowGroupe = r => ({ ...(r.data || {}), id: r.id, owner: r.owner || '', organizers: r.organizers || [], ...(r.plan ? { plan: r.plan } : {}),
     ...(r.paid_until ? { paidUntil: Number(r.paid_until) } : {}), ...(r.max_joueurs ? { maxJoueurs: r.max_joueurs } : {}),
     nPlayers: r.n_players, archived: !!r.archived, deleted: !!r.deleted });
@@ -509,7 +509,7 @@
     async deletePushSub(g) { await this.sb.from('abonnements_push').delete().eq('id', this.uid + '_' + g); },
     async listPushSubs() { return (ok(await this.sb.from('abonnements_push').select('player_id, sub, etat, at').eq('group_id', this.gid)) || []).map(r => ({ playerId: r.player_id, sub: r.sub, etat: r.etat, at: Number(r.at || 0) })); }
   };
-  // Les parties gardent les équipes sous la forme { e1: [...], e2: [...] } (comme avant dans Firestore).
+  // Les parties gardent les équipes sous la forme { e1: [...], e2: [...] } (comme avant).
   function toDb(g) {
     const o = JSON.parse(JSON.stringify(g));
     if (Array.isArray(o.teams)) o.teams = { e1: o.teams[0], e2: o.teams[1] };
@@ -1001,7 +1001,7 @@
   async function setGroupState(kind) {
     const me = (S.acctGroups || []).find(x => x.gid === Store.gid); if (!me) return;
     const done = async (flags, msg) => {
-      try { await Store.setGroupState(flags); } catch (e) { toast('Impossible : ' + (/permission/i.test(e.message) ? 'seul le propriétaire peut le faire (règles Firebase à jour ?).' : e.message)); return false; }
+      try { await Store.setGroupState(flags); } catch (e) { toast('Impossible : ' + (/permission/i.test(e.message) ? 'seul le propriétaire peut le faire.' : e.message)); return false; }
       S.groups = await Store.listGroups().catch(() => S.groups); S.acctGroups = null; toast(msg); return true;
     };
     if (kind === 'archive') { if (await done({ archived: Date.now() }, `« ${me.name} » est archivé.`)) render(); return; }
@@ -2641,12 +2641,12 @@
           <p class="note">${pl.phone ? `Numéro actuel : <b style="font-size:20px">${esc(fmtPhone(pl.phone))}</b>` : pl.authEmail ? `Numéro actuel : se termine par <b>${esc(pl.phoneHint || '')}</b>. Entrez le numéro complet une fois ci-dessous et touchez Enregistrer : il s’affichera ensuite.` : 'Aucun numéro pour l’instant.'}</p>
           <label>${pl.authEmail ? 'Nouveau numéro' : 'Numéro'}<input id="phIn" type="tel" inputmode="tel" placeholder="450 555-1234" value="${esc(pl.phone ? fmtPhone(pl.phone) : '')}"></label>
           <p class="note">Ce numéro sert à se connecter. Il est visible seulement par les joueurs du groupe.</p>
-          ${Store.phonesBlocked ? '<div class="warn">La base refuse de garder les numéros complets : la règle « phones » n’est pas encore publiée dans Firebase (Firestore → Règles).</div>' : ''}
+          ${Store.phonesBlocked ? '<div class="warn">La base a refusé d’enregistrer ce numéro. Réessayez, ou écrivez à bonjour@fanion.ai.</div>' : ''}
           <div class="row"><button class="btn small" id="phSave" type="button">Enregistrer</button><button class="btn ghost small" data-close type="button">Annuler</button></div>`, sh => {
           sh.querySelector('[data-close]').onclick = closeSheet;
           sh.querySelector('#phSave').onclick = async () => {
             try { const first = !pl.authEmail, ph = sh.querySelector('#phIn').value; await Store.setPhone(pl, ph); closeSheet(); S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); toast('Téléphone enregistré.'); render(); if (first) inviteText(pl.name, ph, pl.id); }
-            catch (e) { toast(e.message.includes('auth/') ? 'Impossible : vérifiez que Email/Password est activé dans Firebase.' : e.message); }
+            catch (e) { toast(e.message); }
           };
           setTimeout(() => { const i = sh.querySelector('#phIn'); if (i) { i.focus(); i.select(); } }, 50);
         });
@@ -2959,7 +2959,7 @@
       const cl = v.querySelector('[data-claim]'); if (cl) cl.onclick = async () => {
         const ng = JSON.parse(JSON.stringify(S.game)); ng.ownerUid = Store.uid; const mi = myIdx(ng); if (mi >= 0) ng.responsable = mi;
         try { await Store.saveGame(ng); S.game = ng; S.confirmClaim = null; toast('Vous êtes maintenant le responsable de cette partie.'); render(); }
-        catch (e) { toast('Impossible : publiez les nouvelles règles Firestore. (' + e.message + ')'); }
+        catch (e) { toast('Impossible pour l’instant. (' + e.message + ')'); }
       };
       v.querySelectorAll('[data-editmoney]').forEach(em => em.onclick = ev => {
         if (ev && ev.target.closest && ev.target.closest('[data-info]')) return;
@@ -3403,7 +3403,7 @@
         return `<div class="pres ${st[2]}"><b>${st[0]}</b><span class="${isAlt(g) ? '' : 'tc' + teamOf(g, i)}">${esc(g.players[i].name)}</span><small>${st[1]}</small></div>`; }).join('')}</div>
       ${mi >= 0 ? `<div class="row pres-btns"><button class="btn ${mine && mine.ok ? '' : 'ghost'}" data-pres="1" type="button">Je serai là ✓</button><button class="btn ghost ${mine && mine.ok === false ? 'on-no' : ''}" data-pres="0" type="button">Je ne pourrai pas</button></div>` : ''}
       ${isOwner() ? `<button class="btn sms-btn" data-confirmsms type="button" style="margin-top:10px">Texto aux joueurs pour confirmer</button>` : ''}
-      ${S.presenceBlocked ? '<div class="warn">Les présences ne peuvent pas être enregistrées : la règle « presence » n’est pas publiée dans Firebase.</div>' : ''}</section>`;
+      ${S.presenceBlocked ? '<div class="warn">Les présences ne peuvent pas être enregistrées : vérifiez votre connexion, puis réessayez.</div>' : ''}</section>`;
   }
   // À la création d'une partie : texto aux joueurs pour confirmer leur présence
   function confirmText(g) {

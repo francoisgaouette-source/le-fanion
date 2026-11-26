@@ -15,7 +15,6 @@ self.addEventListener('fetch', e => {
   if (u.origin === self.location.origin && u.pathname.includes('/site/')) return;
   // La base (Supabase) et la connexion HoldingAI : jamais en cache
   if (/(^|\.)googleapis\.com$/.test(u.hostname) && u.hostname !== 'fonts.googleapis.com') return;
-  if (/firebaseio|identitytoolkit|securetoken/.test(u.hostname)) return;
   // La page : réseau d'abord (dernière version), sinon la copie gardée
   if (r.mode === 'navigate') {
     // « no-cache » : on redemande toujours la page au serveur, sans se fier à la copie de 10 minutes du navigateur

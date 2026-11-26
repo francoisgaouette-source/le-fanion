@@ -2,7 +2,7 @@
 
 Projet Supabase **Le Fanion** (`iuoaiambosdpsvsymupz`, ca-central-1), créé le 24 novembre 2026.
 `schema.sql` contient tout : tables, règles de sécurité (RLS), déclencheurs et fonctions. Il est déjà appliqué.
-L'app en ligne utilise encore Firebase : rien ne change pour les joueurs tant que la bascule n'est pas faite.
+Depuis le 25 novembre 2026, l'app en ligne (app.fanion.ai, branche `main`) utilise Supabase et le compte HoldingAI.
 
 ## Connexion
 La personne se connecte avec son **compte HoldingAI** (Third-Party Auth, Custom OIDC). Dans la base,
@@ -53,6 +53,12 @@ Faite, pas encore en ligne (`main` reste sur Firebase) :
 - `retour-fanion` et `journal-caddie` (Notre épicerie) déployées : elles acceptent les jetons HoldingAI et Firebase.
 - Données Firestore : **pas de migration** (décision de François). Les groupes repartent de zéro sur Supabase.
 
+## Bascule faite (25 novembre 2026)
+- `main` est sur Supabase + HoldingAI (GitHub Pages sert app.fanion.ai). Vérifié : connexion, retour, écran « Créer un groupe ».
+- Vue iPhone sur ordinateur : la connexion navigue la fenêtre entière (`holdingai.js`), sinon la page de compte refusait de s'afficher dans le cadre.
+- Firebase retiré du code : `firebase-config.js` et `firestore.rules` supprimés, `worker.js` n'accepte plus que les jetons HoldingAI et ne lit plus Firestore, messages d'erreur et page de confidentialité corrigés, aide de Léo mise à jour (connexion HoldingAI).
+
 ## Reste à faire
-1. Fusionner la branche `supabase-holdingai` dans `main` (bascule) : les joueurs se connectent avec HoldingAI et recréent leur groupe.
-2. Garder Firebase en lecture seule quelques semaines, puis le supprimer (et corriger la page de confidentialité).
+1. Mettre en ligne `worker.js` (fanion.ai, Cloudflare « pelland ») s'il n'est pas relié à GitHub.
+2. Dans quelques semaines : supprimer le projet Firebase « pelland » (console Firebase → Paramètres du projet → Supprimer).
+3. `supabase/console/` : retirer l'acceptation des jetons Firebase de `retour-fanion` et `journal-caddie` (projet Notre épicerie).
