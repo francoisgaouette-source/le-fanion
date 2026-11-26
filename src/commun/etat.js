@@ -17,22 +17,14 @@
   function updateMic() { $('#micBtn').classList.toggle('on', Voice.listening && !Voice.wake); }
 
   function go(view, opts = {}) {
-    if (S.unwatch && view !== 'game') { S.unwatch(); S.unwatch = null; S.game = null; }
-    if (S.unwatchPres && view !== 'game') { S.unwatchPres(); S.unwatchPres = null; }
-    if (S.unwatchComp && view !== 'comp' && view !== 'compEdit') { S.unwatchComp(); S.unwatchComp = null; }
-    if (view === 'comps') S.compList = null;
+    MODULE.quitter(view);   // le module ferme ce qu'il suivait en direct (partie, compétition…)
     if (view === 'compte') S.acctGroups = null;
     if (view !== 'compte') S.fromLogin = false;
     if (view === 'players') S.pFocused = false;
-    if (view !== 'game' && view !== 'setup' && Voice.wake) Voice.setWake(false);
+    MODULE.avant(view);
     S.view = view; Object.assign(S, opts);
-    if (view === 'setup' && !S.offres) Store.listOffres().then(l => { S.offres = l; if (S.view === 'setup') render(); });
-    if (view === 'quatuors') { Store.listOffres().then(l => { S.offres = l; if (S.view === 'quatuors') render(); }); Store.listQuatuors().then(l => { S.quatuors = l; }); }
+    MODULE.aller(view, opts);
     if (view === 'offre') { S.offre = undefined; S.offreSel = null; }
-    if (view === 'course' && 'editCourse' in opts) { S.cardImgs = []; S.cardStatus = ''; }
-    if (view === 'history' || view === 'live') { S.historyList = null; S.confirmDelGame = null; }
-    if (view === 'setup') { setHeard('Touchez le micro et dites les joueurs et leurs index.'); setReply(''); }
-    if (view === 'game') { setHeard('Appuyez sur le micro et parlez.'); setReply(''); }
     render(); window.scrollTo(0, 0);
   }
 
@@ -50,7 +42,7 @@
     const showDock = false; // plus d'interface vocale
     document.body.classList.toggle('view-game', S.view === 'game');
     $('#dock').hidden = !showDock; document.body.classList.toggle('no-dock', !showDock);
-    const R = { home: vHome, jeux: vJeux, jeuEdit: vJeuEdit, quatuors: vQuatuors, offre: vOffre, setup: vSetup, game: vGame, join: vJoin, history: vHistory, live: vHistory, courses: vCourses, course: vCourse, clubs: vClubs, players: vPlayers, login: vLogin, compte: vCompte, comps: vComps, compEdit: vCompEdit, comp: vComp, compTv: vCompTv }[S.view];
+    const R = { ...MODULE.vues, offre: vOffre, players: vPlayers, login: vLogin, compte: vCompte }[S.view];
     v.innerHTML = R();
     bind[S.view] && bind[S.view](v);
     leoApres();

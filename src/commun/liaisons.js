@@ -138,5 +138,5 @@
 
   function commonNav(v) {
     v.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go, b.dataset.go === 'setup' ? { draft: null } : b.dataset.go === 'players' ? { pMode: b.dataset.pmode || 'banque' } : b.dataset.go === 'comps' ? { compLive: !!b.dataset.clive } : b.dataset.new ? { editCourse: null } : {}));
-    v.querySelectorAll('[data-open]').forEach(b => b.onclick = () => openGame(b.dataset.open));
+    v.querySelectorAll('[data-open]').forEach(b => b.onclick = () => MODULE.ouvrir(b.dataset.open));
   }

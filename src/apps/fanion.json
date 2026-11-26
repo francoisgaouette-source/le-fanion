@@ -69,6 +69,7 @@
     "commun/caddie.js",
     "commun/leo.js",
     "golf/pointage.js",
+    "golf/module.js",
     "commun/demarrage.js"
   ]
 }

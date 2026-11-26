@@ -111,14 +111,6 @@
         }
       } catch (e) { /* réseau : on réessaiera */ } finally { this._flushing = false; }
     },
-    _subs: {},
-    _emit(g) { (this._subs[g.id] || []).forEach(cb => cb(g)); },
-    watch(table, col, id, cb) {
-      const ch = this.sb.channel(table + ':' + id + ':' + Math.random().toString(36).slice(2, 7))
-        .on('postgres_changes', { event: '*', schema: 'public', table, filter: col + '=eq.' + id }, p => { if (p.new && Object.keys(p.new).length) cb(p.new); })
-        .subscribe();
-      return () => { try { this.sb.removeChannel(ch); } catch (e) { } };
-    },
     watchGame(id, cb) {
       (this._subs[id] = this._subs[id] || []).push(cb);
       if (this.mode === 'cloud') {
@@ -207,4 +199,3 @@
     if (o && o.teams && !Array.isArray(o.teams)) o.teams = [o.teams.e1, o.teams.e2];
     return o;
   }
-  function slug(s) { return L.norm(s).replace(/\s+/g, '-').slice(0, 30) || 'terrain'; }

@@ -47,7 +47,7 @@
       });
     });
   }
-  document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-typepartie]'); if (!t) return; e.preventDefault(); typePartieSheet(); });
+  document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-typepartie]'); if (!t) return; e.preventDefault(); MODULE.nouvellePartie(); });
   document.addEventListener('click', e => {
     const t = e.target.closest && e.target.closest('[data-viral],[data-viralhide],#switchGroup'); if (!t) return;
     e.preventDefault();

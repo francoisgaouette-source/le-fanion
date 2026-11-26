@@ -122,8 +122,7 @@
         // Compte relié à aucun joueur : on reste connecté, mais il faut un groupe (invitation ou nouveau groupe)
         const m = await this.ensureMember();
         if (m === false) { this.noGroup = true; this.needLogin = true; }
-        this.flush();
-        window.addEventListener('online', () => this.flush());
+        if (this.flush) { this.flush(); window.addEventListener('online', () => this.flush()); }
       }
     },
     // ---------- Compte (HoldingAI) ----------
@@ -260,7 +259,7 @@
           p_donnees_joueur: { id: pid, name: name.trim(), phoneHint: this.e164.slice(-2), updatedAt: Date.now() } }));
       } else { await this.saveGroup(gr); const list = ls.get('pelland.players', []); list.push({ id: pid, name: name.trim(), groupId: gr.id, authEmail: 'local', acct: 'local' }); ls.set('pelland.players', list); }
       this.setGroup(gr.id); this.needLogin = false; this.noGroup = false; ls.set('pelland.me', name.trim());
-      await this.ensureSeed();
+      if (this.ensureSeed) await this.ensureSeed();
       return gr;
     },
     // Membres du groupe (par défaut) ; avec bank = true, toute la banque de joueurs du groupe (membres et non-membres)
@@ -346,6 +345,14 @@
       }
       ls.set('pelland.players', ls.get('pelland.players', []).filter(x => x.id !== id));
     },
+    _subs: {},
+    _emit(g) { (this._subs[g.id] || []).forEach(cb => cb(g)); },
+    watch(table, col, id, cb) {
+      const ch = this.sb.channel(table + ':' + id + ':' + Math.random().toString(36).slice(2, 7))
+        .on('postgres_changes', { event: '*', schema: 'public', table, filter: col + '=eq.' + id }, p => { if (p.new && Object.keys(p.new).length) cb(p.new); })
+        .subscribe();
+      return () => { try { this.sb.removeChannel(ch); } catch (e) { } };
+    },
     // Présences : { cléJoueur: { ok: true|false, at } } par partie ; chaque membre écrit sa propre réponse
     watchPresence(id, cb) {
       if (this.mode === 'cloud') {
@@ -386,6 +393,11 @@
     async deletePushSub(g) { await this.sb.from('abonnements_push').delete().eq('id', this.uid + '_' + g); },
     async listPushSubs() { return (ok(await this.sb.from('abonnements_push').select('player_id, sub, etat, at').eq('group_id', this.gid)) || []).map(r => ({ playerId: r.player_id, sub: r.sub, etat: r.etat, at: Number(r.at || 0) })); }
   };
+  // Approbateur des terrains (compte) et taille maximale de la banque de joueurs
+  const P = { admin: false, mine: [], todo: [], charge: false };
+  const BANQUE_MAX = 64;
+  const presKey = name => L.norm(name).replace(/[^a-z0-9]+/g, '-');
+  function slug(s) { return L.norm(s).replace(/\s+/g, '-').slice(0, 30) || 'terrain'; }
   const byName = (a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' });
   // Doublons possibles : même nom à une lettre ou deux près (accents, fautes), ou même nom de famille et même initiale.
   function duplicateMap(list) {
@@ -515,14 +527,6 @@
         }
       } catch (e) { /* réseau : on réessaiera */ } finally { this._flushing = false; }
     },
-    _subs: {},
-    _emit(g) { (this._subs[g.id] || []).forEach(cb => cb(g)); },
-    watch(table, col, id, cb) {
-      const ch = this.sb.channel(table + ':' + id + ':' + Math.random().toString(36).slice(2, 7))
-        .on('postgres_changes', { event: '*', schema: 'public', table, filter: col + '=eq.' + id }, p => { if (p.new && Object.keys(p.new).length) cb(p.new); })
-        .subscribe();
-      return () => { try { this.sb.removeChannel(ch); } catch (e) { } };
-    },
     watchGame(id, cb) {
       (this._subs[id] = this._subs[id] || []).push(cb);
       if (this.mode === 'cloud') {
@@ -611,7 +615,6 @@
     if (o && o.teams && !Array.isArray(o.teams)) o.teams = [o.teams.e1, o.teams.e2];
     return o;
   }
-  function slug(s) { return L.norm(s).replace(/\s+/g, '-').slice(0, 30) || 'terrain'; }
   // ==== src/commun/voix.js ====
   // =====================================================================
   const Voice = {
@@ -707,22 +710,14 @@
   function updateMic() { $('#micBtn').classList.toggle('on', Voice.listening && !Voice.wake); }
 
   function go(view, opts = {}) {
-    if (S.unwatch && view !== 'game') { S.unwatch(); S.unwatch = null; S.game = null; }
-    if (S.unwatchPres && view !== 'game') { S.unwatchPres(); S.unwatchPres = null; }
-    if (S.unwatchComp && view !== 'comp' && view !== 'compEdit') { S.unwatchComp(); S.unwatchComp = null; }
-    if (view === 'comps') S.compList = null;
+    MODULE.quitter(view);   // le module ferme ce qu'il suivait en direct (partie, compétition…)
     if (view === 'compte') S.acctGroups = null;
     if (view !== 'compte') S.fromLogin = false;
     if (view === 'players') S.pFocused = false;
-    if (view !== 'game' && view !== 'setup' && Voice.wake) Voice.setWake(false);
+    MODULE.avant(view);
     S.view = view; Object.assign(S, opts);
-    if (view === 'setup' && !S.offres) Store.listOffres().then(l => { S.offres = l; if (S.view === 'setup') render(); });
-    if (view === 'quatuors') { Store.listOffres().then(l => { S.offres = l; if (S.view === 'quatuors') render(); }); Store.listQuatuors().then(l => { S.quatuors = l; }); }
+    MODULE.aller(view, opts);
     if (view === 'offre') { S.offre = undefined; S.offreSel = null; }
-    if (view === 'course' && 'editCourse' in opts) { S.cardImgs = []; S.cardStatus = ''; }
-    if (view === 'history' || view === 'live') { S.historyList = null; S.confirmDelGame = null; }
-    if (view === 'setup') { setHeard('Touchez le micro et dites les joueurs et leurs index.'); setReply(''); }
-    if (view === 'game') { setHeard('Appuyez sur le micro et parlez.'); setReply(''); }
     render(); window.scrollTo(0, 0);
   }
 
@@ -740,7 +735,7 @@
     const showDock = false; // plus d'interface vocale
     document.body.classList.toggle('view-game', S.view === 'game');
     $('#dock').hidden = !showDock; document.body.classList.toggle('no-dock', !showDock);
-    const R = { home: vHome, jeux: vJeux, jeuEdit: vJeuEdit, quatuors: vQuatuors, offre: vOffre, setup: vSetup, game: vGame, join: vJoin, history: vHistory, live: vHistory, courses: vCourses, course: vCourse, clubs: vClubs, players: vPlayers, login: vLogin, compte: vCompte, comps: vComps, compEdit: vCompEdit, comp: vComp, compTv: vCompTv }[S.view];
+    const R = { ...MODULE.vues, offre: vOffre, players: vPlayers, login: vLogin, compte: vCompte }[S.view];
     v.innerHTML = R();
     bind[S.view] && bind[S.view](v);
     leoApres();
@@ -1320,7 +1315,7 @@ ${SPORT.bienvenueVous}</ul></section>
       });
     });
   }
-  document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-typepartie]'); if (!t) return; e.preventDefault(); typePartieSheet(); });
+  document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-typepartie]'); if (!t) return; e.preventDefault(); MODULE.nouvellePartie(); });
   document.addEventListener('click', e => {
     const t = e.target.closest && e.target.closest('[data-viral],[data-viralhide],#switchGroup'); if (!t) return;
     e.preventDefault();
@@ -1546,7 +1541,7 @@ ${SPORT.bienvenueVous}</ul></section>
       const reps = offreReps(o), past = Date.now() > o.deadline;
       return `<div class="offre"><div class="offre-h"><b>${esc(o.course)}</b>${o.place ? `<span class="place">${esc(o.place)}</span>` : ''}<small>${past ? 'Réponses fermées' : 'Réponses avant le ' + esc(fmtDay(o.deadline))} · ${reps.length} réponse${reps.length > 1 ? 's' : ''}</small></div>
         ${o.dates.map(dt => { const yes = reps.filter(r => (r.dates || []).includes(dt)).map(r => r.name);
-          return `<div class="offre-d"><div><b>${esc(fmtDate(dt))}</b><span>${yes.length ? esc(yes.join(', ')) : 'Personne pour l’instant'}</span>${yes.length ? `<span class="grp">${esc(groupsText(yes.length))}</span>` : ''}</div><span class="cnt ${yes.length >= 4 ? 'ok' : ''}">${yes.length}</span></div>${yes.length >= 3 && canOrganize() ? `<div class="row offre-acts"><button class="btn small" data-oauto="${esc(o.id)}|${dt}" type="button">Former les groupes</button><button class="btn ghost small" data-oquat="${esc(o.id)}|${dt}" type="button">Manuel</button></div>` : ''}`; }).join('')}
+          return `<div class="offre-d"><div><b>${esc(fmtDate(dt))}</b><span>${yes.length ? esc(yes.join(', ')) : 'Personne pour l’instant'}</span>${yes.length ? `<span class="grp">${esc(MODULE.groupesTexte(yes.length))}</span>` : ''}</div><span class="cnt ${yes.length >= 4 ? 'ok' : ''}">${yes.length}</span></div>${yes.length >= 3 && canOrganize() ? `<div class="row offre-acts"><button class="btn small" data-oauto="${esc(o.id)}|${dt}" type="button">Former les groupes</button><button class="btn ghost small" data-oquat="${esc(o.id)}|${dt}" type="button">Manuel</button></div>` : ''}`; }).join('')}
         ${canOrganize() ? '' : '<!--'}<div class="row"><button class="btn small" data-orem="${esc(o.id)}" type="button">Rappel</button><button class="btn ghost small" data-osms="${esc(o.id)}" type="button">Renvoyer le texto</button><button class="btn ghost small" data-odel="${esc(o.id)}" type="button">${S.confirmDelO === o.id ? 'Confirmer' : 'Retirer'}</button></div>${canOrganize() ? '' : '-->'}</div>`; }).join('');
     const form = f ? `<div class="offre-form">
         <label>Terrain<select id="oCourse">${S.courses.map(c => `<option value="${esc(c.name)}" ${c.name === f.course ? 'selected' : ''}>${esc(c.name)}${c.sim ? ' (simulateur)' : ''}</option>`).join('')}</select></label>
@@ -2256,8 +2251,6 @@ ${SPORT.bienvenueVous}</ul></section>
     if (ad && (ad.state || ad.country)) return { region: [ad.state || ad.county, ad.country].filter(Boolean).join(', '), ville: ad.city || ad.town || ad.village || '' };
     return { region: `environs de ${lat.toFixed(2)}, ${lng.toFixed(2)}`, ville: '' };
   }
-  const P = { admin: false, mine: [], todo: [], charge: false };
-  const BANQUE_MAX = 64;
   // ---- Léo garde les cartes à jour : il revérifie chaque terrain sur le web environ une fois par saison
   const VERIF_JOURS = 300, VERIF_PAR_JOUR = 2;
   const derniereVerif = c => Number(c.verifieLe || c.approuveLe || 0);
@@ -2669,7 +2662,7 @@ ${SPORT.bienvenueVous}</ul></section>
 
   function commonNav(v) {
     v.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go, b.dataset.go === 'setup' ? { draft: null } : b.dataset.go === 'players' ? { pMode: b.dataset.pmode || 'banque' } : b.dataset.go === 'comps' ? { compLive: !!b.dataset.clive } : b.dataset.new ? { editCourse: null } : {}));
-    v.querySelectorAll('[data-open]').forEach(b => b.onclick = () => openGame(b.dataset.open));
+    v.querySelectorAll('[data-open]').forEach(b => b.onclick = () => MODULE.ouvrir(b.dataset.open));
   }
   // ==== src/golf/liaisons.js ====
   // Interactions des écrans du golf
@@ -3429,7 +3422,6 @@ ${SPORT.bienvenueVous}</ul></section>
   }
   // ==== src/golf/presences.js ====
   // ---------------- Présences ----------------
-  const presKey = name => L.norm(name).replace(/[^a-z0-9]+/g, '-');
   function myIndex(g) { const me = L.norm(ls.get('pelland.me', '') || ''); return g.players.findIndex(p => L.norm(p.name) === me); }
   function presenceHtml(g) {
     const pr = S.presence || {}, started = Object.values(g.scores || {}).some(r => (r || []).some(v => v != null));
@@ -4588,26 +4580,82 @@ ${SPORT.bienvenueVous}</ul></section>
     if (h0 === 1 && h1 === 18) return rows(1) + sumRow('Aller', 1, 9) + rows(10) + sumRow('Retour', 10, 18) + sumRow('Total', 1, 18, true);
     return rows(h0) + sumRow('Total', h0, h1, true);
   }
+  // ==== src/golf/module.js ====
+  // =====================================================================
+  // Le module golf, vu du tronc commun : écrans, navigation, données au démarrage, liens d'ouverture
+  // =====================================================================
+  const MODULE = {
+    vues: { home: vHome, jeux: vJeux, jeuEdit: vJeuEdit, quatuors: vQuatuors, setup: vSetup, game: vGame, join: vJoin, history: vHistory, live: vHistory, courses: vCourses, course: vCourse, clubs: vClubs, comps: vComps, compEdit: vCompEdit, comp: vComp, compTv: vCompTv },
+    // Avant de changer d'écran : on arrête de suivre en direct ce qu'on quitte
+    quitter(view) {
+      if (S.unwatch && view !== 'game') { S.unwatch(); S.unwatch = null; S.game = null; }
+      if (S.unwatchPres && view !== 'game') { S.unwatchPres(); S.unwatchPres = null; }
+      if (S.unwatchComp && view !== 'comp' && view !== 'compEdit') { S.unwatchComp(); S.unwatchComp = null; }
+      if (view === 'comps') S.compList = null;
+    },
+    avant(view) {
+      if (view !== 'game' && view !== 'setup' && Voice.wake) Voice.setWake(false);
+    },
+    // Après avoir changé d'écran
+    aller(view, opts) {
+      if (view === 'setup' && !S.offres) Store.listOffres().then(l => { S.offres = l; if (S.view === 'setup') render(); });
+      if (view === 'quatuors') { Store.listOffres().then(l => { S.offres = l; if (S.view === 'quatuors') render(); }); Store.listQuatuors().then(l => { S.quatuors = l; }); }
+      if (view === 'course' && 'editCourse' in opts) { S.cardImgs = []; S.cardStatus = ''; }
+      if (view === 'history' || view === 'live') { S.historyList = null; S.confirmDelGame = null; }
+      if (view === 'setup') { setHeard('Touchez le micro et dites les joueurs et leurs index.'); setReply(''); }
+      if (view === 'game') { setHeard('Appuyez sur le micro et parlez.'); setReply(''); }
+    },
+    // Bouton retour : vrai si le module s'en occupe (sinon : accueil)
+    retour() {
+      if (S.view === 'course') go(S.editCourse && S.editCourse.web ? 'clubs' : S.draft ? 'setup' : 'courses', { editCourse: null });
+      else if (S.view === 'clubs') go('courses');
+      else if (S.view === 'compTv') go('comp');
+      else if (S.view === 'comp' && S.compMatch) { S.compMatch = null; render(); }
+      else if (S.view === 'comp') go('comps');
+      else if (S.view === 'compEdit') { if (S.compDraft && S.compDraft.id) openComp(S.compDraft.id); else go('comps'); }
+      else return false;
+      return true;
+    },
+    phrase(text) { handle(text); },
+    ouvrir(id) { openGame(id); },
+    nouvellePartie() { typePartieSheet(); },
+    groupesTexte(n) { return groupsText(n); },
+    // Démarrage : copie gardée sur l'appareil, puis chargement à jour
+    depuisCopie(snap) {
+      Object.assign(S, { quatuors: snap.quatuors || [], jeux: snap.jeux || [], courses: [...(snap.courses || []), ...(window.QC_COURSES || []).filter(q => !(snap.courses || []).some(c => c.id === q.id) && !(snap.retired || []).includes(q.id))].sort((x, y) => x.name.localeCompare(y.name, 'fr')) });
+    },
+    async charger() {
+      const [courses, quatuors, jeux] = await Promise.all([Store.listCourses().catch(() => []), Store.listQuatuors().catch(() => []), Store.listJeux().catch(() => [])]);
+      return { courses, quatuors, jeux };
+    },
+    garder(d, garde) { Object.assign(S, { courses: garde(d.courses, S.courses), quatuors: garde(d.quatuors, S.quatuors), jeux: garde(d.jeux, S.jeux) }); },
+    ensuite() { setTimeout(chargerPropositions, 1200); },   // terrains proposés : en attente pour le groupe, à approuver pour l'équipe Fanion
+    copie(d) { return { quatuors: d.quatuors, jeux: d.jeux, courses: d.courses.filter(c => !(window.QC_COURSES || []).some(q => q === c)), retired: (Store.retired || []).map(c => c.id) }; },
+    // Ouverture par un lien (?partie=…) ou par le raccourci Siri ; vrai si le module s'en occupe
+    lien(params) {
+      const code = (params.get('partie') || params.get('code') || '').toUpperCase();
+      if (code) openGame(code);
+      else if (params.has('ecoute') || params.has('pelland')) {
+        // Ouverture par le raccourci Siri : reprendre la dernière partie et écouter
+        const last = ls.get('pelland.lastGame', null);
+        if (last) openGame(last); else render();
+      } else return false;
+      return true;
+    },
+  };
   // ==== src/commun/demarrage.js ====
 
   // =====================================================================
   // Démarrage
   // =====================================================================
-  $('#back').onclick = () => {
-    if (S.view === 'course') go(S.editCourse && S.editCourse.web ? 'clubs' : S.draft ? 'setup' : 'courses', { editCourse: null });
-    else if (S.view === 'clubs') go('courses');
-    else if (S.view === 'compTv') go('comp');
-    else if (S.view === 'comp' && S.compMatch) { S.compMatch = null; render(); }
-    else if (S.view === 'comp') go('comps');
-    else if (S.view === 'compEdit') { if (S.compDraft && S.compDraft.id) openComp(S.compDraft.id); else go('comps'); }
-    else go('home');
-  };
+  $('#back').onclick = () => { if (!MODULE.retour()) go('home'); };
+
   $('#acctBtn').onclick = () => { if (S.view !== 'compte') go('compte'); };
   $('#micBtn').onclick = () => Voice.ptt();
   $('#wakeBtn').onclick = () => Voice.setWake(!Voice.wake);
-  $('#typeForm').onsubmit = e => { e.preventDefault(); const t = $('#typeInput').value.trim(); if (t) { $('#typeInput').value = ''; handle(t); } };
+  $('#typeForm').onsubmit = e => { e.preventDefault(); const t = $('#typeInput').value.trim(); if (t) { $('#typeInput').value = ''; MODULE.phrase(t); } };
   $('#typeInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('#typeForm').requestSubmit(); } });
-  Voice.onText = text => handle(text);
+  Voice.onText = text => MODULE.phrase(text);
   if ('speechSynthesis' in window) speechSynthesis.getVoices();
 
   // Réseau perdu / retrouvé : on l'indique ; les scores en attente partent au retour du réseau (Store.flush)
@@ -4641,34 +4689,27 @@ ${SPORT.bienvenueVous}</ul></section>
     const plain = !['partie', 'code', 'offre', 'compte', 'ecoute', 'pelland', 'joueur'].some(k => params0.has(k));
     const snap = plain ? ls.get(snapK, null) : null;
     if (snap && snap.players && snap.players.length) {
-      Object.assign(S, { players: snap.players, quatuors: snap.quatuors || [], jeux: snap.jeux || [], groups: snap.groups || [], courses: [...(snap.courses || []), ...(window.QC_COURSES || []).filter(q => !(snap.courses || []).some(c => c.id === q.id) && !(snap.retired || []).includes(q.id))].sort((x, y) => x.name.localeCompare(y.name, 'fr')) });
+      Object.assign(S, { players: snap.players, groups: snap.groups || [] }); MODULE.depuisCopie(snap);
       render();
     }
-    const [courses, players, quatuors, jeux, groups] = await Promise.all([
-      Store.listCourses().catch(() => []), Store.listPlayers().catch(() => []), Store.listQuatuors().catch(() => []),
-      Store.listJeux().catch(() => []), Store.listGroups().catch(() => [])]);
+    const [donnees, players, groups] = await Promise.all([MODULE.charger(), Store.listPlayers().catch(() => []), Store.listGroups().catch(() => [])]);
     // Hors ligne : la base ne répond pas ; on garde la copie de l'appareil plutôt que des listes vides
     const garde = (v, old) => (v && v.length) || navigator.onLine !== false || !old ? v : old;
-    Object.assign(S, { courses: garde(courses, S.courses), players: garde(players, S.players), quatuors: garde(quatuors, S.quatuors), jeux: garde(jeux, S.jeux), groups: garde(groups, S.groups) });
+    Object.assign(S, { players: garde(players, S.players), groups: garde(groups, S.groups) }); MODULE.garder(donnees, garde);
     setTimeout(chargerRetour, 800);
-    setTimeout(chargerPropositions, 1200);   // terrains proposés : en attente pour le groupe, à approuver pour l'équipe Fanion   // boucle de retour : réponses de l'équipe, nouveautés, sondage (sans retarder l'ouverture)
-    if (navigator.onLine !== false) try { ls.set(snapK, { players, quatuors, jeux, groups, courses: courses.filter(c => !(window.QC_COURSES || []).some(q => q === c)), retired: (Store.retired || []).map(c => c.id), at: Date.now() }); } catch (e) { }
+    MODULE.ensuite();
+    if (navigator.onLine !== false) try { ls.set(snapK, { players, groups, ...MODULE.copie(donnees), at: Date.now() }); } catch (e) { }
     // Groupes créés avant le compteur : on l'initialise une fois avec le nombre de joueurs
     // (le compteur de joueurs est tenu par la base)
     Push.refresh().catch(() => { });
     // Groupes du joueur (sans les groupes supprimés ni archivés pour le lien « Changer de groupe »)
     Store.myGroupList().then(l => { S.myPlayers = l; if (S.view === 'home' && l.some(x => !x.archived && x.gid !== Store.gid)) render(); }).catch(() => { });
     const params = new URLSearchParams(location.search);
-    const code = (params.get('partie') || params.get('code') || '').toUpperCase();
     const offreId = params.get('offre');
     if (params.get('compte')) { history.replaceState(null, '', location.pathname); go('compte', { fromLogin: true }); return; }
     if (curGroup().deleted) { toast('Ce groupe a été supprimé par son propriétaire. Choisissez un autre groupe.'); go('compte', { fromLogin: true }); return; }
     if (offreId) go('offre', { offreId });
-    else if (code) openGame(code);
-    else if (params.has('ecoute') || params.has('pelland')) {
-      // Ouverture par le raccourci Siri : reprendre la dernière partie et écouter
-      const last = ls.get('pelland.lastGame', null);
-      if (last) openGame(last); else render();
-    } else if (!snap || (S.view === 'home' && !document.querySelector('#sheetWrap:not([hidden]), #welcome'))) render();
+    else if (MODULE.lien(params)) { }
+    else if (!snap || (S.view === 'home' && !document.querySelector('#sheetWrap:not([hidden]), #welcome'))) render();
   })();
 })();

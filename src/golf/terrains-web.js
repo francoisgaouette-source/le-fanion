@@ -53,8 +53,6 @@
     if (ad && (ad.state || ad.country)) return { region: [ad.state || ad.county, ad.country].filter(Boolean).join(', '), ville: ad.city || ad.town || ad.village || '' };
     return { region: `environs de ${lat.toFixed(2)}, ${lng.toFixed(2)}`, ville: '' };
   }
-  const P = { admin: false, mine: [], todo: [], charge: false };
-  const BANQUE_MAX = 64;
   // ---- Léo garde les cartes à jour : il revérifie chaque terrain sur le web environ une fois par saison
   const VERIF_JOURS = 300, VERIF_PAR_JOUR = 2;
   const derniereVerif = c => Number(c.verifieLe || c.approuveLe || 0);

@@ -1,5 +1,4 @@
   // ---------------- Présences ----------------
-  const presKey = name => L.norm(name).replace(/[^a-z0-9]+/g, '-');
   function myIndex(g) { const me = L.norm(ls.get('pelland.me', '') || ''); return g.players.findIndex(p => L.norm(p.name) === me); }
   function presenceHtml(g) {
     const pr = S.presence || {}, started = Object.values(g.scores || {}).some(r => (r || []).some(v => v != null));

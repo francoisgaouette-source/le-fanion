@@ -39,8 +39,7 @@
         // Compte relié à aucun joueur : on reste connecté, mais il faut un groupe (invitation ou nouveau groupe)
         const m = await this.ensureMember();
         if (m === false) { this.noGroup = true; this.needLogin = true; }
-        this.flush();
-        window.addEventListener('online', () => this.flush());
+        if (this.flush) { this.flush(); window.addEventListener('online', () => this.flush()); }
       }
     },
     // ---------- Compte (HoldingAI) ----------
@@ -177,7 +176,7 @@
           p_donnees_joueur: { id: pid, name: name.trim(), phoneHint: this.e164.slice(-2), updatedAt: Date.now() } }));
       } else { await this.saveGroup(gr); const list = ls.get('pelland.players', []); list.push({ id: pid, name: name.trim(), groupId: gr.id, authEmail: 'local', acct: 'local' }); ls.set('pelland.players', list); }
       this.setGroup(gr.id); this.needLogin = false; this.noGroup = false; ls.set('pelland.me', name.trim());
-      await this.ensureSeed();
+      if (this.ensureSeed) await this.ensureSeed();
       return gr;
     },
     // Membres du groupe (par défaut) ; avec bank = true, toute la banque de joueurs du groupe (membres et non-membres)
@@ -263,6 +262,14 @@
       }
       ls.set('pelland.players', ls.get('pelland.players', []).filter(x => x.id !== id));
     },
+    _subs: {},
+    _emit(g) { (this._subs[g.id] || []).forEach(cb => cb(g)); },
+    watch(table, col, id, cb) {
+      const ch = this.sb.channel(table + ':' + id + ':' + Math.random().toString(36).slice(2, 7))
+        .on('postgres_changes', { event: '*', schema: 'public', table, filter: col + '=eq.' + id }, p => { if (p.new && Object.keys(p.new).length) cb(p.new); })
+        .subscribe();
+      return () => { try { this.sb.removeChannel(ch); } catch (e) { } };
+    },
     // Présences : { cléJoueur: { ok: true|false, at } } par partie ; chaque membre écrit sa propre réponse
     watchPresence(id, cb) {
       if (this.mode === 'cloud') {
@@ -303,6 +310,11 @@
     async deletePushSub(g) { await this.sb.from('abonnements_push').delete().eq('id', this.uid + '_' + g); },
     async listPushSubs() { return (ok(await this.sb.from('abonnements_push').select('player_id, sub, etat, at').eq('group_id', this.gid)) || []).map(r => ({ playerId: r.player_id, sub: r.sub, etat: r.etat, at: Number(r.at || 0) })); }
   };
+  // Approbateur des terrains (compte) et taille maximale de la banque de joueurs
+  const P = { admin: false, mine: [], todo: [], charge: false };
+  const BANQUE_MAX = 64;
+  const presKey = name => L.norm(name).replace(/[^a-z0-9]+/g, '-');
+  function slug(s) { return L.norm(s).replace(/\s+/g, '-').slice(0, 30) || 'terrain'; }
   const byName = (a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' });
   // Doublons possibles : même nom à une lettre ou deux près (accents, fautes), ou même nom de famille et même initiale.
   function duplicateMap(list) {
