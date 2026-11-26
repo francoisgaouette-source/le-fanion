@@ -4149,7 +4149,7 @@
   // =====================================================================
   // Notifications de l'app (Web Push) : gratuites, envoyées par le serveur Fanion aux membres abonnés du groupe
   // =====================================================================
-  const PUSH_API = 'https://fanion.ai/api/push', PUSH_KEY = 'BMVvjqKa_we_-S3JsTaehS0yuyqp0qQy4fVCXY7Zmk331-qJS54o--bBg4XvThPOPl5ec1fnL1HDj8GL5IwiuR4';
+  const PUSH_API = 'https://fanion.ai/api/push', PUSH_KEY = 'BOTntJP973w0RiGfVtYr4Lh2Edy0_GwQeqtkp4tLXHez-BEiVKdv0DiBHlKY-0WgPi6zOGeKhdbbBmrH6s_JXzU';
   const Push = {
     supported() { return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; },
     // iPhone : les notifications n'existent que pour l'app ajoutée à l'écran d'accueil
@@ -4157,13 +4157,21 @@
     perm() { return 'Notification' in window ? Notification.permission : 'unsupported'; },
     async sub() { try { const r = await navigator.serviceWorker.ready; return await r.pushManager.getSubscription(); } catch (e) { return null; } },
     key() { const s = PUSH_KEY.replace(/-/g, '+').replace(/_/g, '/'); const b = atob(s + '==='.slice((s.length + 3) % 4)); return Uint8Array.from(b, c => c.charCodeAt(0)); },
+    // Abonnement du téléphone avec la clé actuelle (un ancien abonnement fait avec une autre clé est refait)
+    async abonner(reg) {
+      let sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        try { const k = sub.options && sub.options.applicationServerKey; const a = k ? new Uint8Array(k) : null, b = this.key(); if (!a || a.length !== b.length || a.some((x, i) => x !== b[i])) { await sub.unsubscribe(); sub = null; } } catch (e) { }
+      }
+      return sub || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: this.key() });
+    },
     // Abonne ce téléphone ; un document par groupe du compte (subs/<uid>_<groupe>)
     async enable() {
       if (!this.supported()) throw new Error(this.needsInstall() ? 'Ajoutez d’abord l’app à votre écran d’accueil.' : 'Ce navigateur ne reçoit pas les notifications.');
       const p = await Notification.requestPermission();
       if (p !== 'granted') throw new Error('Notifications refusées. Vous pouvez les permettre dans les réglages du téléphone.');
       const reg = await navigator.serviceWorker.ready;
-      const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: this.key() });
+      const sub = await this.abonner(reg);
       await this.save(sub);
       ls.set('pelland.push', 1);
     },
@@ -4200,7 +4208,7 @@
       if (Store.mode !== 'cloud' || !Store.uid) return;
       try {
         const reg = await navigator.serviceWorker.ready;
-        const s = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: this.key() });
+        const s = await this.abonner(reg);
         await this.save(s); ls.set('pelland.push', 1); ls.set('pelland.push.etat', '');
       } catch (e) { this.etatAct = 'a_activer'; }
     },
