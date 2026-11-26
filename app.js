@@ -969,7 +969,7 @@
       ${S.acctGroups.some(x => x.archived) ? `<h3 class="acct-h">Groupes archivés (${S.acctGroups.filter(x => x.archived).length})</h3>
         ${groupRows(S.acctGroups.filter(x => x.archived), S.fromLogin ? null : Store.gid, S.acctGroups)}<p class="note">Un groupe archivé garde ses joueurs, ses parties et ses résultats. Son propriétaire peut le rétablir.</p>` : ''}
       <p class="note">Ce sont les groupes où votre cellulaire est inscrit. Pour en rejoindre un autre, demandez à son organisateur de vous ajouter dans Joueurs.</p>
-      <div class="row acct-actions"><button class="btn ghost small" data-avis type="button">Donner mon avis</button><button class="btn ghost small" data-idee type="button">💡 Une idée ?</button></div>
+      <div class="row acct-actions"><button class="btn ghost small" type="button" data-hai-inviter>💌 Inviter quelqu’un</button><button class="btn ghost small" data-avis type="button">Donner mon avis</button><button class="btn ghost small" data-idee type="button">💡 Une idée ?</button></div>
       <button class="btn ghost danger-txt acct-logout" id="logout2" type="button">Se déconnecter</button>`;
   }
   // Forfait du groupe actif (le propriétaire peut passer au forfait Groupe ou le renouveler)
