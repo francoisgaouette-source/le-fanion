@@ -661,7 +661,7 @@
     $('#back').hidden = S.view === 'home' || S.view === 'login';
     document.body.classList.toggle('tv-mode', S.view === 'compTv');   // écran télé : sans barre ni bouton de Léo
     $('#dbBadge').textContent = !navigator.onLine ? 'Hors ligne' : Store.mode === 'cloud' ? '' : 'Local';
-    // Mon compte : en haut à droite, avec les initiales du joueur
+    // Mon compte : l'ancien bouton aux initiales reste caché ; le visage d'Albert (porte.js) le remplace
     const ab = $('#acctBtn'), acctOk = Store.mode === 'cloud' && !!Store.email && !Store.needLogin && S.view !== 'login';
     ab.hidden = true; $('#ideeBtn').hidden = !acctOk;  // Mon compte : par le menu d'Albert (HoldingAI)
     $('#ideeBtn').classList.toggle('compact', S.view !== 'home'); ab.classList.toggle('on', S.view === 'compte');
