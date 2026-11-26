@@ -731,7 +731,7 @@
     quatuors: { t: 'Parties à préparer', d: 'L’organisateur offre des dates ; l’app voit qui est disponible et forme les quatuors.', you: 'Vous recevez un texto avec un lien : cochez vos dates, c’est tout.' },
     setup: { t: 'Créer une partie', d: 'Terrain, joueurs, équipes, jeu et montants : l’organisateur lance la partie et entre les scores.', you: 'Vous suivez la partie en direct dans Parties en cours.' },
     courses: { t: 'Banque de terrains', d: 'Les terrains du groupe, avec leurs normales, la difficulté de chaque trou et leurs tertres.', you: 'Les coups de handicap de chacun en découlent automatiquement.' },
-    jeux: { t: 'Banque de jeux', d: 'Les règles et les montants de chaque jeu : la game à Pelland, Nassau, Vegas, skins, Wolf…', you: 'Les règles détaillées sont aussi sur fanion.ai/regles.' },
+    jeux: { t: 'Banque de jeux', d: 'Les règles et les montants de chaque jeu : la game à Pelland, Nassau, Vegas, skins, Wolf…', you: 'Les règles détaillées sont aussi sur lefanion.ai/regles.' },
   };
   function lockedSheet(k) {
     const x = LOCKED_INFO[k], org = organizerOf();
@@ -878,7 +878,7 @@
   document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-pickorg]'); if (t) { e.preventDefault(); pickOrganizerSheet(); } });
 
   // Lien d'achat : le site transmet l'identifiant du groupe à Stripe, pour activer le bon groupe
-  function buyUrl() { return 'https://fanion.ai/achat.html?groupe=' + encodeURIComponent(Store.gid) + '&nom=' + encodeURIComponent(groupName()); }
+  function buyUrl() { return 'https://lefanion.ai/achat.html?groupe=' + encodeURIComponent(Store.gid) + '&nom=' + encodeURIComponent(groupName()); }
   // Places qui restent dans le forfait (Gratuit : 4 joueurs ; Groupe : 16)
   function roomLeft() { return planOf().max - (S.players || []).length; }
   function limitSheet(wanted) {
@@ -894,7 +894,7 @@
 
   // Deuxième groupe avec le forfait Gratuit : même offre que pour un 5e joueur
   function deuxiemeGroupeSheet(g) {
-    const url = 'https://fanion.ai/achat.html?groupe=' + encodeURIComponent(g.id) + '&nom=' + encodeURIComponent(g.name || '');
+    const url = 'https://lefanion.ai/achat.html?groupe=' + encodeURIComponent(g.id) + '&nom=' + encodeURIComponent(g.name || '');
     openSheet(`<h3>Passez au forfait Groupe</h3>
       <p>Le forfait Gratuit permet un groupe de 4 joueurs, pour essayer avec un quatuor. Vous avez déjà « ${esc(g.name)} » : pour créer un deuxième groupe, passez-le au forfait Groupe.</p>
       <ul class="info-list"><li>Jusqu’à 16 joueurs</li><li>Dates offertes, disponibilités et quatuors</li><li>Un autre groupe gratuit possible</li><li>49 $ + taxes pour la saison, au prix fondateur</li></ul>
@@ -1091,7 +1091,7 @@
   });
 
   // ---------------- Boucle de retour : idées → équipe (console HoldingAI) → réponse et nouveautés dans l'app, sondage éclair ----------------
-  const RETOUR_API = 'https://fanion.ai/api/retour';
+  const RETOUR_API = 'https://lefanion.ai/api/retour';
   const R = { idees: [], nouveautes: [], sondageDernier: null, charge: false, sondage: null };
   const JOUR = 864e5;
   const STATUT_IDEE = { recue: ['Reçue', ''], etudiee: ['À l’étude', 'etude'], prevue: ['Prévue', 'prevue'], faite: ['Faite ✓', 'faite'], non: ['Pas pour l’instant', 'non'] };
@@ -2141,7 +2141,7 @@
         <div class="list">${Store.retired.map(c => `<div class="item"><b>${esc(c.name)}</b>${isProprio() ? `<button class="btn ghost small" data-unretire="${esc(c.id)}" type="button">Remettre</button>` : ''}</div>`).join('')}</div></section>` : ''}`;
   }
   // ---------------- Terrains trouvés sur le web : région → clubs → carte préparée → révision et approbation ----------------
-  const TERRAINS_API = 'https://fanion.ai/api/terrains';
+  const TERRAINS_API = 'https://lefanion.ai/api/terrains';
   const REGIONS_QC = ['Montréal', 'Laval', 'Laurentides', 'Lanaudière', 'Montérégie', 'Cantons-de-l’Est', 'Centre-du-Québec', 'Mauricie', 'Québec (Capitale-Nationale)', 'Charlevoix', 'Chaudière-Appalaches', 'Outaouais', 'Abitibi-Témiscamingue', 'Saguenay–Lac-Saint-Jean', 'Bas-Saint-Laurent', 'Gaspésie', 'Côte-Nord'];
   const W = { region: null, clubs: [], sources: [], charge: false, err: '', prep: null };
   const normNom = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/club de golf|golf club|club|golf|le |la |les |du |de |des |d’|d'/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -4146,11 +4146,11 @@
     }
   });
 
-  const SMS_API = 'https://fanion.ai/api/sms';
+  const SMS_API = 'https://lefanion.ai/api/sms';
   // =====================================================================
   // Notifications de l'app (Web Push) : gratuites, envoyées par le serveur Fanion aux membres abonnés du groupe
   // =====================================================================
-  const PUSH_API = 'https://fanion.ai/api/push', PUSH_KEY = 'BOTntJP973w0RiGfVtYr4Lh2Edy0_GwQeqtkp4tLXHez-BEiVKdv0DiBHlKY-0WgPi6zOGeKhdbbBmrH6s_JXzU';
+  const PUSH_API = 'https://lefanion.ai/api/push', PUSH_KEY = 'BOTntJP973w0RiGfVtYr4Lh2Edy0_GwQeqtkp4tLXHez-BEiVKdv0DiBHlKY-0WgPi6zOGeKhdbbBmrH6s_JXzU';
   const Push = {
     supported() { return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; },
     // iPhone : les notifications n'existent que pour l'app ajoutée à l'écran d'accueil
@@ -4240,7 +4240,7 @@
     render();
   });
   // ---------------- Le Caddie : l'agent qui répond aux questions (API Claude, par le serveur Fanion) ----------------
-  const CADDIE_API = 'https://fanion.ai/api/caddie';
+  const CADDIE_API = 'https://lefanion.ai/api/caddie';
   const SCREENS = { home: 'Accueil', players: 'Inviter des joueurs', quatuors: 'Parties à préparer', setup: 'Créer une partie', jeux: 'Banque de jeux', courses: 'Banque de terrains', live: 'Parties en cours', history: 'Parties et compétitions jouées', comps: 'Banque de compétitions', compte: 'Mon compte' };
   let caddieReady = null;
   async function caddieStatus() {

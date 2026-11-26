@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 Disallow: /merci.html
-Sitemap: https://fanion.ai/sitemap.xml
+Sitemap: https://lefanion.ai/sitemap.xml

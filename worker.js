@@ -6,7 +6,9 @@
 // Sécurité : seuls les membres connectés peuvent texter, et seulement les numéros de leur propre groupe. Maximum 30 numéros par envoi.
 // Connexion : compte HoldingAI (jeton de compte.holdingai.app), lu dans Supabase « Le Fanion » avec le jeton du membre (règles RLS).
 
-const ORIGINS = ['https://francoisgaouette-source.github.io', 'https://fanion.ai', 'https://www.fanion.ai', 'https://app.fanion.ai'];
+const ORIGINS = ['https://francoisgaouette-source.github.io', 'https://lefanion.ai', 'https://www.lefanion.ai', 'https://app.lefanion.ai',
+  // Anciennes adresses : encore acceptées pendant la transition vers lefanion.ai
+  'https://fanion.ai', 'https://www.fanion.ai', 'https://app.fanion.ai'];
 const MAX_TO = 30, MAX_LEN = 1200;
 
 const cors = origin => ({
@@ -175,7 +177,7 @@ LES JEUX (tout au net, avec handicap ; montants par joueur)
 - Sixes : équipes qui changent tous les 6 trous ; chaque tranche vaut la mise.
 - 9 points (3 joueurs) : 5-3-1 par trou ; égalités 4-4-1, 5-2-2, 3-3-3 ; différence de points × montant avec chaque joueur.
 - Jeux maison : dans Les jeux, « Ajouter un jeu ».
-Les règles détaillées sont sur fanion.ai/regles/.`;
+Les règles détaillées sont sur lefanion.ai/regles/.`;
 
 // Console HoldingAI : reçoit les questions posées au Caddie (le jeton HoldingAI du membre y est revérifié)
 const JOURNAL_CADDIE = 'https://gandliltstmtfsmsjaew.supabase.co/functions/v1/journal-caddie';
@@ -249,7 +251,7 @@ Réponds par : {"clubs":[{"nom":"Club de golf …","ville":"…","parcours":[{"n
 }
 async function typeCarte(u) {
   try {
-    const r = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FanionBot/1.0; +https://fanion.ai)', Accept: 'image/*,application/pdf' }, redirect: 'follow', cf: { cacheTtl: 86400 } });
+    const r = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FanionBot/1.0; +https://lefanion.ai)', Accept: 'image/*,application/pdf' }, redirect: 'follow', cf: { cacheTtl: 86400 } });
     const t = (r.headers.get('content-type') || '').toLowerCase(); try { r.body && r.body.cancel(); } catch (e) { }
     if (!r.ok) return null;
     return /^image\/(jpeg|png|webp|gif)/.test(t) ? 'image' : /application\/pdf/.test(t) ? 'pdf' : null;
@@ -261,7 +263,7 @@ async function signe(env, u) {
   const s = new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(u)));
   return btoa(String.fromCharCode(...s.slice(0, 18))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
-async function carteVue(env, u) { return 'https://fanion.ai/api/terrains/carte?u=' + encodeURIComponent(u) + '&s=' + await signe(env, u); }
+async function carteVue(env, u) { return 'https://lefanion.ai/api/terrains/carte?u=' + encodeURIComponent(u) + '&s=' + await signe(env, u); }
 async function carteClub(env, { nom, ville, parcours, region }) {
   const auQc = !region || REGIONS_QC.includes(region), lieu = auQc ? 'Québec' : region;
   const qui = `${nom}${parcours ? ' – parcours « ' + parcours + ' »' : ''}${ville ? ' (' + ville + ', ' + lieu + ')' : ' (' + lieu + ')'}`;
@@ -294,6 +296,13 @@ Réponds par : {"name":"…","city":"…","holes":[{"par":4,"si":7}, … 18 trou
 
 export default {
   async fetch(req, env, ctx) {
+    // Déménagement vers lefanion.ai (même structure que les autres apps de L'Établi) :
+    // les pages de l'ancien domaine redirigent pour de bon; l'API /api/ répond encore sur les deux.
+    {
+      const u = new URL(req.url), h = u.hostname;
+      const cible = h === 'app.fanion.ai' ? 'app.lefanion.ai' : (h === 'fanion.ai' || h === 'www.fanion.ai') ? 'lefanion.ai' : h === 'www.lefanion.ai' ? 'lefanion.ai' : null;
+      if (cible && (h === 'app.fanion.ai' || !u.pathname.startsWith('/api/'))) return Response.redirect('https://' + cible + u.pathname + u.search, 301);
+    }
     const url = new URL(req.url), origin = req.headers.get('Origin') || '';
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(req);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(origin) });
@@ -327,9 +336,9 @@ export default {
     if (url.pathname === '/api/terrains/carte' && req.method === 'GET') {
       const u = url.searchParams.get('u') || '', s = url.searchParams.get('s') || '';
       if (!/^https?:\/\//i.test(u) || !s || s !== await signe(env, u)) return new Response('Lien invalide', { status: 403 });
-      const cache = caches.default, ck = new Request('https://fanion.ai/__carte/' + encodeURIComponent(u).slice(0, 900));
+      const cache = caches.default, ck = new Request('https://lefanion.ai/__carte/' + encodeURIComponent(u).slice(0, 900));
       const hit = await cache.match(ck); if (hit) return hit;
-      let r; try { r = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FanionBot/1.0; +https://fanion.ai)', Accept: 'image/*,application/pdf' }, redirect: 'follow' }); } catch (e) { return new Response('Carte introuvable', { status: 502 }); }
+      let r; try { r = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; FanionBot/1.0; +https://lefanion.ai)', Accept: 'image/*,application/pdf' }, redirect: 'follow' }); } catch (e) { return new Response('Carte introuvable', { status: 502 }); }
       const t = (r.headers.get('content-type') || '').toLowerCase(), n = Number(r.headers.get('content-length') || 0);
       if (!r.ok || !/^(image\/(jpeg|png|webp|gif)|application\/pdf)/.test(t) || n > 15e6) return new Response('Carte introuvable', { status: 404 });
       const buf = await r.arrayBuffer(); if (buf.byteLength > 15e6) return new Response('Trop gros', { status: 413 });
@@ -349,7 +358,7 @@ export default {
       if (data.action === 'carte' && String(data.nom || '').trim().length < 3) return json({ error: 'Nom du club manquant.' }, 400, origin);
       if (!['region', 'carte'].includes(data.action)) return json({ error: 'Action inconnue.' }, 400, origin);
       // Mémoire de 14 jours : la même région ou la même carte ne relance pas la recherche
-      const cache = caches.default, ck = new Request('https://fanion.ai/__terrains/' + encodeURIComponent(cle.slice(0, 200)));
+      const cache = caches.default, ck = new Request('https://lefanion.ai/__terrains/' + encodeURIComponent(cle.slice(0, 200)));
       if (!data.frais) { const hit = await cache.match(ck); if (hit) return json(await hit.json(), 200, origin); }
       if (tooMany('terrains:' + (who.user_id || who.sub))) return json({ error: 'Beaucoup de recherches d’un coup : réessayez dans quelques minutes.' }, 429, origin);
       try {

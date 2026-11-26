@@ -2,7 +2,7 @@
 
 Projet Supabase **Le Fanion** (`iuoaiambosdpsvsymupz`, ca-central-1), créé le 24 novembre 2026.
 `schema.sql` contient tout : tables, règles de sécurité (RLS), déclencheurs et fonctions. Il est déjà appliqué.
-Depuis le 25 novembre 2026, l'app en ligne (app.fanion.ai, branche `main`) utilise Supabase et le compte HoldingAI.
+Depuis le 25 novembre 2026, l'app en ligne (app.lefanion.ai, branche `main`) utilise Supabase et le compte HoldingAI.
 
 ## Connexion
 La personne se connecte avec son **compte HoldingAI** (Third-Party Auth, Custom OIDC). Dans la base,
@@ -48,13 +48,13 @@ Faite, pas encore en ligne (`main` reste sur Firebase) :
 - `supabase/console/` : nouvelles versions de `retour-fanion` et `journal-caddie` (projet Notre épicerie) qui acceptent aussi les jetons HoldingAI. À déployer.
 
 ## Fait le 25 novembre 2026 (suite)
-- Client OAuth « Le Fanion » créé dans HoldingAI Compte (`e075c09b-a84c-453b-9ca1-19c3800af8ae`, public, retour `https://app.fanion.ai/`), noté dans `config.js` et la table `apps`.
+- Client OAuth « Le Fanion » créé dans HoldingAI Compte (`e075c09b-a84c-453b-9ca1-19c3800af8ae`, public, retour `https://app.lefanion.ai/`), noté dans `config.js` et la table `apps`.
 - Le Fanion > Third-Party Auth : Custom OIDC, émetteur `https://wwakxuzuhmdmweluafiz.supabase.co/auth/v1`.
 - `retour-fanion` et `journal-caddie` (Notre épicerie) déployées : elles acceptent les jetons HoldingAI et Firebase.
 - Données Firestore : **pas de migration** (décision de François). Les groupes repartent de zéro sur Supabase.
 
 ## Bascule faite (25 novembre 2026)
-- `main` est sur Supabase + HoldingAI (GitHub Pages sert app.fanion.ai). Vérifié : connexion, retour, écran « Créer un groupe ».
+- `main` est sur Supabase + HoldingAI (GitHub Pages sert app.lefanion.ai). Vérifié : connexion, retour, écran « Créer un groupe ».
 - Vue iPhone sur ordinateur : la connexion navigue la fenêtre entière (`holdingai.js`), sinon la page de compte refusait de s'afficher dans le cadre.
 - Firebase retiré du code : `firebase-config.js` et `firestore.rules` supprimés, `worker.js` n'accepte plus que les jetons HoldingAI et ne lit plus Firestore, messages d'erreur et page de confidentialité corrigés, aide de Léo mise à jour (connexion HoldingAI).
 

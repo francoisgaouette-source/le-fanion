@@ -25,7 +25,7 @@ Dans Stripe : Liens de paiement → Nouveau :
 2. Taxes : ajoutez les taux TPS et TVQ créés plus haut.
 3. Champs personnalisés : ajoutez un champ texte « Nom de votre groupe » (obligatoire).
 4. Options : demander le nom et le courriel du client ; limiter l’adresse au Canada.
-5. Après le paiement : « Rediriger vers votre site » → l’adresse de `merci.html` (ex. `https://fanion.ai/merci.html`).
+5. Après le paiement : « Rediriger vers votre site » → l’adresse de `merci.html` (ex. `https://lefanion.ai/merci.html`).
 6. Reçus : dans Paramètres → Courriels clients, activez l’envoi des reçus de paiement.
 
 Copiez le lien obtenu (il commence par `https://buy.stripe.com/`).
@@ -57,4 +57,4 @@ Le bouton « Passer au Groupe » de l'app ouvre la page Acheter avec l'identifia
 ## Parrainage et affiches
 
 - Chaque propriétaire partage son lien depuis l'accueil de l'app (`?ref=<groupe>`). Les groupes créés avec ce lien portent le champ `ref` dans leur document `_groupe_`.
-- Pour un centre de simulateurs : ouvrez `fanion.ai/affiche.html`, entrez le nom du centre et un code (ex. `vieux-port`), puis imprimez. Les groupes créés à partir de l'affiche portent `ref: "vieux-port"`.
+- Pour un centre de simulateurs : ouvrez `lefanion.ai/affiche.html`, entrez le nom du centre et un code (ex. `vieux-port`), puis imprimez. Les groupes créés à partir de l'affiche portent `ref: "vieux-port"`.
