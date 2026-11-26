@@ -5,7 +5,7 @@ window.APP_CONFIG = {
   supabaseKey: "sb_publishable_RXZGbjuF6U5Fgu5Kdo1LBQ_Jv6xKnZ6",
   // Compte HoldingAI (compte.holdingai.app) : client OAuth de l'échange.ai dans le projet Supabase « HoldingAI Compte »
   HOLDINGAI: {
-    clientId: "",
+    clientId: "b1756be4-dd0b-426b-b3c7-46ed9e031595",
     app: "lechange",
     retour: "https://app.lechange.ai/"
   }
