@@ -39,9 +39,17 @@ Création de groupe, compteur de joueurs, un seul groupe gratuit, fusion des pr�
 liaison par cellulaire, forfait protégé, seul le propriétaire ajoute des joueurs, partie protégée et reprise,
 un étranger ne voit aucun joueur, téléphone ni partie.
 
+## Branche `supabase-holdingai` (25 novembre 2026)
+Faite, pas encore en ligne (`main` reste sur Firebase) :
+- Connexion : « Continuer avec HoldingAI » (`holdingai.js` version 2, identique aux autres apps), menu d'Albert (`porte.js`), plus de codes texto ni de mots de passe Fanion.
+- Couche `Store` de `app.js` réécrite pour Supabase (`config.js`). Hors ligne : les parties sont gardées sur le téléphone et envoyées au retour du réseau (file `fanion.file`).
+- Fonctions ajoutées à la base : `joueur_maj`, `groupe_maj`, `groupe_etat`, `donnees_maj`, `offre_maj`, `comp_fusion`, `partie_enregistrer`, `mes_groupes` (migration `fonctions_app_fusions`), testées avec des comptes simulés.
+- `worker.js` accepte les jetons HoldingAI (textos, notifications, Léo, retour) et lit Supabase ; les jetons Firebase restent acceptés pendant la transition.
+- `supabase/console/` : nouvelles versions de `retour-fanion` et `journal-caddie` (projet Notre épicerie) qui acceptent aussi les jetons HoldingAI. À déployer.
+
 ## Reste à faire
-1. Brancher HoldingAI : client OAuth dans HoldingAI Compte + Custom OIDC dans ce projet.
-2. Réécrire la couche `Store` de `app.js` (≈ 90 appels Firestore) et ajouter une mémoire locale pour le mode hors ligne.
-3. Adapter `worker.js` (jetons HoldingAI, lecture Supabase).
-4. Exporter Firestore et importer les données; relier les comptes par cellulaire.
-5. Basculer, garder Firebase en lecture seule quelques semaines, puis le supprimer (et corriger la page de confidentialité).
+1. Créer le client OAuth « Le Fanion » dans HoldingAI Compte (adresse de retour `https://app.fanion.ai/`), mettre son Client ID dans `config.js` et dans la table `apps`.
+2. Le Fanion > Authentication > Third-Party Auth : Custom OIDC, émetteur `https://wwakxuzuhmdmweluafiz.supabase.co/auth/v1`.
+3. Déployer `supabase/console/*` dans Notre épicerie.
+4. Exporter Firestore et importer les données (clé de compte de service Firebase, à effacer ensuite) ; relier les idées de la console (`fanion_idees.qui`) aux nouveaux comptes.
+5. Fusionner la branche dans `main` (bascule), garder Firebase en lecture seule quelques semaines, puis le supprimer (et corriger la page de confidentialité).

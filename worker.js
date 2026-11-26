@@ -3,8 +3,9 @@
 //   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM (ex. +15145550000)
 //   ANTHROPIC_API_KEY (le Caddie : l'agent qui répond aux questions dans l'app)
 //   VAPID_PRIVATE_JWK (notifications de l'app : clé privée VAPID, format JWK)
-// Sécurité : seuls les membres connectés (jeton Firebase) peuvent texter, et seulement les numéros
-// de leur propre groupe (collection Firestore « phones », champ groupId). Maximum 30 numéros par envoi.
+// Sécurité : seuls les membres connectés peuvent texter, et seulement les numéros de leur propre groupe. Maximum 30 numéros par envoi.
+// Connexion : compte HoldingAI (jeton de compte.holdingai.app), lu dans Supabase « Le Fanion » avec le jeton du membre (règles RLS).
+// Les jetons Firebase des anciennes versions de l'app restent acceptés pendant la transition (données Firestore).
 
 const PROJECT = 'pelland';
 const ORIGINS = ['https://francoisgaouette-source.github.io', 'https://fanion.ai', 'https://www.fanion.ai', 'https://app.fanion.ai'];
@@ -18,7 +19,34 @@ const cors = origin => ({
 });
 const json = (obj, status, origin) => new Response(JSON.stringify(obj), { status, headers: { 'Content-Type': 'application/json', ...cors(origin) } });
 
-// --- Vérification du jeton Firebase (RS256) ---
+// --- Compte HoldingAI : jeton signé par HoldingAI Compte (clés publiques JWKS) ---
+const HAI_ISS = 'https://wwakxuzuhmdmweluafiz.supabase.co/auth/v1';
+const SB = 'https://iuoaiambosdpsvsymupz.supabase.co', SB_KEY = 'sb_publishable_OyJAYcd00NPMK0_yiW54dA_ySQhECPK';
+let HKEYS = null, HKEYS_AT = 0;
+async function haiKeys() {
+  if (HKEYS && Date.now() - HKEYS_AT < 3600e3) return HKEYS;
+  const r = await fetch(HAI_ISS + '/.well-known/jwks.json');
+  HKEYS = (await r.json()).keys || []; HKEYS_AT = Date.now(); return HKEYS;
+}
+async function verifyHai(h, p, sig, head, pay) {
+  const jwk = (await haiKeys()).find(k => k.kid === head.kid); if (!jwk) throw new Error('clé inconnue');
+  const ec = jwk.kty === 'EC';
+  const key = await crypto.subtle.importKey('jwk', jwk, ec ? { name: 'ECDSA', namedCurve: jwk.crv || 'P-256' } : { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
+  const ok = await crypto.subtle.verify(ec ? { name: 'ECDSA', hash: 'SHA-256' } : 'RSASSA-PKCS1-v1_5', key, b64u(sig), new TextEncoder().encode(h + '.' + p));
+  if (!ok || pay.exp < Date.now() / 1000 || !pay.sub) throw new Error('jeton invalide');
+  return { ...pay, kind: 'hai' };
+}
+// Lecture dans Supabase avec le jeton du membre (donc selon les règles de la base)
+async function sbGet(tok, path) {
+  const r = await fetch(SB + '/rest/v1/' + path, { headers: { apikey: SB_KEY, Authorization: 'Bearer ' + tok } });
+  if (!r.ok) throw new Error('lecture refusée'); return r.json();
+}
+async function haiGroup(tok, uid) {
+  const l = await sbGet(tok, 'liens?select=group_id&uid=eq.' + encodeURIComponent(uid));
+  if (!l.length) throw new Error('membre sans groupe'); return l[0].group_id;
+}
+
+// --- Vérification du jeton : HoldingAI, ou Firebase (RS256) pendant la transition ---
 let KEYS = null, KEYS_AT = 0;
 async function googleKeys() {
   if (KEYS && Date.now() - KEYS_AT < 3600e3) return KEYS;
@@ -29,6 +57,7 @@ const b64u = s => { s = s.replace(/-/g, '+').replace(/_/g, '/'); s += '='.repeat
 async function verifyToken(tok) {
   const [h, p, sig] = (tok || '').split('.'); if (!sig) throw new Error('jeton manquant');
   const head = JSON.parse(new TextDecoder().decode(b64u(h))), pay = JSON.parse(new TextDecoder().decode(b64u(p)));
+  if (pay.iss === HAI_ISS) return verifyHai(h, p, sig, head, pay);
   const jwk = (await googleKeys()).find(k => k.kid === head.kid); if (!jwk) throw new Error('clé inconnue');
   const key = await crypto.subtle.importKey('jwk', jwk, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['verify']);
   const ok = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, b64u(sig), new TextEncoder().encode(h + '.' + p));
@@ -40,7 +69,11 @@ async function verifyToken(tok) {
 
 // --- Numéros du groupe du membre (lus avec son jeton, donc selon les règles Firestore) ---
 const FS = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents`;
-async function knownPhones(tok, uid) {
+async function knownPhones(tok, uid, who) {
+  if (who && who.kind === 'hai') {
+    const g = await haiGroup(tok, uid);
+    return new Set((await sbGet(tok, 'telephones?select=phone&group_id=eq.' + encodeURIComponent(g))).map(x => String(x.phone || '').replace(/\D/g, '').slice(-10)).filter(Boolean));
+  }
   const a = await fetch(`${FS}/auth/${uid}`, { headers: { Authorization: 'Bearer ' + tok } });
   if (!a.ok) throw new Error('membre sans groupe');
   const g = (((await a.json()).fields || {}).groupId || {}).stringValue; if (!g) throw new Error('membre sans groupe');
@@ -108,7 +141,18 @@ async function sendPush(env, sub, data) {
 }
 
 // Envoie une notification aux membres d'un groupe abonnés (subs/<uid>_<groupe>), sauf à l'expéditeur
-async function pushGroup(env, tok, uid, data) {
+async function pushGroup(env, tok, uid, data, who) {
+  if (who && who.kind === 'hai') {
+    const g = await haiGroup(tok, uid);
+    if (g !== data.groupId) throw new Error('groupe non autorisé');
+    const only = Array.isArray(data.playerIds) && data.playerIds.length ? new Set(data.playerIds) : null;
+    const membres = new Set((await sbGet(tok, 'joueurs?select=id&group_id=eq.' + encodeURIComponent(g))).map(x => x.id));
+    const subs = (await sbGet(tok, 'abonnements_push?select=uid,player_id,sub&group_id=eq.' + encodeURIComponent(g)))
+      .map(x => ({ uid: x.uid, playerId: x.player_id, sub: x.sub })).filter(x => x.sub && x.sub.endpoint && x.uid !== uid && (!only || only.has(x.playerId)) && membres.has(x.playerId));
+    const msg = { title: String(data.title || 'le fanion.ai').slice(0, 80), body: String(data.body || '').slice(0, 240), url: String(data.url || './').slice(0, 300), tag: data.tag ? String(data.tag).slice(0, 60) : undefined };
+    const res = await Promise.all(subs.map(x => sendPush(env, x.sub, msg).catch(() => 0)));
+    return { sent: res.filter(s => s >= 200 && s < 300).length, total: subs.length, gone: res.filter(s => s === 404 || s === 410).length };
+  }
   const a = await fetch(`${FS}/auth/${uid}`, { headers: { Authorization: 'Bearer ' + tok } });
   if (!a.ok) throw new Error('membre sans groupe');
   const g = (((await a.json()).fields || {}).groupId || {}).stringValue;
@@ -207,6 +251,11 @@ async function caddie(env, messages) {
 
 // --- Avis des joueurs publiés sur fanion.ai : seulement ceux approuvés (approved: true, ajouté dans la console) et consentis (ok: true) ---
 async function avisPublies() {
+  try {
+    const r = await fetch(SB + '/rest/v1/avis?select=stars,text,name,group_name,at&approved=eq.true&ok=eq.true&order=at.desc&limit=30', { headers: { apikey: SB_KEY } });
+    const l = r.ok ? await r.json() : [];
+    if (l.length) return l.filter(f => f.text).map(f => ({ stars: Math.max(1, Math.min(5, +f.stars || 5)), text: String(f.text).slice(0, 280), name: String(f.name || '').slice(0, 40), groupName: String(f.group_name || '').slice(0, 60), at: +f.at || 0 }));
+  } catch (e) { }
   const body = { structuredQuery: { from: [{ collectionId: 'avis' }], where: { fieldFilter: { field: { fieldPath: 'approved' }, op: 'EQUAL', value: { booleanValue: true } } }, limit: 30 } };
   const r = await fetch(`https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents:runQuery`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!r.ok) return [];
@@ -316,7 +365,7 @@ export default {
       const uid = who.user_id || who.sub;
       if (tooMany('push:' + uid)) return json({ error: 'Trop de notifications d’un coup.' }, 429, origin);
       let data; try { data = await req.json(); } catch (e) { return json({ error: 'requête invalide' }, 400, origin); }
-      try { return json(await pushGroup(env, tk, uid, data), 200, origin); } catch (e) { return json({ error: e.message }, 403, origin); }
+      try { return json(await pushGroup(env, tk, uid, data, who), 200, origin); } catch (e) { return json({ error: e.message }, 403, origin); }
     }
     if (url.pathname === '/api/retour' && req.method === 'POST') {
       const tk = (req.headers.get('Authorization') || '').replace(/^Bearer /, '');
@@ -390,7 +439,7 @@ export default {
     const to = [...new Set((data.to || []).map(n => String(n).replace(/\D/g, '').slice(-10)).filter(n => n.length === 10))];
     if (!body || !to.length) return json({ error: 'message ou numéros manquants' }, 400, origin);
     if (to.length > MAX_TO) return json({ error: `maximum ${MAX_TO} numéros par envoi` }, 400, origin);
-    let known; try { known = await knownPhones(tok, who.user_id || who.sub); } catch (e) { return json({ error: e.message }, 403, origin); }
+    let known; try { known = await knownPhones(tok, who.user_id || who.sub, who); } catch (e) { return json({ error: e.message }, 403, origin); }
     const sent = [], failed = [];
     for (const n of to) {
       if (!known.has(n)) { failed.push({ to: n, error: 'numéro hors du groupe' }); continue; }

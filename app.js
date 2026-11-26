@@ -11,270 +11,249 @@
   };
 
   // =====================================================================
-  // Base de données : Firebase si configuré, sinon stockage local
+  // Base de données : Supabase (projet « Le Fanion ») avec le compte HoldingAI ; sinon stockage local
+  // Connexion : « Continuer avec HoldingAI » (holdingai.js). La base reçoit le jeton HoldingAI ; ses règles lisent
+  // auth.jwt()->>'sub' (le compte) et son cellulaire confirmé. Voir supabase/LISEZMOI.md.
+  // Hors ligne : les parties sont gardées sur le téléphone et envoyées au retour du réseau (file d'attente).
   // =====================================================================
+  const CFG = window.FANION_CONFIG || window.APP_CONFIG || {};
+  // Lignes de la base → objets de l'app (mêmes champs qu'avec Firestore)
+  const rowGroupe = r => ({ ...(r.data || {}), id: r.id, owner: r.owner || '', organizers: r.organizers || [], ...(r.plan ? { plan: r.plan } : {}),
+    ...(r.paid_until ? { paidUntil: Number(r.paid_until) } : {}), ...(r.max_joueurs ? { maxJoueurs: r.max_joueurs } : {}),
+    nPlayers: r.n_players, archived: !!r.archived, deleted: !!r.deleted });
+  const rowJoueur = r => ({ ...(r.data || {}), id: r.id, groupId: r.group_id, ...(r.acct ? { acct: r.acct } : {}), ...(r.auth_email ? { authEmail: r.auth_email } : {}) });
+  const ok = ({ data, error }) => { if (error) throw Object.assign(new Error(error.message || 'Erreur de la base'), { code: error.code }); return data; };
   const Store = {
-    mode: 'local', uid: null, db: null, error: '',
+    mode: 'local', uid: null, sb: null, error: '',
     async init() {
-      const cfg = window.PELLAND_FIREBASE;
-      if (!cfg || !cfg.apiKey) this.error = 'Le fichier firebase-config.js en ligne ne contient pas de clé (apiKey vide). Remplacez-le sur GitHub.';
-      else if (typeof firebase === 'undefined') this.error = 'Les outils Firebase n\'ont pas pu se charger (réseau ou bloqueur de contenu).';
-      if (cfg && cfg.apiKey && typeof firebase !== 'undefined') {
+      if (!CFG.supabaseUrl || !window.supabase || !window.HoldingAI) {
+        this.error = !window.supabase ? 'Les outils de la base n’ont pas pu se charger (réseau ou bloqueur de contenu).' : 'Configuration manquante (config.js).';
+      } else {
         try {
-          firebase.initializeApp(cfg);
-          this.cfg = cfg;
-          this.db = firebase.firestore();
-          // Connexion des membres : nom + numéro de téléphone (compte Firebase « courriel / mot de passe »)
-          const user = await new Promise(res => { const off = firebase.auth().onAuthStateChanged(u => { off(); res(u); }); });
-          if (user && !user.isAnonymous) this.setUser(user);
-          else { if (user && user.isAnonymous) { try { await firebase.auth().signOut(); } catch (e) { } } this.needLogin = true; }
-          try { await this.db.enablePersistence({ synchronizeTabs: true }); } catch (e) { /* déjà active ou non supportée */ }
-          this.mode = 'firebase';
-        } catch (e) {
-          console.error(e);
-          const c = (e && e.code) || '';
-          this.error = c === 'auth/admin-restricted-operation' || c === 'auth/operation-not-allowed'
-            ? 'La connexion « Email/Password » n\'est pas activée dans Firebase (Authentication → Sign-in method).'
-            : c === 'auth/unauthorized-domain' || /domain/i.test(e.message || '')
-            ? 'Le domaine francoisgaouette-source.github.io n\'est pas dans Authentication → Settings → Authorized domains.'
-            : /referer|referrer|API key|api-key|blocked/i.test((e && e.message) || '')
-            ? 'La clé Firebase est restreinte et refuse ce site. Vérifiez les « Website restrictions » de la clé dans Google Cloud.'
-            : 'Erreur Firebase : ' + (c || '') + ' ' + ((e && e.message) || e);
-          toast('Base partagée injoignable : mode local.');
-        }
+          this.sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, { accessToken: async () => (await HoldingAI.jeton()) || null });
+          this.mode = 'cloud';
+          // Le compte suit : sans session, on passe chez Albert (compte.holdingai.app), qui ramène la personne connectée
+          const dep = await HoldingAI.demarrer({ obligatoire: true });
+          if (dep.redirection) { this.redirecting = true; return; }
+          if (dep.erreur) toast(dep.erreur.message);
+          // Hors ligne sur le terrain avec un jeton expiré : on garde le compte connu (le jeton sera renouvelé au retour du réseau)
+          if (!dep.session && navigator.onLine === false) { try { const j = JSON.parse(localStorage.getItem('hai.jetons') || 'null'), c = j && j.access && JSON.parse(decodeURIComponent(escape(atob(j.access.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))))); if (c && c.sub) dep.session = { uid: c.sub, phone: c.phone || '', email: c.email || '', nom: (c.user_metadata || {}).nom || '' }; } catch (e) { } }
+          if (dep.session) this.setUser(dep.session); else this.needLogin = true;
+        } catch (e) { console.error(e); this.mode = 'local'; this.error = 'Base injoignable : ' + (e.message || e); toast('Base partagée injoignable : mode local.'); }
       }
       if (this.mode === 'local') {
         this.uid = ls.get('pelland.uid', null) || ('local-' + Math.random().toString(36).slice(2, 10));
         ls.set('pelland.uid', this.uid);
       }
-      if (this.mode === 'firebase' && !this.needLogin) {
-        // Compte qui n'est plus relié à aucun joueur (ex. numéro changé depuis) : on revient à l'écran de connexion
-        if (await this.ensureMember() === false) { try { await firebase.auth().signOut(); } catch (e) { } this.uid = null; this.email = null; this.needLogin = true; }
-        // Mises à jour ponctuelles des anciennes données : en arrière-plan, sans retarder l'ouverture
-        else setTimeout(async () => { try { await this.migrateGroups(); await this.migrateData(); await this.migratePhones(); } catch (e) { } }, 1500);
+      if (this.mode === 'cloud' && !this.needLogin) {
+        // Compte relié à aucun joueur : on reste connecté, mais il faut un groupe (invitation ou nouveau groupe)
+        const m = await this.ensureMember();
+        if (m === false) { this.noGroup = true; this.needLogin = true; }
+        this.flush();
+        window.addEventListener('online', () => this.flush());
       }
     },
-    // ---------- Comptes ----------
-    // Un compte par personne, créé une seule fois : cellulaire confirmé par un code texto, puis un mot de passe.
-    // Le compte Firebase porte le numéro (fournisseur « phone ») et un courriel interne opaque (fournisseur « password »).
-    // Ensuite : nom + mot de passe. Le compte donne accès à tous les groupes où ce cellulaire est inscrit (phones.e164).
-    // auth/{uid} = { playerId, groupId } : le joueur et le groupe actifs ; les règles vérifient que le numéro du compte est celui du joueur.
+    // ---------- Compte (HoldingAI) ----------
     phoneE164(phone) { let d = String(phone || '').replace(/\D/g, ''); if (d.length === 10) d = '1' + d; return d.length === 11 ? '+' + d : ''; },
-    async acctEmail(e164) {
-      const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('fanion-v1:' + e164));
-      return 'm' + [...new Uint8Array(h)].slice(0, 12).map(b => b.toString(16).padStart(2, '0')).join('') + '@membres.fanion.ai';
-    },
-    setUser(u) { this.uid = u ? u.uid : null; this.email = u ? (u.email || u.phoneNumber) : null; this.e164 = u ? u.phoneNumber || null : null; },
+    setUser(s) { this.uid = s ? s.uid : null; this.e164 = s ? this.phoneE164(s.phone) || null : null; this.email = s ? (s.email || this.e164 || s.uid) : null; this.nom = s ? s.nom || '' : ''; },
+    async token() { return window.HoldingAI ? await HoldingAI.jeton() : null; },
     async ensureMember(player) {
-      if (this.mode !== 'firebase' || !this.uid) return;
+      if (this.mode !== 'cloud' || !this.uid) return;
       try {
         if (player) { await this.linkTo(player); return true; }
-        const a = await this.db.collection('auth').doc(this.uid).get();
-        if (a.exists) { if (this.gid !== a.data().groupId) this.setGroup(a.data().groupId); return true; }
-        // Ancien compte (avant les comptes avec mot de passe) : retrouvé par son courriel
-        if (this.email && !this.e164) { const sn = await this.db.collection('players').where('authEmail', '==', this.email).limit(1).get(); if (!sn.empty) { await this.linkTo({ ...sn.docs[0].data(), id: sn.docs[0].id }); return true; } }
-        const mine = await this.myPlayers(); if (mine.length) { await this.linkTo(mine[0]); return true; }
+        const inv = new URLSearchParams(location.search).get('joueur');
+        const l = ok(await this.sb.from('liens').select('player_id, group_id').eq('uid', this.uid).maybeSingle());
+        const mine = (!l || inv) ? await this.myPlayers() : [];
+        // Invitation reçue (?joueur=…) : on se relie à ce joueur-là si c'est bien notre cellulaire
+        const cible = inv && mine.find(p => p.id === inv);
+        if (cible) { await this.linkTo(cible); return true; }
+        if (l) {
+          if (this.gid !== l.group_id) this.setGroup(l.group_id);
+          // Nouvel appareil : on retrouve le nom de « mon » joueur (sert à savoir qui je suis dans le groupe)
+          try { const j = ok(await this.sb.from('joueurs').select('data').eq('id', l.player_id).maybeSingle()); if (j && j.data && j.data.name) ls.set('pelland.me', j.data.name); } catch (e) { }
+          return true;
+        }
+        if (mine.length) { await this.linkTo(mine[0]); return true; }
         return false;
       } catch (e) { console.warn('membre', e.message); return null; }
     },
     // Tous les joueurs (un par groupe) inscrits avec le cellulaire de ce compte
     async myPlayers() {
-      if (this.mode !== 'firebase' || !this.e164) return [];
-      const docs = {};
-      (await this.db.collection('phones').where('e164', '==', this.e164).get()).docs.forEach(d => { docs[d.id] = d; });
-      // Numéros enregistrés avant le format international : retrouvés par les 10 chiffres
-      try { (await this.db.collection('phones').where('phone', '==', this.e164.replace(/^\+1/, '')).get()).docs.forEach(d => { docs[d.id] = d; }); } catch (e) { }
-      const out = [];
-      for (const d of Object.values(docs)) { try { const p = await this.db.collection('players').doc(d.id).get(); if (p.exists) out.push({ ...p.data(), id: p.id }); } catch (e) { } }
-      return out;
+      if (this.mode !== 'cloud' || !this.e164) return [];
+      const rows = ok(await this.sb.rpc('mes_groupes')) || [];
+      this._mesGroupes = rows;
+      return rows.map(r => ({ ...(r.joueur || {}), id: r.player_id, groupId: r.group_id, ...(r.acct ? { acct: r.acct } : {}) }));
     },
     async myGroupList() {
-      const pl = await this.myPlayers(), gs = await this.listGroups();
-      // Groupes supprimés par leur propriétaire : retirés de la liste ; groupes archivés : à part
-      return pl.map(p => { const g = gs.find(x => x.id === (p.groupId || 'pelland')) || { id: p.groupId, name: p.groupId }; return { gid: g.id, name: g.name, playerId: p.id, playerName: p.name, owner: g.owner === p.id, organizer: (g.organizers || []).includes(p.id) || (g.owner === p.id && !(g.organizers || []).length), archived: !!g.archived, deleted: !!g.deleted }; })
+      if (this.mode !== 'cloud') { const gs = await this.listGroups(); return this.myGroups().map(x => ({ ...x, name: (gs.find(g => g.id === x.gid) || {}).name || x.name })); }
+      const pl = await this.myPlayers(), rows = this._mesGroupes || [];
+      return pl.map(p => { const r = rows.find(x => x.player_id === p.id) || {}, g = r.groupe || {};
+        const orgs = r.organizers || [];
+        return { gid: p.groupId, name: g.name || p.groupId, playerId: p.id, playerName: p.name, owner: r.owner === p.id, organizer: orgs.includes(p.id) || (r.owner === p.id && !orgs.length), archived: !!r.archived, deleted: !!r.deleted }; })
         .filter(x => !x.deleted).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
     },
-    // Archiver, rétablir ou supprimer le groupe actif (propriétaire seulement ; vérifié par les règles)
+    // Archiver, rétablir ou supprimer le groupe actif (propriétaire seulement ; vérifié par la base)
     async setGroupState(flags) {
-      if (this.mode === 'firebase') { await this.db.collection('players').doc('_groupe_' + this.gid).set(flags, { merge: true }); return; }
+      if (this.mode === 'cloud') { ok(await this.sb.rpc('groupe_etat', { p_id: this.gid, p_archived: flags.archived == null ? null : !!flags.archived, p_deleted: flags.deleted == null ? null : !!flags.deleted })); return; }
       const all = ls.get('pelland.groups', {}); all[this.gid] = { ...(all[this.gid] || { id: this.gid }), ...flags }; ls.set('pelland.groups', all);
     },
     // Rend ce joueur (et son groupe) actif pour ce compte
     async linkTo(player) {
-      const g = player.groupId || 'pelland';
-      try { await this.db.collection('auth').doc(this.uid).set({ playerId: player.id, groupId: g, at: Date.now() }); }
-      catch (e) { throw Object.assign(new Error('Votre cellulaire n’est pas celui inscrit pour ' + player.name + '. Demandez à l’organisateur de le vérifier dans Joueurs.'), { code: 'local/nolink' }); }
-      this.setGroup(g); ls.set('pelland.me', player.name);
-    },
-    async sendCode(phone) {
-      const num = this.phoneE164(phone);
-      if (!num) throw Object.assign(new Error('Entrez votre numéro de cellulaire (10 chiffres).'), { code: 'local/phone' });
-      firebase.auth().languageCode = 'fr';
-      // reCAPTCHA invisible (exigé par Firebase) dans un conteneur fixe, hors de l'écran redessiné
-      let box = document.getElementById('recap'); if (!box) { box = document.createElement('div'); box.id = 'recap'; document.body.appendChild(box); }
-      if (!this._captcha) this._captcha = new firebase.auth.RecaptchaVerifier('recap', { size: 'invisible' });
-      try { return await firebase.auth().signInWithPhoneNumber(num, this._captcha); }
-      catch (e) { try { this._captcha.clear(); } catch (x) { } this._captcha = null; throw e; }
-    },
-    async confirmCode(confirmation, code) {
-      const c = String(code || '').replace(/\D/g, '');
-      if (c.length !== 6) throw Object.assign(new Error('Entrez le code à 6 chiffres reçu par texto.'), { code: 'local/code' });
-      const cred = await confirmation.confirm(c);
-      this.setUser(cred.user);
-      return await this.myPlayers();
-    },
-    // Mot de passe du compte (création ou oubli) ; puis le compte est inscrit sur chacun de ses joueurs (champ acct) pour la connexion par nom
-    async setPassword(pw, players) {
-      if (String(pw || '').length < 6) throw Object.assign(new Error('Le mot de passe doit avoir au moins 6 caractères.'), { code: 'local/pw' });
-      const u = firebase.auth().currentUser, email = await this.acctEmail(u.phoneNumber);
-      if (u.providerData.some(p => p.providerId === 'password')) await u.updatePassword(pw);
-      else await u.linkWithCredential(firebase.auth.EmailAuthProvider.credential(email, pw));
-      await u.getIdToken(true); this.setUser(firebase.auth().currentUser);
-      for (const p of players || []) {
-        try {
-          await this.linkTo(p); await this.db.collection('players').doc(p.id).set({ acct: email }, { merge: true });
-          await this.db.collection('phones').doc(p.id).set({ e164: u.phoneNumber }, { merge: true });
-        } catch (e) { console.warn('lien', p.id, e.message); }
+      let g = player.groupId || 'pelland';
+      if (this.mode === 'cloud') {
+        try { g = ok(await this.sb.rpc('relier_joueur', { p_joueur: player.id })) || g; }
+        catch (e) { throw Object.assign(new Error('Votre cellulaire n’est pas celui inscrit pour ' + player.name + '. Demandez à l’organisateur de le vérifier dans Joueurs.'), { code: 'local/nolink' }); }
       }
-      return email;
+      this.setGroup(g); if (player.name) ls.set('pelland.me', player.name);
     },
-    // Connexion : cellulaire + mot de passe (le courriel interne du compte se calcule à partir du cellulaire)
-    async loginPhone(phone, pw) {
-      const e164 = this.phoneE164(phone);
-      if (!e164) throw Object.assign(new Error('Entrez votre numéro de cellulaire (10 chiffres).'), { code: 'local/phone' });
-      if (!pw) throw Object.assign(new Error('Entrez votre mot de passe.'), { code: 'local/pw' });
-      try { const c = await firebase.auth().signInWithEmailAndPassword(await this.acctEmail(e164), pw); this.setUser(c.user); }
-      catch (e) { throw Object.assign(new Error(/too-many/.test(e.code || '') ? 'Trop d’essais. Réessayez dans quelques minutes, ou touchez « Mot de passe oublié ».' : 'Cellulaire ou mot de passe incorrect. Première fois ? Touchez « Créer mon compte ».'), { code: 'local/badpw' }); }
-      this.needLogin = false;
-      ls.set('pelland.lastPhone', e164.slice(2));
-    },
-    async loginPassword(player, pw) {
-      if (!player.acct) throw Object.assign(new Error(player.name + ' n’a pas encore de compte. Touchez « Créer mon compte ».'), { code: 'local/noacct' });
-      try { const c = await firebase.auth().signInWithEmailAndPassword(player.acct, pw); this.setUser(c.user); }
-      catch (e) { throw Object.assign(new Error(/too-many/.test(e.code || '') ? 'Trop d’essais. Réessayez dans quelques minutes, ou touchez « Mot de passe oublié ».' : 'Mot de passe incorrect.'), { code: 'local/badpw' }); }
-      await this.linkTo(player);
-      this.needLogin = false;
-      await this.ensureSeed();
-    },
-    // Ajoute le numéro au format international (e164) aux numéros du groupe, pour que chacun retrouve ses groupes avec son compte
-    async migratePhones() {
-      const k = 'pelland.migr.e164.' + this.gid; if (ls.get(k, 0)) return;
-      try { const ph = await this.db.collection('phones').where('groupId', '==', this.gid).get(); for (const d of ph.docs) { const x = d.data(); if (!x.e164 && x.phone) await d.ref.set({ e164: this.phoneE164(x.phone) }, { merge: true }); } ls.set(k, 1); } catch (e) { }
-    },
-    // Une fois : ajoute le groupe aux anciennes parties et aux numéros (nécessaire avant de publier les nouvelles règles)
-    async migrateGroups() {
-      if (ls.get('pelland.migr.groups', 0) >= 1) return;
-      try {
-        const pl = await this.db.collection('players').get(), gOf = {}; pl.docs.forEach(d => { if (!d.id.startsWith('_')) gOf[d.id] = d.data().groupId || 'pelland'; });
-        const gs = await this.db.collection('games').get(); for (const d of gs.docs) if (!d.data().groupId) await d.ref.set({ groupId: 'pelland' }, { merge: true });
-        const ph = await this.db.collection('phones').get(); for (const d of ph.docs) if (!d.data().groupId && gOf[d.id]) await d.ref.set({ groupId: gOf[d.id] }, { merge: true });
-        ls.set('pelland.migr.groups', 1);
-      } catch (e) { ls.set('pelland.migr.groups', 1); /* règles déjà publiées : plus rien à faire */ }
-    },
-    async logout() { try { await firebase.auth().signOut(); } catch (e) { } ls.set('pelland.me', null); location.reload(); },
-    // Ajoute ou change le cellulaire d'un joueur. Le joueur crée ensuite lui-même son compte (code texto + mot de passe).
+    async logout() { if (window.HoldingAI) HoldingAI.deconnexion(); ls.set('pelland.me', null); location.href = location.pathname; },
+    // Ajoute ou change le cellulaire d'un joueur. Le joueur se connecte ensuite avec son compte HoldingAI (même cellulaire).
     async setPhone(player, phone) {
       const digits = String(phone || '').replace(/\D/g, '').replace(/^1(\d{10})$/, '$1');
       if (digits.length !== 10) throw new Error('Numéro de cellulaire invalide (10 chiffres).');
-      if (this.mode !== 'firebase') { const list = ls.get('pelland.players', []); const x = list.find(q => q.id === player.id); if (x) { x.phoneHint = digits.slice(-2); x.phone = digits; } ls.set('pelland.players', list); return; }
+      if (this.mode !== 'cloud') { const list = ls.get('pelland.players', []); const x = list.find(q => q.id === player.id); if (x) { x.phoneHint = digits.slice(-2); x.phone = digits; } ls.set('pelland.players', list); return; }
       await this.savePhone(player.id, digits, true, player.groupId || this.gid);
-      await this.db.collection('players').doc(player.id).set({ phoneHint: digits.slice(-2) }, { merge: true });
+      ok(await this.sb.rpc('joueur_maj', { p_id: player.id, p_patch: { phoneHint: digits.slice(-2) } }));
     },
-    // Numéro complet : gardé à part, lisible seulement par les membres connectés
-    async savePhone(id, digits, strict, groupId) { try { await this.db.collection('phones').doc(id).set({ phone: digits, e164: this.phoneE164(digits), groupId: groupId || this.gid }); this.phonesBlocked = false; } catch (e) { console.warn('phones', e.message); this.phonesBlocked = true; if (strict) throw new Error('Numéro non conservé : publiez la règle « phones » dans Firebase (Firestore → Règles).'); } },
-    async ensureSeed() {
-      const list = await this.listCourses();
-      return list;
+    async savePhone(id, digits, strict, groupId) {
+      const r = await this.sb.from('telephones').upsert({ player_id: id, group_id: groupId || this.gid, phone: digits, e164: this.phoneE164(digits) });
+      if (r.error) { console.warn('telephones', r.error.message); this.phonesBlocked = true; if (strict) throw new Error(/duplicate|unique/i.test(r.error.message) ? 'Ce cellulaire est déjà inscrit.' : 'Numéro non conservé : ' + r.error.message); }
+      else this.phonesBlocked = false;
     },
+    async ensureSeed() { return this.listCourses(); },
     async listCourses() {
       let list;
-      if (this.mode === 'firebase') { const snap = await this.db.collection('courses').get(); list = snap.docs.map(d => ({ ...d.data(), id: d.id })); }
+      if (this.mode === 'cloud') list = (ok(await this.sb.from('terrains').select('id, data')) || []).map(r => ({ ...(r.data || {}), id: r.id }));
       else list = ls.get('pelland.courses', []);
-      // Banque : seulement les terrains approuvés dans la base (plus de catalogue intégré ni de terrain ajouté d'office)
       // Terrains retirés de la banque de ce groupe (les autres groupes les gardent)
       const out = await this.retiredCourses();
       this.retired = list.filter(c => out.includes(c.id)).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
       return list.filter(c => !out.includes(c.id)).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
     },
     async retiredCourses() {
-      if (this.mode === 'firebase') { const g = await this.gdata(); return (g && g.terrainsRetires) || []; }
+      if (this.mode === 'cloud') { const g = await this.gdata(); return (g && g.terrainsRetires) || []; }
       return ls.get('pelland.terrainsRetires.' + this.gid, []);
     },
     async setCourseRetired(id, out) {
       const cur = await this.retiredCourses(), next = out ? [...new Set([...cur, id])] : cur.filter(x => x !== id);
-      if (this.mode === 'firebase') await this.setGdata('terrainsRetires', next); else ls.set('pelland.terrainsRetires.' + this.gid, next);
+      if (this.mode === 'cloud') await this.setGdata('terrainsRetires', next); else ls.set('pelland.terrainsRetires.' + this.gid, next);
     },
-    // ---- Nouveaux terrains : proposés par les joueurs, approuvés par l'équipe Fanion (admins/{uid}) avant d'entrer dans la banque commune
+    // ---- Nouveaux terrains : proposés par les joueurs, approuvés par l'équipe Fanion (table admins) avant d'entrer dans la banque commune
     async isAdmin() {
-      if (this.mode !== 'firebase') return !!ls.get('pelland.admin', false);
-      try { const u = firebase.auth().currentUser; if (!u) return false; return (await this.db.collection('admins').doc(u.uid).get()).exists; } catch (e) { return false; }
+      if (this.mode !== 'cloud') return !!ls.get('pelland.admin', false);
+      try { return !!ok(await this.sb.from('admins').select('uid').eq('uid', this.uid).maybeSingle()); } catch (e) { return false; }
     },
     async proposeCourse(course, meta) {
       const p = { course: JSON.parse(JSON.stringify(course)), statut: 'propose', groupe: this.gid, cree: Date.now(), ...meta, proposeUid: this.uid || '' };
-      if (this.mode === 'firebase') { const r = await this.db.collection('terrainsProposes').add(p); return { ...p, id: r.id }; }
+      if (this.mode === 'cloud') { const r = ok(await this.sb.from('terrains_proposes').insert({ groupe: this.gid, propose_uid: this.uid, statut: 'propose', data: p }).select('id').single()); return { ...p, id: r.id }; }
       const l = ls.get('pelland.terrainsProposes', []); p.id = 'p' + Date.now(); l.push(p); ls.set('pelland.terrainsProposes', l); return p;
     },
     async listProposals(admin) {
-      if (this.mode !== 'firebase') { const l = ls.get('pelland.terrainsProposes', []); return { mine: l.filter(p => p.groupe === this.gid), todo: admin ? l.filter(p => p.statut === 'propose') : [] }; }
-      const map = q => q.get().then(s => s.docs.map(d => ({ ...d.data(), id: d.id }))).catch(() => []);
-      const [mine, todo] = await Promise.all([map(this.db.collection('terrainsProposes').where('groupe', '==', this.gid)), admin ? map(this.db.collection('terrainsProposes').where('statut', '==', 'propose')) : []]);
+      if (this.mode !== 'cloud') { const l = ls.get('pelland.terrainsProposes', []); return { mine: l.filter(p => p.groupe === this.gid), todo: admin ? l.filter(p => p.statut === 'propose') : [] }; }
+      const map = q => q.then(r => (ok(r) || []).map(x => ({ ...(x.data || {}), id: x.id, statut: x.statut, groupe: x.groupe }))).catch(() => []);
+      const cols = 'id, groupe, statut, data';
+      const [mine, todo] = await Promise.all([map(this.sb.from('terrains_proposes').select(cols).eq('groupe', this.gid)), admin ? map(this.sb.from('terrains_proposes').select(cols).eq('statut', 'propose')) : []]);
       return { mine, todo };
     },
     async withdrawProposal(id) {
-      if (this.mode === 'firebase') { await this.db.collection('terrainsProposes').doc(id).delete(); return; }
+      if (this.mode === 'cloud') { ok(await this.sb.from('terrains_proposes').delete().eq('id', id)); return; }
       ls.set('pelland.terrainsProposes', ls.get('pelland.terrainsProposes', []).filter(p => p.id !== id));
     },
-    async decideProposal(id, ok, course, photos) {
-      const ch = { statut: ok ? 'approuve' : 'refuse', decideLe: Date.now(), decideUid: this.uid || '' };
-      if (ok) {
+    async decideProposal(id, yes, course, photos) {
+      const ch = { statut: yes ? 'approuve' : 'refuse', decideLe: Date.now(), decideUid: this.uid || '' };
+      if (yes) {
         const c = await this.saveCourse({ ...course, verifieLe: Date.now(), ...(photos && photos.length ? { photosCarte: photos.length } : {}) }); ch.courseId = c.id;
         // Photos de la carte gardées à part (lues seulement quand on ouvre le terrain)
-        if (photos && photos.length) { if (this.mode === 'firebase') await this.db.collection('cartesTerrains').doc(c.id).set({ photos, cree: Date.now() }); else ls.set('pelland.carte.' + c.id, photos); }
+        if (photos && photos.length) { if (this.mode === 'cloud') ok(await this.sb.from('cartes_terrains').upsert({ course_id: c.id, photos, cree: Date.now() })); else ls.set('pelland.carte.' + c.id, photos); }
       }
-      if (this.mode === 'firebase') { await this.db.collection('terrainsProposes').doc(id).update(ch); return; }
+      if (this.mode === 'cloud') {
+        const cur = ok(await this.sb.from('terrains_proposes').select('data').eq('id', id).maybeSingle());
+        ok(await this.sb.from('terrains_proposes').update({ statut: ch.statut, data: { ...((cur && cur.data) || {}), ...ch } }).eq('id', id)); return;
+      }
       ls.set('pelland.terrainsProposes', ls.get('pelland.terrainsProposes', []).map(p => p.id === id ? { ...p, ...ch } : p));
     },
     async cartePhotos(courseId) {
-      if (this.mode !== 'firebase') return ls.get('pelland.carte.' + courseId, []);
-      try { const d = await this.db.collection('cartesTerrains').doc(courseId).get(); return d.exists ? (d.data().photos || []) : []; } catch (e) { return []; }
+      if (this.mode !== 'cloud') return ls.get('pelland.carte.' + courseId, []);
+      try { const r = ok(await this.sb.from('cartes_terrains').select('photos').eq('course_id', courseId).maybeSingle()); return (r && r.photos) || []; } catch (e) { return []; }
     },
     async saveCourse(c) {
       c = JSON.parse(JSON.stringify(c));
       if (!c.id) c.id = slug(c.name) + '-' + Math.random().toString(36).slice(2, 6);
       c.updatedAt = Date.now();
-      if (this.mode === 'firebase') { await this.db.collection('courses').doc(c.id).set(c); return c; }
+      if (this.mode === 'cloud') {
+        const u = ok(await this.sb.from('terrains').update({ data: c }).eq('id', c.id).select('id'));
+        if (!u || !u.length) ok(await this.sb.from('terrains').insert({ id: c.id, data: c }));
+        return c;
+      }
       const list = ls.get('pelland.courses', []).filter(x => x.id !== c.id); list.push(c); ls.set('pelland.courses', list); return c;
     },
     async newCode() {
       const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
       for (let n = 0; n < 20; n++) {
         const code = Array.from({ length: 4 }, () => A[Math.floor(Math.random() * A.length)]).join('');
-        let used = null; try { used = await this.getGame(code); } catch (e) { if (e && e.code === 'permission-denied') continue; return code; }
+        let used = null; try { used = await this.getGame(code); } catch (e) { return code; }
         if (!used) return code;
       }
       return 'P' + Date.now().toString(36).toUpperCase().slice(-5);
     },
+    // ---- Parties : copie sur le téléphone + file d'attente (hors ligne sur le terrain), envoyées dès que possible
+    cacheGame(g) { const all = ls.get('fanion.parties', {}); all[g.id] = g; const ids = Object.keys(all); if (ids.length > 40) ids.sort((a, b) => (all[a].updatedAt || 0) - (all[b].updatedAt || 0)).slice(0, ids.length - 40).forEach(k => delete all[k]); ls.set('fanion.parties', all); },
+    cachedGame(id) { return ls.get('fanion.parties', {})[id] || null; },
     async getGame(id) {
-      if (this.mode === 'firebase') { const d = await this.db.collection('games').doc(id).get(); return d.exists ? fromDb(d.data()) : null; }
+      if (this.mode === 'cloud') {
+        try { const r = ok(await this.sb.from('parties').select('data').eq('id', id).maybeSingle()); if (r) { const g = fromDb(r.data); return this.pending(id) || g; } return this.pending(id) || null; }
+        catch (e) { const c = this.cachedGame(id); if (c) return c; throw e; }
+      }
       return ls.get('pelland.games', {})[id] || null;
     },
+    pending(id) { const q = ls.get('fanion.file', {}); return q[id] ? q[id] : null; },
     async saveGame(g) {
       g.updatedAt = Date.now(); if (!g.groupId) g.groupId = this.gid;
-      if (this.mode === 'firebase') {
-        // hors ligne : Firebase garde l'écriture et l'envoie au retour du réseau ; on n'attend pas sa confirmation
-        const p = this.db.collection('games').doc(g.id).set(toDb(g)); p.catch(e => toast('Non enregistré : ' + e.message));
-        await Promise.race([p, new Promise(r => setTimeout(r, navigator.onLine ? 5000 : 0))]); return;
+      if (this.mode === 'cloud') {
+        if (!g.ownerUid) g.ownerUid = this.uid;
+        this.cacheGame(g);
+        const q = ls.get('fanion.file', {}); q[g.id] = g; ls.set('fanion.file', q);
+        this._emit(g);
+        // hors ligne : la partie reste dans la file et part au retour du réseau ; on n'attend pas plus de 5 s
+        const p = this.flush(); await Promise.race([p, new Promise(r => setTimeout(r, navigator.onLine ? 5000 : 0))]); return;
       }
       const all = ls.get('pelland.games', {}); all[g.id] = g; ls.set('pelland.games', all);
       this._emit(g);
     },
+    async flush() {
+      if (this.mode !== 'cloud' || this._flushing || navigator.onLine === false) return;
+      this._flushing = true;
+      try {
+        const q = ls.get('fanion.file', {});
+        for (const id of Object.keys(q)) {
+          const g = q[id];
+          const r = await this.sb.rpc('partie_enregistrer', { p_id: g.id, p_group: g.groupId, p_owner: g.ownerUid || '', p_data: toDb(g) });
+          const now = ls.get('fanion.file', {});
+          if (!r.error || /appartient|row-level|violates/i.test(r.error.message || '')) {
+            if (now[id] && now[id].updatedAt === g.updatedAt) { delete now[id]; ls.set('fanion.file', now); }
+            if (r.error) toast('Non enregistré : ' + r.error.message);
+          } else if (!/fetch|network|Failed/i.test(r.error.message || '')) { toast('Non enregistré : ' + r.error.message); delete now[id]; ls.set('fanion.file', now); }
+          else break;
+        }
+      } catch (e) { /* réseau : on réessaiera */ } finally { this._flushing = false; }
+    },
     _subs: {},
     _emit(g) { (this._subs[g.id] || []).forEach(cb => cb(g)); },
+    // Temps réel : changements de la base (autres joueurs) + nos propres enregistrements (immédiats, même hors ligne)
+    watch(table, col, id, cb) {
+      const ch = this.sb.channel(table + ':' + id + ':' + Math.random().toString(36).slice(2, 7))
+        .on('postgres_changes', { event: '*', schema: 'public', table, filter: col + '=eq.' + id }, p => { if (p.new && Object.keys(p.new).length) cb(p.new); })
+        .subscribe();
+      return () => { try { this.sb.removeChannel(ch); } catch (e) { } };
+    },
     watchGame(id, cb) {
-      if (this.mode === 'firebase') {
-        return this.db.collection('games').doc(id).onSnapshot(d => { if (d.exists) cb(fromDb(d.data())); }, e => toast('Lecture impossible : ' + e.message));
-      }
       (this._subs[id] = this._subs[id] || []).push(cb);
+      if (this.mode === 'cloud') {
+        const c = this.cachedGame(id); if (c) cb(c);
+        this.getGame(id).then(g => g && cb(g)).catch(e => toast('Lecture impossible : ' + e.message));
+        const off = this.watch('parties', 'id', id, r => { if (!this.pending(id)) { const g = fromDb(r.data); this.cacheGame(g); cb(g); } });
+        return () => { off(); this._subs[id] = (this._subs[id] || []).filter(x => x !== cb); };
+      }
       this.getGame(id).then(g => g && cb(g));
       const onStorage = e => { if (e.key === 'pelland.games') this.getGame(id).then(g => g && cb(g)); };
       window.addEventListener('storage', onStorage);
@@ -285,20 +264,21 @@
     setGroup(id) { ls.set('pelland.group', id || 'pelland'); },
     async listGroups() {
       let list = [];
-      if (this.mode === 'firebase') { try { const sn = await this.db.collection('players').get(); list = sn.docs.filter(d => d.id.startsWith('_groupe_')).map(d => d.data()); } catch (e) { } }
+      if (this.mode === 'cloud') { try { list = (ok(await this.sb.from('groupes').select('*')) || []).map(rowGroupe); } catch (e) { } }
       else list = Object.values(ls.get('pelland.groups', {}));
-      if (!list.find(g => g.id === 'pelland')) list.push({ id: 'pelland', name: 'La gang à Pelland' });
-      return list.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+      if (!list.find(g => g.id === 'pelland') && this.mode !== 'cloud') list.push({ id: 'pelland', name: 'La gang à Pelland' });
+      return list.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'fr'));
     },
     async saveGroup(gr) {
-      if (this.mode === 'firebase') {
-        // le compteur de joueurs n'est jamais réécrit ici (il ne change qu'avec l'ajout ou le retrait d'un joueur)
-        const { nPlayers, lastAdd, lastDel, ...rest } = gr; const isNew = !(S.groups || []).some(g => g.id === gr.id);
-        await this.db.collection('players').doc('_groupe_' + gr.id).set(isNew ? gr : rest, isNew ? undefined : { merge: true }); return;
+      if (this.mode === 'cloud') {
+        // forfait, compteur et état : gérés par la base (et par Fanion pour le forfait)
+        const { id, owner, organizers, plan, paidUntil, maxJoueurs, nPlayers, lastAdd, lastDel, archived, deleted, ...rest } = gr;
+        ok(await this.sb.rpc('groupe_maj', { p_id: id, p_patch: rest, p_owner: owner == null ? null : owner, p_organizers: organizers == null ? null : organizers }));
+        return;
       }
       const all = ls.get('pelland.groups', {}); all[gr.id] = gr; ls.set('pelland.groups', all);
     },
-    // Mes groupes (sur ce téléphone) : un joueur peut faire partie de plusieurs groupes, un compte par groupe
+    // Mes groupes (sur ce téléphone) : un joueur peut faire partie de plusieurs groupes
     myGroups() { return ls.get('pelland.mygroups', []); },
     rememberGroup(gid, name, playerId, playerName, owner) {
       if (!gid || !playerId) return;
@@ -307,275 +287,229 @@
       ls.set('pelland.mygroups', l.slice(0, 12));
     },
     async switchGroup(entry) {
-      if (this.mode !== 'firebase') { ls.set('pelland.me', entry.playerName || ls.get('pelland.me', '')); this.setGroup(entry.gid); return; }
-      const d = await this.db.collection('players').doc(entry.playerId).get();
-      if (!d.exists) throw new Error('Vous ne faites plus partie de ce groupe.');
-      await this.linkTo({ ...d.data(), id: d.id });
+      if (this.mode !== 'cloud') { ls.set('pelland.me', entry.playerName || ls.get('pelland.me', '')); this.setGroup(entry.gid); return; }
+      await this.linkTo({ id: entry.playerId, name: entry.playerName, groupId: entry.gid });
     },
-    // Nouveau groupe : crée le compte du premier membre, le groupe et le joueur
     // Parrainage : ?ref=<code> (un groupe ou un centre) est gardé 90 jours sur ce téléphone, puis noté sur le groupe créé
     refCode() { const r = ls.get('pelland.ref', null); return r && r.until > Date.now() ? r.code : ''; },
-    // Nouveau groupe, créé par la personne connectée (son compte a déjà son cellulaire confirmé et son mot de passe)
     // Le groupe gratuit que ce compte possède déjà (non supprimé, sans forfait Groupe en cours), ou null
     async groupeGratuit() {
-      if (this.mode !== 'firebase') return null;
+      if (this.mode !== 'cloud') return null;
       try {
-        const l = await this.myGroupList(), gs = await this.listGroups();
-        for (const x of l.filter(x => x.owner)) { const g = gs.find(y => y.id === x.gid); if (g && !g.deleted && !planOf(g).paid) return g; }
-      } catch (e) { }
-      return null;
+        await this.myPlayers();
+        const r = (this._mesGroupes || []).find(x => x.owner === x.player_id && !x.deleted && !planOf({ plan: x.plan, paidUntil: x.paid_until, maxJoueurs: x.max_joueurs }).paid);
+        return r ? { id: r.group_id, name: (r.groupe || {}).name || r.group_id } : null;
+      } catch (e) { return null; }
     },
+    // Nouveau groupe, créé par la personne connectée (son compte HoldingAI a son cellulaire confirmé)
     async createGroup(groupName, name, ref) {
       if (!String(groupName || '').trim()) throw new Error('Donnez un nom au groupe.');
       if (!String(name || '').trim()) throw new Error('Entrez votre prénom et nom.');
       const pid = slug(name) + '-' + Math.random().toString(36).slice(2, 6);
       const gr = { id: slug(groupName) + '-' + Math.random().toString(36).slice(2, 6), name: groupName.trim(), owner: pid, createdAt: Date.now(), nPlayers: 1 };
       const rc = String(ref || this.refCode() || '').replace(/[^a-z0-9_-]/gi, '').slice(0, 60); if (rc) gr.ref = rc;
-      if (this.mode === 'firebase') {
-        const u = firebase.auth().currentUser;
-        if (!u || !u.phoneNumber || !u.email) throw new Error('Créez d’abord votre compte avec votre cellulaire (déconnectez-vous, puis « Créer mon compte »).');
-        const digits = u.phoneNumber.replace(/\D/g, '').slice(-10);
-        // Forfait Gratuit : un seul groupe gratuit par compte (archivé compris) ; marqueur gratuits/{uid}, vérifié par les règles
+      if (this.mode === 'cloud') {
+        if (!this.uid || !this.e164) throw new Error('Votre compte HoldingAI doit avoir un cellulaire confirmé. Ouvrez « Mon compte » chez Albert.');
+        // Forfait Gratuit : un seul groupe gratuit par compte (vérifié par la base)
         const gratuit = await this.groupeGratuit();
         if (gratuit) throw Object.assign(new Error(`Avec le forfait Gratuit, vous avez droit à un groupe de 4 joueurs : vous avez déjà « ${gratuit.name} ». Passez ce groupe au forfait Groupe pour en créer un autre.`), { code: 'local/gratuit' });
-        const mk = this.db.collection('gratuits').doc(u.uid);
-        try { const m = await mk.get(); if (m.exists) await mk.delete(); } catch (e) { }
-        const b = this.db.batch();
-        b.set(this.db.collection('players').doc('_groupe_' + gr.id), gr);
-        b.set(mk, { groupId: gr.id, at: Date.now() });
-        await b.commit();
-        await this.db.collection('players').doc(pid).set({ id: pid, name: name.trim(), groupId: gr.id, authEmail: u.email, acct: u.email, phoneHint: digits.slice(-2), updatedAt: Date.now() });
-        await this.linkTo({ id: pid, name: name.trim(), groupId: gr.id });
-        await this.savePhone(pid, digits, false, gr.id);
+        try { await this.sb.from('gratuits').delete().eq('uid', this.uid); } catch (e) { }
+        const { id, owner, nPlayers, ...gdata } = gr;
+        ok(await this.sb.rpc('creer_groupe', { p_groupe: gr.id, p_joueur: pid, p_donnees_groupe: gdata,
+          p_donnees_joueur: { id: pid, name: name.trim(), phoneHint: this.e164.slice(-2), updatedAt: Date.now() } }));
       } else { await this.saveGroup(gr); const list = ls.get('pelland.players', []); list.push({ id: pid, name: name.trim(), groupId: gr.id, authEmail: 'local', acct: 'local' }); ls.set('pelland.players', list); }
-      this.setGroup(gr.id); this.needLogin = false; ls.set('pelland.me', name.trim());
+      this.setGroup(gr.id); this.needLogin = false; this.noGroup = false; ls.set('pelland.me', name.trim());
       await this.ensureSeed();
       return gr;
     },
     // Membres du groupe (par défaut) ; avec bank = true, toute la banque de joueurs du groupe (membres et non-membres)
     async listPlayers(all, bank) {
       const mine = p => (all || (p.groupId || 'pelland') === this.gid) && (bank || all || p.membre !== false);
-      if (this.mode === 'firebase') {
-        const snap = await this.db.collection('players').get();
-        const list = snap.docs.filter(d => !d.id.startsWith('_')).map(d => ({ ...d.data(), id: d.id })).filter(mine);
-        if (this.email) { try { const ph = await this.db.collection('phones').where('groupId', '==', this.gid).get(); const m = {}; ph.docs.forEach(d => { m[d.id] = d.data().phone; }); list.forEach(p => { if (m[p.id]) p.phone = m[p.id]; }); this.phonesBlocked = false; } catch (e) { this.phonesBlocked = true; } }
+      if (this.mode === 'cloud') {
+        let q = this.sb.from('joueurs').select('id, group_id, acct, auth_email, data'); if (!all) q = q.eq('group_id', this.gid);
+        const list = (ok(await q) || []).map(rowJoueur).filter(mine);
+        try { const ph = ok(await this.sb.from('telephones').select('player_id, phone').eq('group_id', this.gid)) || []; const m = {}; ph.forEach(x => { m[x.player_id] = x.phone; }); list.forEach(p => { if (m[p.id]) p.phone = m[p.id]; }); this.phonesBlocked = false; } catch (e) { this.phonesBlocked = true; }
         return list.sort(byName);
       }
       return ls.get('pelland.players', []).filter(mine).sort(byName);
     },
-    // Données privées du groupe : groupdata/<groupe> = { groupId, quatuors, jeux } ; offres/<id> ; requests/<id>.
-    // (Avant : documents « _… » dans players, lisibles par tous.) Lecture de l'ancien emplacement tant qu'il existe.
+    // Données privées du groupe (quatuors, jeux maison, terrains et joueurs retirés) : table donnees_groupe
     async gdata() {
-      try { const d = await this.db.collection('groupdata').doc(this.gid).get(); if (d.exists) return d.data(); } catch (e) { }
-      return null;
+      try { const r = ok(await this.sb.from('donnees_groupe').select('data').eq('group_id', this.gid).maybeSingle()); return r ? r.data : null; } catch (e) { return null; }
     },
-    async legacy(id) { try { const d = await this.db.collection('players').doc(id).get(); return d.exists ? d.data() : null; } catch (e) { return null; } },
-    async setGdata(field, list) { await this.db.collection('groupdata').doc(this.gid).set({ groupId: this.gid, [field]: list, updatedAt: Date.now() }, { merge: true }); },
-    // Une fois : déplace les données privées hors de players (à faire avant de publier les nouvelles règles)
-    async migrateData() {
-      if (ls.get('pelland.migr.data', 0) >= 1) return;
-      let ok = true;
-      try {
-        const sn = await this.db.collection('players').get();
-        for (const d of sn.docs) {
-          const id = d.id, x = d.data();
-          let g = null, field = null;
-          if (id === '_quatuors') { g = 'pelland'; field = 'quatuors'; }
-          else if (id.startsWith('_quatuors_')) { g = id.slice(10); field = 'quatuors'; }
-          else if (id.startsWith('_jeux_')) { g = id.slice(6); field = 'jeux'; }
-          try {
-            if (field) await this.db.collection('groupdata').doc(g).set({ groupId: g, [field]: x.list || [], updatedAt: Date.now() }, { merge: true });
-            else if (id.startsWith('_offre_')) await this.db.collection('offres').doc(id.slice(7)).set({ ...x, groupId: x.groupId || 'pelland' });
-            else if (id === '_demandes_jeux') { for (const r of (x.list || [])) await this.db.collection('requests').add(r); }
-            else continue;
-            await d.ref.delete();
-          } catch (e) { ok = false; console.warn('migration', id, e.message); }
-        }
-      } catch (e) { ok = false; }
-      if (ok) ls.set('pelland.migr.data', 1);
-    },
+    async setGdata(field, list) { ok(await this.sb.rpc('donnees_maj', { p_group: this.gid, p_patch: { groupId: this.gid, [field]: list, updatedAt: Date.now() } })); },
     async listQuatuors() {
-      if (this.mode === 'firebase') { const g = await this.gdata(); if (g && g.quatuors) return g.quatuors; const l = await this.legacy(this.qDoc()); return (l && l.list) || []; }
+      if (this.mode === 'cloud') { const g = await this.gdata(); return (g && g.quatuors) || []; }
       return ls.get('pelland.quatuors.' + this.gid, this.gid === 'pelland' ? ls.get('pelland.quatuors', []) : []);
     },
     async saveQuatuors(list) {
-      if (this.mode === 'firebase') { await this.setGdata('quatuors', list); return; }
+      if (this.mode === 'cloud') { await this.setGdata('quatuors', list); return; }
       ls.set('pelland.quatuors.' + this.gid, list);
     },
-    // Demandes d'ajout de jeux : requests/<id> (écriture seulement ; lues par l'équipe Fanion dans la console)
+    // Demandes d'ajout de jeux : table demandes (envoi seulement ; lues par l'équipe Fanion)
     async saveGameRequest(req) {
-      if (this.mode === 'firebase') { await this.db.collection('requests').add(req); return; }
+      if (this.mode === 'cloud') { ok(await this.sb.from('demandes').insert({ data: req })); return; }
       ls.set('pelland.demandesJeux', ls.get('pelland.demandesJeux', []).concat([req]));
     },
-    // Jeux maison du groupe : groupdata/<groupe>.jeux
+    // Jeux maison du groupe
     async listJeux() {
-      if (this.mode === 'firebase') { const g = await this.gdata(); if (g && g.jeux) return g.jeux; const l = await this.legacy('_jeux_' + this.gid); return (l && l.list) || []; }
+      if (this.mode === 'cloud') { const g = await this.gdata(); return (g && g.jeux) || []; }
       return ls.get('pelland.jeux.' + this.gid, []);
     },
     async saveJeux(list) {
-      if (this.mode === 'firebase') { await this.setGdata('jeux', list); return; }
+      if (this.mode === 'cloud') { await this.setGdata('jeux', list); return; }
       ls.set('pelland.jeux.' + this.gid, list);
     },
-    qDoc() { return this.gid === 'pelland' ? '_quatuors' : '_quatuors_' + this.gid;
-    },
-    // Offres de parties : offres/<id> = { id, groupId, course, dates:[ms], deadline:ms, by, createdAt, rep_<joueur>: { name, dates:[ms], at } }
+    // Offres de parties : { id, groupId, course, dates:[ms], deadline:ms, by, createdAt, rep_<joueur>: { name, dates:[ms], at } }
     async listOffres() {
-      if (this.mode === 'firebase') {
-        const m = {};
-        try { const sn = await this.db.collection('players').get(); sn.docs.filter(d => d.id.startsWith('_offre_')).forEach(d => { const o = d.data(); if ((o.groupId || 'pelland') === this.gid) m[o.id] = o; }); } catch (e) { }
-        try { const sn = await this.db.collection('offres').where('groupId', '==', this.gid).get(); sn.docs.forEach(d => { m[d.id] = { ...d.data(), id: d.id }; }); } catch (e) { }
-        return Object.values(m).sort((a, b) => b.createdAt - a.createdAt);
+      if (this.mode === 'cloud') {
+        try { return (ok(await this.sb.from('offres').select('id, data').eq('group_id', this.gid)) || []).map(r => ({ ...(r.data || {}), id: r.id })).sort((a, b) => b.createdAt - a.createdAt); } catch (e) { return []; }
       }
       return Object.values(ls.get('pelland.offres', {})).filter(o => (o.groupId || 'pelland') === this.gid).sort((a, b) => b.createdAt - a.createdAt);
     },
     async getOffre(id) {
-      if (this.mode === 'firebase') { try { const d = await this.db.collection('offres').doc(id).get(); if (d.exists) return { ...d.data(), id }; } catch (e) { } return await this.legacy('_offre_' + id); }
+      if (this.mode === 'cloud') { try { const r = ok(await this.sb.from('offres').select('id, group_id, data').eq('id', id).maybeSingle()); return r ? { ...(r.data || {}), id: r.id, groupId: r.group_id } : null; } catch (e) { return null; } }
       return ls.get('pelland.offres', {})[id] || null;
     },
     async saveOffre(o, merge) {
-      if (this.mode === 'firebase') {
-        const ref = this.db.collection('offres').doc(o.id);
-        if (merge) { let cur = null; try { cur = await ref.get(); } catch (e) { } if (!cur || !cur.exists) { const l = await this.legacy('_offre_' + o.id); if (l) o = { ...l, ...o }; } }
-        await ref.set({ ...o, groupId: o.groupId || this.gid }, { merge: true }); return;
-      }
+      if (this.mode === 'cloud') { const g = o.groupId || this.gid; ok(await this.sb.rpc('offre_maj', { p_id: o.id, p_group: g, p_patch: { ...o, groupId: g } })); return; }
       const all = ls.get('pelland.offres', {}); all[o.id] = merge ? { ...(all[o.id] || {}), ...o } : o; ls.set('pelland.offres', all);
     },
     async deleteOffre(id) {
-      if (this.mode === 'firebase') { await this.db.collection('offres').doc(id).delete(); try { await this.db.collection('players').doc('_offre_' + id).delete(); } catch (e) { } return; }
+      if (this.mode === 'cloud') { ok(await this.sb.from('offres').delete().eq('id', id)); return; }
       const all = ls.get('pelland.offres', {}); delete all[id]; ls.set('pelland.offres', all);
     },
-    // Compteur de joueurs du groupe (players/_groupe_<g>.nPlayers) : il change dans la même écriture que le joueur,
-    // et les règles Firestore refusent un joueur de plus que le forfait (4 en Gratuit, 16 en Groupe).
-    incr(n, fallback) { const FV = firebase.firestore.FieldValue; return FV && FV.increment ? FV.increment(n) : fallback; },
     async listBank() { return this.listPlayers(false, true); },
     // Membre du groupe ou seulement dans la banque (choisi par l'organisateur parmi les joueurs confirmés)
     async setMembre(id, on) {
-      if (this.mode === 'firebase') { await this.db.collection('players').doc(id).set({ membre: !!on, updatedAt: Date.now() }, { merge: true }); return; }
+      if (this.mode === 'cloud') { ok(await this.sb.rpc('joueur_maj', { p_id: id, p_patch: { membre: !!on, updatedAt: Date.now() } })); return; }
       ls.set('pelland.players', ls.get('pelland.players', []).map(x => x.id === id ? { ...x, membre: !!on } : x));
     },
-    // Ajout à la banque de joueurs : pas encore membre du groupe (il le devient une fois confirmé, quand l'organisateur le choisit)
+    // Ajout à la banque de joueurs (le compteur du groupe est tenu par la base : 64 au plus)
     async savePlayer(name, count, membre = false) {
       const p = { id: slug(name) + '-' + Math.random().toString(36).slice(2, 6), name: name.trim(), groupId: this.gid, membre: !!membre, updatedAt: Date.now() };
-      if (this.mode === 'firebase') {
-        const b = this.db.batch();
-        b.set(this.db.collection('players').doc(p.id), p);
-        b.set(this.db.collection('players').doc('_groupe_' + this.gid), { nPlayers: this.incr(1, (count || 0) + 1), lastAdd: p.id }, { merge: true });
-        try { await b.commit(); } catch (e) { throw /permission/i.test(e.code || e.message || '') ? new Error('Le forfait du groupe est plein.') : e; }
+      if (this.mode === 'cloud') {
+        const r = await this.sb.from('joueurs').insert({ id: p.id, group_id: this.gid, data: p });
+        if (r.error) throw /64|maximum/i.test(r.error.message) ? new Error('La banque du groupe est pleine (64 joueurs).') : /row-level|violates/i.test(r.error.message) ? new Error('Seul le propriétaire du groupe ajoute des joueurs.') : new Error(r.error.message);
         return p;
       }
       const list = ls.get('pelland.players', []); list.push(p); ls.set('pelland.players', list); return p;
     },
     async renamePlayer(id, name) {
-      if (this.mode === 'firebase') { await this.db.collection('players').doc(id).set({ name: name.trim(), updatedAt: Date.now() }, { merge: true }); return; }
+      if (this.mode === 'cloud') { ok(await this.sb.rpc('joueur_maj', { p_id: id, p_patch: { name: name.trim(), updatedAt: Date.now() } })); return; }
       ls.set('pelland.players', ls.get('pelland.players', []).map(x => x.id === id ? { ...x, name: name.trim() } : x));
     },
     // Joueurs retirés du groupe : gardés dans la banque (nom, cellulaire) pour les remettre en un geste
     async retiredPlayers() {
-      if (this.mode === 'firebase') { const g = await this.gdata(); return (g && g.joueursRetires) || []; }
+      if (this.mode === 'cloud') { const g = await this.gdata(); return (g && g.joueursRetires) || []; }
       return ls.get('pelland.joueursRetires', []);
     },
     async setRetiredPlayers(list) {
-      if (this.mode === 'firebase') return this.setGdata('joueursRetires', list);
+      if (this.mode === 'cloud') return this.setGdata('joueursRetires', list);
       ls.set('pelland.joueursRetires', list);
     },
     async keepInBank(p) {
       if (!p) return;
       let phone = p.phone || '';
-      if (!phone && this.mode === 'firebase') { try { const d = await this.db.collection('phones').doc(p.id).get(); if (d.exists) phone = d.data().phone || ''; } catch (e) { } }
+      if (!phone && this.mode === 'cloud') { try { const r = ok(await this.sb.from('telephones').select('phone').eq('player_id', p.id).maybeSingle()); if (r) phone = r.phone || ''; } catch (e) { } }
       const l = (await this.retiredPlayers()).filter(x => x.name.toLowerCase() !== p.name.toLowerCase());
       l.unshift({ name: p.name, phone, retireLe: Date.now() });
       // Banque de joueurs : 64 au plus (joueurs du groupe + retirés) ; au-delà, les plus anciens retirés sont oubliés
       await this.setRetiredPlayers(l.slice(0, Math.max(0, BANQUE_MAX - (S.players || []).length + 1)));
     },
-    async deletePlayer(id, count, deja) {
-      if (this.mode === 'firebase') {
-        // Le compte doit être relié à ce groupe-ci (auth/{uid}) : sinon les règles refusent. On le relie et on réessaie une fois.
-        if (!deja) {
-          try { const a = await this.db.collection('auth').doc(this.uid).get(); const moi = (S.players || []).find(p => p.id === meId());
-            if (moi && (!a.exists || a.data().groupId !== this.gid || a.data().playerId !== moi.id)) await this.linkTo(moi); } catch (e) { }
-        }
-        const b = this.db.batch();
-        b.delete(this.db.collection('players').doc(id));
-        b.set(this.db.collection('players').doc('_groupe_' + this.gid), { nPlayers: this.incr(-1, Math.max(0, (count || 1) - 1)), lastDel: id }, { merge: true });
-        try { await b.commit(); }
-        catch (e) {
-          console.warn('retrait refusé', id, this.gid, e.message);
-          throw new Error(/permission|insufficient/i.test(e.message || '') ? 'Firebase refuse le retrait (droits)' : e.message);
-        }
-        try { await this.db.collection('phones').doc(id).delete(); } catch (e) { }
+    async deletePlayer(id) {
+      if (this.mode === 'cloud') {
+        const r = ok(await this.sb.from('joueurs').delete().eq('id', id).select('id'));
+        if (!r || !r.length) throw new Error('Seul le propriétaire du groupe retire des joueurs.');
         return;
       }
       ls.set('pelland.players', ls.get('pelland.players', []).filter(x => x.id !== id));
     },
-    // Présences : presence/{partie} = { cléJoueur: { ok: true|false, at } } ; chaque membre écrit sa propre réponse
+    // Présences : { cléJoueur: { ok: true|false, at } } par partie ; chaque membre écrit sa propre réponse
     watchPresence(id, cb) {
-      if (this.mode === 'firebase') return this.db.collection('presence').doc(id).onSnapshot(d => cb(d.exists ? d.data() : {}), () => cb(null));
+      if (this.mode === 'cloud') {
+        this.sb.from('presences').select('data').eq('game_id', id).maybeSingle().then(r => cb(r.error ? null : (r.data ? r.data.data : {})));
+        return this.watch('presences', 'game_id', id, r => cb(r.data || {}));
+      }
       const read = () => cb(ls.get('pelland.presence', {})[id] || {}); read();
       const on = e => { if (e.key === 'pelland.presence') read(); }; window.addEventListener('storage', on);
       this._presSubs = (this._presSubs || []).concat([[id, read]]);
       return () => { window.removeEventListener('storage', on); this._presSubs = (this._presSubs || []).filter(x => x[1] !== read); };
     },
-    async setPresence(id, key, ok) {
-      const v = { ok, at: Date.now() };
-      if (this.mode === 'firebase') { await this.db.collection('presence').doc(id).set({ [key]: v }, { merge: true }); return; }
+    async setPresence(id, key, yes) {
+      const v = { ok: yes, at: Date.now() };
+      if (this.mode === 'cloud') { ok(await this.sb.rpc('presence_maj', { p_partie: id, p_cle: key, p_valeur: v })); return; }
       const all = ls.get('pelland.presence', {}); all[id] = { ...(all[id] || {}), [key]: v }; ls.set('pelland.presence', all);
       (this._presSubs || []).forEach(([gid, f]) => { if (gid === id) f(); });
     },
     async listPresence(ids) {
-      if (this.mode === 'firebase') { const m = {}; await Promise.all((ids || []).map(async id => { try { const d = await this.db.collection('presence').doc(id).get(); if (d.exists) m[id] = d.data(); } catch (e) { } })); return m; }
+      if (this.mode === 'cloud') { const m = {}; if (!(ids || []).length) return m; try { (ok(await this.sb.from('presences').select('game_id, data').in('game_id', ids)) || []).forEach(r => { m[r.game_id] = r.data; }); } catch (e) { } return m; }
       return ls.get('pelland.presence', {});
     },
     async deleteGame(id) {
-      if (this.mode === 'firebase') { await this.db.collection('games').doc(id).delete(); return; }
+      if (this.mode === 'cloud') { const q = ls.get('fanion.file', {}); delete q[id]; ls.set('fanion.file', q); ok(await this.sb.from('parties').delete().eq('id', id)); return; }
       const all = ls.get('pelland.games', {}); delete all[id]; ls.set('pelland.games', all);
     },
-    // Avis des joueurs : avis/<uid du compte> (un par personne ; publié seulement si approuvé dans la console)
+    // Avis des joueurs : un par compte ; publié seulement si approuvé par l'équipe Fanion
     async getAvis() {
-      const u = this.mode === 'firebase' && firebase.auth().currentUser; if (!u) return ls.get('fanion.avis', null);
-      try { const d = await this.db.collection('avis').doc(u.uid).get(); return d.exists ? d.data() : null; } catch (e) { return null; }
+      if (this.mode !== 'cloud' || !this.uid) return ls.get('fanion.avis', null);
+      try { const r = ok(await this.sb.from('avis').select('*').eq('uid', this.uid).maybeSingle()); return r ? { stars: r.stars, text: r.text, name: r.name, groupName: r.group_name, ok: r.ok, at: Number(r.at) } : null; } catch (e) { return null; }
     },
     async saveAvis(a) {
-      const u = this.mode === 'firebase' && firebase.auth().currentUser;
-      if (u) await this.db.collection('avis').doc(u.uid).set(a); else ls.set('fanion.avis', a);
+      if (this.mode !== 'cloud' || !this.uid) { ls.set('fanion.avis', a); return; }
+      ok(await this.sb.from('avis').upsert({ uid: this.uid, stars: a.stars, text: String(a.text || '').slice(0, 280), name: String(a.name || '').slice(0, 40), group_name: String(a.groupName || '').slice(0, 60), ok: !!a.ok, at: a.at || Date.now() }));
     },
-    // Compétitions : comps/<id> = { groupId, format, name, date, course, tee, allowance, flights, teams:[{id, p:[{name,index}]}], scores:{ <équipe>: { <trou>: [s1, s2] } } }
+    // Compétitions : { groupId, format, name, date, course, tee, allowance, flights, teams:[…], scores:{ <équipe>: { <trou>: [s1, s2] } } }
     async listComps() {
-      if (this.mode === 'firebase') { try { const sn = await this.db.collection('comps').where('groupId', '==', this.gid).get(); return sn.docs.map(d => d.data()).sort((a, b) => (b.date || '').localeCompare(a.date || '')); } catch (e) { return []; } }
+      if (this.mode === 'cloud') { try { return (ok(await this.sb.from('competitions').select('id, data, scores').eq('group_id', this.gid)) || []).map(r => ({ ...(r.data || {}), id: r.id, scores: r.scores || {} })).sort((a, b) => (b.date || '').localeCompare(a.date || '')); } catch (e) { return []; } }
       return Object.values(ls.get('pelland.comps', {})).filter(c => c.groupId === this.gid).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     },
     async saveComp(c) {
-      if (this.mode === 'firebase') { const { scores, ...rest } = c; await this.db.collection('comps').doc(c.id).set(rest, { merge: true }); return; }
+      if (this.mode === 'cloud') { const { scores, ...rest } = c; ok(await this.sb.rpc('comp_fusion', { p_id: c.id, p_group: c.groupId || this.gid, p_patch: JSON.parse(JSON.stringify(rest)) })); return; }
       const all = ls.get('pelland.comps', {}); all[c.id] = { ...(all[c.id] || {}), ...c }; ls.set('pelland.comps', all);
     },
     // Un score à la fois, fusionné, pour que deux équipes puissent entrer leurs scores en même temps
     async setCompScore(id, tid, h, arr) {
-      if (this.mode === 'firebase') { await this.db.collection('comps').doc(id).set({ scores: { [tid]: { [h]: arr } } }, { merge: true }); return; }
+      if (this.mode === 'cloud') { ok(await this.sb.rpc('comp_score', { p_comp: id, p_equipe: String(tid), p_trou: String(h), p_valeur: arr })); return; }
       const all = ls.get('pelland.comps', {}); const c = all[id]; if (!c) return; c.scores = c.scores || {}; c.scores[tid] = c.scores[tid] || {}; c.scores[tid][h] = arr; ls.set('pelland.comps', all);
     },
-    // Remplace un champ entier (ex. tableau.manual) : un « merge » garderait les anciennes clés
+    // Remplace un champ entier (ex. tableau.manual)
     async setCompField(id, path, value) {
-      if (this.mode === 'firebase') { await this.db.collection('comps').doc(id).update({ [path]: value }); return; }
+      if (this.mode === 'cloud') { ok(await this.sb.rpc('comp_maj', { p_comp: id, p_chemin: path.split('.'), p_valeur: value === undefined ? null : value })); return; }
       const all = ls.get('pelland.comps', {}); const c = all[id]; if (!c) return; const ks = path.split('.'); let o = c; ks.slice(0, -1).forEach(k => { o[k] = o[k] || {}; o = o[k]; }); o[ks[ks.length - 1]] = value; ls.set('pelland.comps', all);
     },
     async deleteComp(id) {
-      if (this.mode === 'firebase') { await this.db.collection('comps').doc(id).delete(); return; }
+      if (this.mode === 'cloud') { ok(await this.sb.from('competitions').delete().eq('id', id)); return; }
       const all = ls.get('pelland.comps', {}); delete all[id]; ls.set('pelland.comps', all);
     },
     watchComp(id, cb) {
-      if (this.mode === 'firebase') return this.db.collection('comps').doc(id).onSnapshot(d => { if (d.exists) cb(d.data()); }, e => toast('Lecture impossible : ' + e.message));
+      if (this.mode === 'cloud') {
+        const get = () => this.sb.from('competitions').select('id, data, scores').eq('id', id).maybeSingle().then(r => { if (r.data) cb({ ...(r.data.data || {}), id: r.data.id, scores: r.data.scores || {} }); });
+        get();
+        return this.watch('competitions', 'id', id, r => cb({ ...(r.data || {}), id: r.id, scores: r.scores || {} }));
+      }
       const get = () => { const c = ls.get('pelland.comps', {})[id]; if (c) cb(c); };
       get(); const on = e => { if (e.key === 'pelland.comps') get(); }; window.addEventListener('storage', on);
       return () => window.removeEventListener('storage', on);
     },
     async listGames() {
-      if (this.mode === 'firebase') {
-        const snap = await this.db.collection('games').where('groupId', '==', this.gid).get();
-        return snap.docs.map(d => fromDb(d.data())).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 200);
+      if (this.mode === 'cloud') {
+        let list = [];
+        try { list = (ok(await this.sb.from('parties').select('data').eq('group_id', this.gid).order('updated_at', { ascending: false }).limit(200)) || []).map(r => fromDb(r.data)); }
+        catch (e) { list = Object.values(ls.get('fanion.parties', {})).filter(g => g.groupId === this.gid); }
+        const q = ls.get('fanion.file', {}); Object.values(q).filter(g => g.groupId === this.gid).forEach(g => { list = list.filter(x => x.id !== g.id).concat([g]); });
+        return list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, 200);
       }
       return Object.values(ls.get('pelland.games', {})).filter(g => (g.groupId || 'pelland') === this.gid).sort((a, b) => b.createdAt - a.createdAt);
-    }
+    },
+    // Notifications : un abonnement par compte et par groupe (abonnements_push)
+    async savePushSub(g, playerId, js, etat) {
+      ok(await this.sb.from('abonnements_push').upsert({ id: this.uid + '_' + g, uid: this.uid, group_id: g, player_id: playerId, sub: js ? JSON.parse(js) : null, etat, at: Date.now() }));
+    },
+    async deletePushSub(g) { await this.sb.from('abonnements_push').delete().eq('id', this.uid + '_' + g); },
+    async listPushSubs() { return (ok(await this.sb.from('abonnements_push').select('player_id, sub, etat, at').eq('group_id', this.gid)) || []).map(r => ({ playerId: r.player_id, sub: r.sub, etat: r.etat, at: Number(r.at || 0) })); }
   };
-  // Firestore refuse les tableaux imbriqués : les équipes sont stockées comme { e1: [...], e2: [...] }.
+  // Les parties gardent les équipes sous la forme { e1: [...], e2: [...] } (comme avant dans Firestore).
   function toDb(g) {
     const o = JSON.parse(JSON.stringify(g));
     if (Array.isArray(o.teams)) o.teams = { e1: o.teams[0], e2: o.teams[1] };
@@ -687,7 +621,7 @@
   const handoffBtn = (g, owner) => owner && g.status !== 'terminée' ? `<div class="row handoff-row"><span class="note">Responsable : <b>${esc((g.players[g.responsable] || {}).name || '')}</b> ★</span><span class="row" style="gap:8px"><button class="btn ghost small" data-editmoney type="button">Modifier les montants</button><button class="btn ghost small" data-handoff type="button">Changer de responsable</button></span></div>` : '';
   function respActions(g, owner, note) {
     if (owner) return '';
-    if (!(Store.mode === 'firebase' && Store.email)) return '';
+    if (!(Store.mode === 'cloud' && Store.email)) return '';
     const r = g.players[g.responsable];
     return S.confirmClaim === g.id
       ? `<div class="row game-actions"><button class="btn small" data-claim type="button">Oui, je deviens responsable</button><button class="btn ghost small" data-cancelclaim type="button">Annuler</button></div>`
@@ -726,10 +660,11 @@
     const v = $('#view');
     $('#back').hidden = S.view === 'home' || S.view === 'login';
     document.body.classList.toggle('tv-mode', S.view === 'compTv');   // écran télé : sans barre ni bouton de Léo
-    $('#dbBadge').textContent = !navigator.onLine ? 'Hors ligne' : Store.mode === 'firebase' ? '' : 'Local';
+    $('#dbBadge').textContent = !navigator.onLine ? 'Hors ligne' : Store.mode === 'cloud' ? '' : 'Local';
     // Mon compte : en haut à droite, avec les initiales du joueur
-    const ab = $('#acctBtn'), acctOk = Store.mode === 'firebase' && !!Store.email && !Store.needLogin && S.view !== 'login';
-    ab.hidden = !acctOk; $('#ideeBtn').hidden = !acctOk; $('#ideeBtn').classList.toggle('compact', S.view !== 'home'); ab.classList.toggle('on', S.view === 'compte');
+    const ab = $('#acctBtn'), acctOk = Store.mode === 'cloud' && !!Store.email && !Store.needLogin && S.view !== 'login';
+    ab.hidden = true; $('#ideeBtn').hidden = !acctOk;  // Mon compte : par le menu d'Albert (HoldingAI)
+    $('#ideeBtn').classList.toggle('compact', S.view !== 'home'); ab.classList.toggle('on', S.view === 'compte');
     if (acctOk) { const nm = (S.players.find(p => p.id === meId()) || {}).name || ls.get('pelland.me', '') || ''; $('#acctIni').textContent = nm.split(/[\s-]+/).filter(Boolean).slice(0, 2).map(x => x[0].toUpperCase()).join('') || '👤'; ab.title = 'Mon compte' + (nm ? ' · ' + nm : ''); }
     $('#dbBadge').classList.toggle('offline', !navigator.onLine);
     const showDock = false; // plus d'interface vocale
@@ -871,7 +806,7 @@
         return Store.needLogin ? '' : `<span class="hero-liens">${autres ? `<button class="btn ghost small" id="switchGroup" type="button">Changer (${autres})</button>` : ''}<button class="btn ghost small" data-viral type="button">+ Ajouter un groupe</button></span>`; })()}</div>
       <h1>${canOrganize() ? `<button class="hero-nom" id="renameGroup" type="button" title="Toucher pour changer le nom du groupe" aria-label="Changer le nom du groupe : ${esc(groupName())}">${esc(groupName())}</button>` : esc(groupName())}</h1></div>
       ${Store.needLogin ? '' : groupInfo(true)}
-      ${!Store.needLogin && Store.mode === 'firebase' && S.players && S.players.length && !meId() ? `<div class="warn">Vous êtes dans la banque de joueurs de ce groupe, mais pas encore membre : l’organisateur vous ajoutera au groupe quand il y aura une place.</div>` : ''}
+      ${!Store.needLogin && Store.mode === 'cloud' && S.players && S.players.length && !meId() ? `<div class="warn">Vous êtes dans la banque de joueurs de ce groupe, mais pas encore membre : l’organisateur vous ajoutera au groupe quand il y aura une place.</div>` : ''}
       ${retourCarte()}
       ${P.admin && P.todo.length ? `<button class="warn approve-band" data-go="courses" type="button">🏌️ ${P.todo.length} terrain${P.todo.length > 1 ? 's' : ''} à approuver pour la banque · Voir</button>` : ''}
       ${curGroup().archived ? `<div class="warn archived-band">Ce groupe est archivé.${meId() && meId() === ownerId() ? ' <button class="linkbtn" data-go="compte" type="button">Le rétablir dans Mon compte</button>' : ' Son propriétaire peut le rétablir.'}</div>` : ''}
@@ -888,7 +823,7 @@
       ${referralCard()}
       ${Store.needLogin ? '' : `<button class="caddie-tile" data-caddie type="button"><span class="cad-ico" aria-hidden="true">${window.CaddieGuide ? CaddieGuide.avatar() : '?'}</span><span><b>Une question ?</b><small>Demandez à Léo, votre caddie : l’app, les règles des jeux, les forfaits.</small></span></button>`}
       ${viralCard('home')}
-      <p class="note">${Store.mode === 'firebase' ? 'Base partagée active : les autres joueurs suivent la partie en direct dans Parties en cours.' : 'Mode local : les parties restent sur ce téléphone.'}</p>
+      <p class="note">${Store.mode === 'cloud' ? 'Base partagée active : les autres joueurs suivent la partie en direct dans Parties en cours.' : 'Mode local : les parties restent sur ce téléphone.'}</p>
       ${Store.mode === 'local' && Store.error ? `<div class="warn"><b>Pourquoi le mode local :</b> ${esc(Store.error)}</div>` : ''}`;
   }
 
@@ -1019,16 +954,16 @@
   function vCompte() {
     $('#barTitle').textContent = 'Mon compte';
     if (S.acctGroups == null) { Store.myGroupList().then(l => { S.acctGroups = l; S.myPlayers = l; if (S.view === 'compte') render(); }).catch(() => { S.acctGroups = []; render(); }); return '<p class="note">Chargement…</p>'; }
-    const u = (window.firebase && firebase.auth().currentUser) || {}, cell = (u.phoneNumber || '').replace(/^\+1/, '');
+    const u = { uid: Store.uid }, cell = (Store.e164 || '').replace(/^\+1/, '');
     const mine = S.acctGroups.find(g => g.gid === Store.gid) || S.acctGroups[0];
     if (mine && !S.fromLogin) ls.set('pelland.me', mine.playerName);
     return `<section class="card"><h2>${esc(mine ? mine.playerName : ls.get('pelland.me', '') || '')}</h2>
         ${S.fromLogin ? '<p class="note"><b>Bienvenue !</b> Choisissez votre groupe.</p>' : ''}
-        <p class="note">${cell ? 'Cellulaire confirmé : ' + esc(fmtPhone(cell)) : 'Compte créé avant les comptes avec mot de passe : déconnectez-vous puis touchez « Créer mon compte » pour le mettre à jour.'}</p>
+        <p class="note">${cell ? 'Cellulaire confirmé : ' + esc(fmtPhone(cell)) : 'Votre compte HoldingAI n’a pas de cellulaire confirmé : ajoutez-le dans « Mon compte HoldingAI ».'}</p>
         ${u.uid ? `<p class="note uid-ligne">Identifiant du compte : <code>${esc(u.uid)}</code> <button class="linkbtn" data-copyuid="${esc(u.uid)}" type="button">Copier</button>${P.admin ? ' · <b>approbateur des terrains ✓</b>' : ''}</p>` : ''}</section>
       ${S.fromLogin ? '' : forfaitHtml()}
-      <h3 class="acct-h">Mot de passe</h3>
-      <div class="acct-box acct-g"><div><b>Mot de passe du compte</b><small>Avec votre cellulaire, il sert à vous connecter sur un autre appareil.</small></div><button class="btn ghost small" id="chgPw" type="button">Changer</button></div>
+      <h3 class="acct-h">Compte HoldingAI</h3>
+      <div class="acct-box acct-g"><div><b>Cellulaire et mot de passe</b><small>Votre compte HoldingAI sert dans toutes les apps HoldingAI. Albert s’en occupe.</small></div><a class="btn ghost small" href="${esc(HoldingAI.compteUrl)}">Gérer</a></div>
       <h3 class="acct-h acct-h-act"><span>Mes groupes (${S.acctGroups.filter(x => !x.archived).length})</span><button class="btn ghost small" data-viral type="button">+ Ajouter un groupe</button></h3>
       ${groupRows(S.acctGroups.filter(x => !x.archived), S.fromLogin ? null : Store.gid, S.acctGroups).replace(S.fromLogin ? /Ouvrir/g : /^$/, 'Entrer')}
       ${S.acctGroups.some(x => x.archived) ? `<h3 class="acct-h">Groupes archivés (${S.acctGroups.filter(x => x.archived).length})</h3>
@@ -1106,7 +1041,7 @@
         sh.querySelector('#npGo').onclick = async () => {
           const a = sh.querySelector('#np1').value, b = sh.querySelector('#np2').value, m = sh.querySelector('#npMsg');
           if (a.length < 6) return m.textContent = 'Au moins 6 caractères.'; if (a !== b) return m.textContent = 'Les deux mots de passe ne sont pas pareils.';
-          try { await firebase.auth().currentUser.updatePassword(a); closeSheet(); toast('Mot de passe changé.'); }
+          try { closeSheet(); location.href = HoldingAI.compteUrl; }
           catch (e) { m.textContent = /recent/.test(e.code || '') ? 'Pour votre sécurité : déconnectez-vous, puis « Mot de passe oublié ? » sur l’écran de connexion.' : 'Impossible : ' + (e.code || e.message); }
         };
       });
@@ -1166,13 +1101,12 @@
   const vuR = () => ls.get(vuKey(), {}) || {};
   const noterVu = o => ls.set(vuKey(), { ...vuR(), ...o });
   async function retourApi(body) {
-    const u = Store.mode === 'firebase' && firebase.auth().currentUser; if (!u) throw new Error('Connexion requise.');
-    const tok = await u.getIdToken();
+    const tok = Store.mode === 'cloud' && await Store.token(); if (!tok) throw new Error('Connexion requise.');
     const r = await fetch(RETOUR_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify(body) });
     const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || 'Erreur ' + r.status); return d;
   }
   async function chargerRetour() {
-    if (Store.needLogin || Store.mode !== 'firebase') return;
+    if (Store.needLogin || Store.mode !== 'cloud') return;
     try { const d = await retourApi({ action: 'lire' }); Object.assign(R, { idees: d.idees || [], nouveautes: d.nouveautes || [], sondageDernier: d.sondageDernier, charge: true }); }
     catch (e) { return; }
     if (S.view === 'home' && !document.querySelector('#sheetWrap:not([hidden]), #welcome, .cd-fond')) render();
@@ -1183,7 +1117,7 @@
     const vu = vuR(), vuI = vu.idees || {};
     const rep = R.idees.find(i => (i.reponse || ['prevue', 'faite', 'non'].includes(i.statut)) && vuI[i.id] !== cleIdee(i));
     if (rep) return { k: 'reponse', i: rep };
-    const u = firebase.auth().currentUser, cree = new Date((u && u.metadata && u.metadata.creationTime) || Date.now()).getTime();
+    const cree = Number(ls.get('fanion.premiereVisite', 0)) || (ls.set('fanion.premiereVisite', Date.now()), Date.now());
     const depuis = Math.max(cree, Number(vu.nv || 0));
     const nv = R.nouveautes.find(n => new Date(n.cree).getTime() > depuis);
     if (nv) return { k: 'nouveaute', n: nv };
@@ -2006,7 +1940,7 @@
       let res;
       if (isAlt(g)) { const t = neufGains(g), mx = Math.max(...t); res = `${gameName(g)} · ${g.players.filter((p, i) => t[i] === mx).map(p => p.name.split(' ')[0]).join(', ')} ${mx > 0 ? '+' + fmt$(mx) : ''}`; }
       else { const t = L.teamPoints(g).tot; res = t[0] === t[1] ? 'égalité' : `${L.TEAMS[t[0] > t[1] ? 0 : 1]} +${Math.abs(t[0] - t[1])}`; }
-      const mine = Store.mode !== 'firebase' || !!Store.email;
+      const mine = Store.mode !== 'cloud' || !!Store.email;
       const done = g.status === 'terminée';
       return `<div class="item hist ${done ? 'done' : ''}"><button class="hist-open" data-open="${esc(g.id)}" type="button"><b>${d.toLocaleDateString('fr-CA', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })} · ${esc(g.course.name.replace(/^Club de golf /i, ''))}</b>
         <span><span class="hist-st">${done ? 'Terminée' : 'En cours'}</span>${!done && S.presAll && S.presAll[g.id] ? ` ✓ ${Object.values(S.presAll[g.id]).filter(x => x && x.ok).length}/4 ·` : ''} ${g.players.map(p => esc(p.name)).join(', ')} · ${played}/18 trous · ${res}</span></button>
@@ -2020,54 +1954,33 @@
   function vLogin() {
     $('#barTitle').innerHTML = `${APP}<small class="bar-sous">le golf entre amis</small>`;
     $('#back').hidden = true;
-    const qs = new URLSearchParams(location.search), me = ls.get('pelland.me', ''), invited = qs.get('joueur'), refQ = qs.get('ref');
-    const groups = S.groups || [{ id: 'pelland', name: 'La gang à Pelland' }];
-    const inv = invited && S.players.find(p => p.id === invited);
-    if (!S.loginGroup) S.loginGroup = inv ? (inv.groupId || 'pelland') : Store.gid;
-    // Arrivée par une invitation sans compte, ou par un lien de parrainage : on commence par créer le compte
-    if (S.acct === undefined) S.acct = (inv && !inv.acct) ? { step: 'phone', welcome: inv.name } : (refQ && !invited) ? { step: 'phone', forGroup: true } : null;
+    const refQ = new URLSearchParams(location.search).get('ref');
+    const groups = S.groups || [];
+    const refGroup = refQ && groups.find(g => g.id === refQ);
     const hero = `<div class="hero"><h1>${APP}</h1><p>Le golf entre amis : pointage, jeux et parties à venir.</p></div>`;
-    const A = S.acct;
-    if (A) {
-      const refGroup = refQ && groups.find(g => g.id === refQ);
-      const title = A.reset ? 'Nouveau mot de passe' : A.forGroup ? 'Créer un groupe' : 'Créer mon compte';
-      const steps = ['Cellulaire', 'Code', 'Mot de passe'].concat(A.forGroup ? ['Groupe'] : []);
-      const at = { phone: 0, code: 1, pw: 2, group: 3, ok: 9 }[A.step] || 0;
-      let body = '';
-      if (A.step === 'phone') body = `<p class="acct-need"><b>Il faut un cellulaire.</b> On vous envoie un code par texto pour confirmer que c’est bien vous. Ensuite, vous choisissez un mot de passe : plus besoin de code.</p>
-        <label>Votre numéro de cellulaire<input id="acPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="450 555-1234" value="${esc(A.phone || '')}"></label>
-        <button class="btn" id="acSend" type="button">Recevoir le code</button>`;
-      else if (A.step === 'code') body = `<p class="note">Code envoyé par texto au <b>${esc(fmtPhone(A.phone))}</b>.</p>
-        <label>Code à 6 chiffres<input id="acCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456"></label>
-        <button class="btn" id="acConfirm" type="button">Confirmer</button>
-        <p class="note" style="text-align:center"><button class="linkbtn" id="acResend" type="button">Renvoyer le code</button> · <button class="linkbtn" id="acPhoneBack" type="button">Changer de numéro</button></p>`;
-      else if (A.step === 'pw') body = `${(A.matches || []).length ? `<p class="note">Votre cellulaire est inscrit dans : <b>${A.matches.map(p => esc((groups.find(g => g.id === (p.groupId || 'pelland')) || {}).name || p.groupId)).join(', ')}</b>.</p>` : A.forGroup ? '' : '<div class="warn">Ce cellulaire n’est inscrit dans aucun groupe pour l’instant. Demandez à votre organisateur de vous ajouter dans Joueurs, ou créez votre propre groupe après votre mot de passe.</div>'}
-        <label>Mot de passe<input id="acPw" type="password" autocomplete="new-password" placeholder="6 caractères ou plus"></label>
-        <label>Confirmez le mot de passe<input id="acPw2" type="password" autocomplete="new-password"></label>
-        <button class="btn" id="acSetPw" type="button">${A.reset ? 'Enregistrer' : 'Créer mon compte'}</button>`;
-      else if (A.step === 'ok') body = `<div class="acct-ok"><span aria-hidden="true">✓</span><div><b>Votre compte est prêt.</b> La prochaine fois : votre nom et votre mot de passe, sans code.</div></div>
-        <h3 class="acct-h">Mes groupes</h3>${groupRows(A.groups || [], null).replace(/Ouvrir/g, 'Entrer')}`;
-      else if (A.step === 'group') body = `<label>Nom du groupe<input id="ngName" type="text" placeholder="ex. Les lève-tôt du samedi"></label>
-        <label>Votre prénom et nom<input id="ngMe" type="text" autocapitalize="words" value="${esc(A.name || '')}"></label>
-        <button class="btn" id="ngCreate" type="button">Créer le groupe</button>
-        <p class="note">Vous en serez le propriétaire. Ajoutez ensuite vos joueurs dans Joueurs : ils reçoivent l’invitation par texto. Gratuit jusqu’à 4 joueurs.</p>`;
-      return hero + `${A.welcome ? `<div class="ref-hello">Bienvenue, <b>${esc(A.welcome)}</b> ! Créez votre compte une seule fois : il servira pour tous vos groupes.</div>` : ''}
-        ${A.forGroup && refQ ? `<div class="ref-hello">${refGroup ? `Recommandé par <b>${esc(refGroup.name)}</b>. ` : ''}Créez votre groupe : c’est gratuit pour un quatuor, et vos joueurs reçoivent l’invitation par texto.</div>` : ''}
-        <section class="card"><h2>${title}</h2>
-        <ol class="acct-steps">${steps.map((t, i) => `<li class="${i < at ? 'done' : i === at ? 'on' : ''}">${t}</li>`).join('')}</ol>
-        ${body}
-        <p class="note" id="acMsg">${esc(A.msg || '')}</p>
-        ${A.step === 'phone' || A.step === 'code' ? '<p class="note" style="text-align:center"><button class="linkbtn" id="acCancel" type="button">J’ai déjà un compte : me connecter</button></p>' : ''}</section>`;
-    }
-    return hero + `<section class="card"><h2>Connexion</h2>
-        <label>Votre cellulaire<input id="loginCell" type="tel" inputmode="tel" autocomplete="username" placeholder="450 555-1234" value="${esc(S.loginCell != null ? S.loginCell : fmtPhone(ls.get('pelland.lastPhone', '') || ''))}"></label>
-        <label>Mot de passe<input id="loginPw" type="password" autocomplete="current-password"></label>
-        <button class="btn" id="loginBtn" type="button">Entrer</button>
-        <p class="note" id="loginMsg">${esc(S.loginMsg || '')}</p>
-        <p class="note" style="text-align:center"><button class="linkbtn" id="forgotPw" type="button">Mot de passe oublié ?</button> · <button class="linkbtn" id="goCreate2" type="button">Première fois ? Créer mon compte</button></p>
+    // Pas encore connecté : le compte HoldingAI (le même pour toutes les apps HoldingAI)
+    if (!Store.uid) return hero + `<section class="card"><h2>Connexion</h2>
+        <p class="note">Un seul compte pour toutes les apps HoldingAI : votre cellulaire et votre mot de passe. Albert s’en occupe.</p>
+        <p class="note"><b>Invité par texto ?</b> Utilisez le cellulaire où vous avez reçu l’invitation : vous retrouverez votre groupe.</p>
+        <button class="btn" id="haiGo" type="button">Continuer avec HoldingAI</button>
+        <p class="note" id="loginMsg">${esc(S.loginMsg || Store.error || '')}</p></section>`;
+    // Connecté, mais ce cellulaire n'est inscrit dans aucun groupe : invitation à demander, ou nouveau groupe
+    const nom = Store.nom || '';
+    return hero + `${refQ ? `<div class="ref-hello">${refGroup ? `Recommandé par <b>${esc(refGroup.name)}</b>. ` : ''}Créez votre groupe : c’est gratuit pour un quatuor, et vos joueurs reçoivent l’invitation par texto.</div>` : ''}
+      <section class="card"><h2>${nom ? 'Bienvenue, ' + esc(nom.split(' ')[0]) + ' !' : 'Bienvenue !'}</h2>
+        <p class="note">Votre cellulaire${Store.e164 ? ' (' + esc(fmtPhone(Store.e164.slice(2))) + ')' : ''} n’est inscrit dans aucun groupe pour l’instant.</p>
+        <p class="note"><b>Invité par un organisateur ?</b> Demandez-lui de vérifier votre cellulaire dans Joueurs, puis rouvrez le lien de son texto.</p>
       </section>
-      <p class="note" style="text-align:center">Nouveau groupe d’amis ? <button class="linkbtn" id="newGroup" type="button">Créer un groupe</button></p>`;
+      <section class="card"><h2>Créer un groupe</h2>
+        <label>Nom du groupe<input id="ngName" type="text" placeholder="ex. Les lève-tôt du samedi"></label>
+        <label>Votre prénom et nom<input id="ngMe" type="text" autocapitalize="words" value="${esc(nom)}"></label>
+        <button class="btn" id="ngCreate" type="button">Créer le groupe</button>
+        <p class="note" id="acMsg"></p>
+        <p class="note">Vous en serez le propriétaire. Ajoutez ensuite vos joueurs dans Joueurs : ils reçoivent l’invitation par texto. Gratuit jusqu’à 4 joueurs.</p>
+      </section>
+      <p class="note" style="text-align:center"><button class="linkbtn" id="haiOut" type="button">Changer de compte</button></p>`;
   }
+
   // ---------- Import de joueurs depuis Excel (ou CSV) : nom + cellulaire ----------
   function loadXLSX() {
     if (window.XLSX) return Promise.resolve(window.XLSX);
@@ -2177,10 +2090,10 @@
     a_activer: ['wait', '🔕 Notifications pas activées', 'Il n’a pas encore accepté les notifications sur son téléphone.'], a_installer: ['wait', '🔕 App pas sur l’écran d’accueil', 'Sur iPhone, il doit ajouter l’app à l’écran d’accueil pour recevoir les alertes.'],
     non_supporte: ['bad', '🔕 Téléphone sans notifications', 'Son navigateur ne reçoit pas les notifications.'] };
   async function chargerNotifs() {
-    if (Store.mode !== 'firebase' || !canOrganize()) return;
+    if (Store.mode !== 'cloud' || !canOrganize()) return;
     try {
-      const snap = await Store.db.collection('subs').where('groupId', '==', Store.gid).get(), m = {};
-      snap.docs.forEach(d => { const x = d.data(), e = x.sub ? 'actif' : (x.etat || 'a_activer'); if (!m[x.playerId] || (x.at || 0) > m[x.playerId].at) m[x.playerId] = { e, at: x.at || 0 }; });
+      const subs = await Store.listPushSubs(), m = {};
+      subs.forEach(x => { const e = x.sub ? 'actif' : (x.etat || 'a_activer'); if (!m[x.playerId] || (x.at || 0) > m[x.playerId].at) m[x.playerId] = { e, at: x.at || 0 }; });
       S.notifs = Object.fromEntries(Object.entries(m).map(([k, v]) => [k, v.e]));
     } catch (e) { S.notifs = {}; }
     if (S.view === 'players') render();
@@ -2232,8 +2145,7 @@
   const W = { region: null, clubs: [], sources: [], charge: false, err: '', prep: null };
   const normNom = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/club de golf|golf club|club|golf|le |la |les |du |de |des |d’|d'/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
   async function terrainsApi(body) {
-    const u = Store.mode === 'firebase' && firebase.auth().currentUser; if (!u) throw new Error('Connexion requise.');
-    const tok = await u.getIdToken();
+    const tok = Store.mode === 'cloud' && await Store.token(); if (!tok) throw new Error('Connexion requise.');
     const r = await fetch(TERRAINS_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify(body) });
     const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || 'Erreur ' + r.status); return d;
   }
@@ -2320,7 +2232,7 @@
   }
   // Pour l'équipe Fanion : deux terrains par jour, les moins récemment vérifiés d'abord (sans retarder l'app)
   async function verifAuto() {
-    if (!P.admin || Store.mode !== 'firebase') return;
+    if (!P.admin || Store.mode !== 'cloud') return;
     const k = 'fanion.verif.jour', jour = new Date().toISOString().slice(0, 10);
     if (ls.get(k, '') === jour) return; ls.set(k, jour);
     const dus = S.courses.filter(c => !c.sim && Date.now() - derniereVerif(c) > VERIF_JOURS * 864e5 && ![...P.todo, ...P.mine].some(p => p.statut === 'propose' && p.courseId === c.id))
@@ -2559,61 +2471,8 @@
     login(v) {
       const done = () => { const q = new URLSearchParams(location.search); q.delete('joueur'); q.delete('ref'); location.href = location.pathname + (q.toString() ? '?' + q : ''); };
       const say = t => { const m = $('#acMsg') || $('#loginMsg'); if (m) m.textContent = t; };
-      const errTxt = e => {
-        const c = (e && e.code) || '';
-        if (c.startsWith('local/')) return e.message;
-        if (/invalid-phone-number|missing-phone-number/.test(c)) return 'Numéro invalide : entrez vos 10 chiffres.';
-        if (/too-many-requests/.test(c)) return 'Trop d’essais pour ce numéro. Réessayez dans quelques minutes.';
-        if (/invalid-verification-code/.test(c)) return 'Code incorrect. Vérifiez le texto et réessayez.';
-        if (/code-expired|session-expired/.test(c)) return 'Code expiré : touchez « Renvoyer le code ».';
-        if (/requires-recent-login/.test(c)) return 'Pour votre sécurité, recommencez avec un nouveau code.';
-        if (/referer|blocked/.test(c + (e.message || ''))) return 'Connexion bloquée par la clé Firebase : l’adresse de l’app doit être autorisée (Google Cloud → Identifiants).';
-        return 'Erreur : ' + (c || e.message);
-      };
-      const A = S.acct;
-      const start = o => { S.acct = { step: 'phone', ...o }; S.loginMsg = ''; render(); setTimeout(() => { const i = $('#acPhone'); if (i) i.focus(); }, 50); };
-      // ----- Connexion : nom + mot de passe -----
-      // Après la connexion : on arrive dans son compte, pour choisir son groupe
-      const toAccount = () => { const q = new URLSearchParams(location.search); q.delete('joueur'); q.delete('ref'); q.set('compte', '1'); location.href = location.pathname + '?' + q; };
-      const enter = async () => {
-        const b = $('#loginBtn'); b.disabled = true; say('Connexion…'); S.loginCell = $('#loginCell').value;
-        try { await Store.loginPhone($('#loginCell').value, $('#loginPw').value); toAccount(); } catch (e) { b.disabled = false; say(errTxt(e)); }
-      };
-      if ($('#loginBtn')) { $('#loginBtn').onclick = enter; $('#loginPw').onkeydown = e => { if (e.key === 'Enter') enter(); }; $('#loginCell').onkeydown = e => { if (e.key === 'Enter') $('#loginPw').focus(); }; }
-      [['#goCreate2', {}], ['#forgotPw', { reset: true }], ['#newGroup', { forGroup: true }]].forEach(([id, o]) => { const b = $(id); if (b) b.onclick = () => start(o); });
-      if (!A) return;
-      // ----- Création de compte : cellulaire → code → mot de passe (→ groupe) -----
-      const cancel = $('#acCancel'); if (cancel) cancel.onclick = () => { S.acct = null; S.loginMsg = ''; render(); };
-      const send = async () => {
-        const ph = A.step === 'code' ? A.phone : $('#acPhone').value;
-        const b = $('#acSend') || $('#acResend'); if (b) b.disabled = true; say('Envoi du code…');
-        try { A.conf = await Store.sendCode(ph); A.phone = String(ph).replace(/\D/g, '').replace(/^1(\d{10})$/, '$1'); A.step = 'code'; A.msg = 'Le code arrive en quelques secondes.'; render(); setTimeout(() => { const i = $('#acCode'); if (i) i.focus(); }, 50); }
-        catch (e) { if (b) b.disabled = false; say(errTxt(e)); }
-      };
-      const sb = $('#acSend'); if (sb) { sb.onclick = send; $('#acPhone').onkeydown = e => { if (e.key === 'Enter') send(); }; }
-      const rs = $('#acResend'); if (rs) rs.onclick = send;
-      const pb = $('#acPhoneBack'); if (pb) pb.onclick = () => { A.step = 'phone'; A.msg = ''; render(); };
-      const confirm = async () => {
-        const b = $('#acConfirm'); if (b.disabled) return; b.disabled = true; say('Vérification…');
-        try { A.matches = await Store.confirmCode(A.conf, $('#acCode').value); A.step = 'pw'; A.msg = ''; render(); setTimeout(() => { const i = $('#acPw'); if (i) i.focus(); }, 50); }
-        catch (e) { b.disabled = false; say(errTxt(e)); }
-      };
-      const cf = $('#acConfirm'); if (cf) { cf.onclick = confirm; const ci = $('#acCode'); ci.onkeydown = e => { if (e.key === 'Enter') confirm(); }; ci.oninput = () => { if (ci.value.replace(/\D/g, '').length === 6) confirm(); }; }
-      const sp = $('#acSetPw'); if (sp) sp.onclick = async () => {
-        const p1 = $('#acPw').value, p2 = $('#acPw2').value;
-        if (p1.length < 6) return say('Le mot de passe doit avoir au moins 6 caractères.');
-        if (p1 !== p2) return say('Les deux mots de passe ne sont pas pareils.');
-        sp.disabled = true; say('Enregistrement…');
-        try {
-          // Le joueur choisi (invitation ou nom sélectionné) devient le groupe actif à la fin
-          const pref = (A.matches || []).find(p => p.id === (new URLSearchParams(location.search).get('joueur') || S.loginPick));
-          const order = pref ? (A.matches || []).filter(p => p !== pref).concat([pref]) : (A.matches || []);
-          await Store.setPassword(p1, order);
-          if (A.forGroup || !order.length) { A.step = 'group'; A.forGroup = true; A.name = (pref || order[0] || {}).name || ''; A.msg = ''; render(); return; }
-          Store.needLogin = false; A.groups = await Store.myGroupList().catch(() => []); A.step = 'ok'; A.msg = ''; render();
-        } catch (e) { sp.disabled = false; say(errTxt(e)); }
-      };
-      v.querySelectorAll('[data-gopen]').forEach(b => b.onclick = () => { b.disabled = true; b.textContent = '…'; const x = A.groups[+b.dataset.gopen]; openGroup(x).then(() => { }); });
+      const go = $('#haiGo'); if (go) go.onclick = async () => { go.disabled = true; say('Connexion…'); try { await HoldingAI.connecter(); } catch (e) { go.disabled = false; say(e.message); } };
+      const out = $('#haiOut'); if (out) out.onclick = () => Store.logout();
       const nc = $('#ngCreate'); if (nc) nc.onclick = async () => {
         nc.disabled = true; say('Création…');
         try { await Store.createGroup($('#ngName').value, $('#ngMe').value); done(); } catch (e) { nc.disabled = false; say(e.message); }
@@ -4309,36 +4168,36 @@
       ls.set('pelland.push', 1);
     },
     async save(sub) {
-      if (Store.mode !== 'firebase' || !Store.uid) return;
+      if (Store.mode !== 'cloud' || !Store.uid) return;
       let mine = []; try { mine = await Store.myPlayers(); } catch (e) { }
       if (!mine.length && meId()) mine = [{ id: meId(), groupId: Store.gid }];
       const js = sub ? JSON.stringify(sub) : '';
       // Groupes quittés : leur abonnement est retiré (on ne reçoit plus rien d'un groupe dont on n'est plus membre)
       const avant = ls.get('pelland.push.groupes', []), maintenant = mine.map(p => p.groupId || 'pelland');
-      for (const g of avant.filter(g => !maintenant.includes(g))) { try { await Store.db.collection('subs').doc(Store.uid + '_' + g).delete(); } catch (e) { } }
+      for (const g of avant.filter(g => !maintenant.includes(g))) { try { await Store.deletePushSub(g); } catch (e) { } }
       ls.set('pelland.push.groupes', maintenant);
-      for (const p of mine) { const g = p.groupId || 'pelland'; try { await Store.db.collection('subs').doc(Store.uid + '_' + g).set({ uid: Store.uid, groupId: g, playerId: p.id, sub: js, etat: js ? 'actif' : (this.etatAct || 'a_activer'), at: Date.now() }); } catch (e) { console.warn('abonnement', g, e.message); } }
+      for (const p of mine) { const g = p.groupId || 'pelland'; try { await Store.savePushSub(g, p.id, js, js ? 'actif' : (this.etatAct || 'a_activer')); } catch (e) { console.warn('abonnement', g, e.message); } }
     },
     async disable() {
       const sub = await this.sub(); if (sub) { try { await sub.unsubscribe(); } catch (e) { } }
       ls.set('pelland.push', 0);
-      if (Store.mode !== 'firebase' || !Store.uid) return;
+      if (Store.mode !== 'cloud' || !Store.uid) return;
       let mine = []; try { mine = await Store.myPlayers(); } catch (e) { }
       const gs = new Set(mine.map(p => p.groupId || 'pelland').concat([Store.gid]));
-      for (const g of gs) { try { await Store.db.collection('subs').doc(Store.uid + '_' + g).delete(); } catch (e) { } }
+      for (const g of gs) { try { await Store.deletePushSub(g); } catch (e) { } }
     },
     // Garde l'abonnement à jour (nouveau groupe, abonnement renouvelé par le navigateur)
     // Membre d'un groupe = notifications actives : dès que le téléphone les permet, l'abonnement est (re)fait sans rien demander
     // État vu par l'organisateur (Joueurs) : actif, bloque, a_activer, a_installer, non_supporte
     etat() { return !this.supported() ? (this.needsInstall() ? 'a_installer' : 'non_supporte') : this.perm() === 'denied' ? 'bloque' : this.perm() === 'granted' ? 'actif' : 'a_activer'; },
     async signaler() {
-      if (Store.mode !== 'firebase' || !Store.uid) return;
+      if (Store.mode !== 'cloud' || !Store.uid) return;
       const e = this.etat(); if (e === 'actif' || ls.get('pelland.push.etat', '') === e + ':' + Store.gid) return;
       this.etatAct = e; try { await this.save(null); ls.set('pelland.push.etat', e + ':' + Store.gid); } catch (x) { }
     },
     async refresh() {
       if (this.perm() !== 'granted' || !this.supported()) return this.signaler();
-      if (Store.mode !== 'firebase' || !Store.uid) return;
+      if (Store.mode !== 'cloud' || !Store.uid) return;
       try {
         const reg = await navigator.serviceWorker.ready;
         const s = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: this.key() });
@@ -4348,12 +4207,12 @@
     on() { return this.perm() === 'granted' && !!ls.get('pelland.push', 0); },
     // Avertit les membres du groupe (sauf soi) ; playerIds = seulement ces joueurs
     async notify(data) {
-      if (Store.mode !== 'firebase' || !Store.uid) return;
-      try { const tok = await firebase.auth().currentUser.getIdToken(); await fetch(PUSH_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify({ groupId: Store.gid, ...data }) }); } catch (e) { console.warn('notification', e.message); }
+      if (Store.mode !== 'cloud' || !Store.uid) return;
+      try { const tok = await Store.token(); await fetch(PUSH_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify({ groupId: Store.gid, ...data }) }); } catch (e) { console.warn('notification', e.message); }
     }
   };
   function pushCard() {
-    if (Store.needLogin || Store.mode !== 'firebase') return '';
+    if (Store.needLogin || Store.mode !== 'cloud') return '';
     if (Push.on()) return '';
     const bloque = Push.perm() === 'denied';
     const install = Push.needsInstall();
@@ -4388,7 +4247,7 @@
   }
   async function openCaddie() {
     S.caddie = S.caddie || [{ role: 'assistant', content: `Bonjour${firstName(ls.get('pelland.me', '')) ? ' ' + firstName(ls.get('pelland.me', '')) : ''} ! Moi, c’est Léo, votre caddie. Posez-moi vos questions sur l’app, les règles des jeux ou les forfaits.` }];
-    const ready = Store.mode === 'firebase' && await caddieStatus();
+    const ready = Store.mode === 'cloud' && await caddieStatus();
     const draw = sh => {
       sh.innerHTML = `<div class="cad-id"><span class="cad-av" aria-hidden="true">${window.CaddieGuide ? CaddieGuide.avatar() : ''}</span><div><h3>Léo</h3><p class="note">Votre caddie. Posez votre question sur l’app.</p></div></div>
         <div class="cad-log" id="cadLog">${S.caddie.map(caddieMsg).join('')}${S.caddieBusy ? '<div class="cad-msg bot busy">…</div>' : ''}</div>
@@ -4408,7 +4267,7 @@
     const ask = async (q, sh) => {
       S.caddie.push({ role: 'user', content: q }); S.caddieBusy = true; draw(sh);
       try {
-        const tok = await firebase.auth().currentUser.getIdToken();
+        const tok = await Store.token();
         const r = await fetch(CADDIE_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify({ messages: S.caddie.slice(1) }) });
         const d = await r.json().catch(() => ({}));
         S.caddie.push({ role: 'assistant', content: r.ok && d.text ? d.text : (d.error || 'Je n’ai pas pu répondre.') + ' Vous pouvez écrire à l’équipe avec le bouton ci-dessous.' });
@@ -4480,9 +4339,9 @@
   }
   async function openSms(nums, text) {
     nums = (nums || []).filter(Boolean);
-    if (Store.mode === 'firebase' && nums.length && await smsService()) {
+    if (Store.mode === 'cloud' && nums.length && await smsService()) {
       try {
-        const tok = await firebase.auth().currentUser.getIdToken();
+        const tok = await Store.token();
         const r = await fetch(SMS_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify({ to: nums, text }) });
         const d = await r.json().catch(() => ({}));
         if (r.ok && d.sent) { toast(`Texto envoyé à ${d.sent} joueur${d.sent > 1 ? 's' : ''}${(d.failed || []).length ? ` · ${d.failed.length} non envoyé${d.failed.length > 1 ? 's' : ''}` : ''}.`); return; }
@@ -4673,7 +4532,7 @@
   Voice.onText = text => handle(text);
   if ('speechSynthesis' in window) speechSynthesis.getVoices();
 
-  // Réseau perdu / retrouvé : on l'indique, Firebase envoie les scores en attente tout seul
+  // Réseau perdu / retrouvé : on l'indique ; les scores en attente partent au retour du réseau (Store.flush)
   window.addEventListener('offline', () => { render(); toast('Hors ligne : les scores sont gardés et seront envoyés au retour du réseau.'); });
   window.addEventListener('online', () => { render(); toast('Réseau retrouvé : scores envoyés.'); });
   (function captureRef() {
@@ -4683,22 +4542,21 @@
   (async function start() {
     $('#view').innerHTML = '<p class="note">Démarrage…</p>';
     await Store.init();
+    if (Store.redirecting) { $('#view').innerHTML = '<p class="note">Albert vous reconnaît…</p>'; return; }
+    // Menu d'Albert (compte HoldingAI), en haut à droite, comme dans toutes les apps HoldingAI
+    if (Store.mode === 'cloud') {
+      window.HOLDINGAI_PORTE = Store.uid
+        ? { app: 'fanion', nomApp: 'Le Fanion', personnage: 'Léo', prenom: Store.nom || '', connecte: true,
+            liens: Store.noGroup ? [] : [{ texte: 'Mes groupes et forfait', action: () => go('compte') }], surDeconnexion: () => Store.logout() }
+        : { app: 'fanion', nomApp: 'Le Fanion', personnage: 'Léo', barriere: true };
+      if (!Store.uid && window.HoldingAIPorte) try { HoldingAIPorte.barriere(); } catch (e) { }
+    }
     if (Store.needLogin) {
       [S.players, S.groups] = await Promise.all([Store.listPlayers(true).catch(() => []), Store.listGroups().catch(() => [])]);
       S.view = 'login'; render(); return;
     }
-    // Lien d'invitation (?joueur=…) ouvert par quelqu'un d'autre que la personne connectée : écran de connexion
-    const inv = new URLSearchParams(location.search).get('joueur');
-    if (inv && Store.mode === 'firebase') {
-      let pl = []; try { pl = await Store.listPlayers(true); } catch (e) { }
-      const target = pl.find(x => x.id === inv);
-      if (target && L.norm(target.name) !== L.norm(ls.get('pelland.me', '') || '')) {
-        try { await firebase.auth().signOut(); } catch (e) { }
-        try { S.groups = await Store.listGroups(); } catch (e) { S.groups = []; }
-        Store.email = null; Store.uid = null; Store.needLogin = true; S.players = pl; S.view = 'login'; render(); return;
-      }
-      if (target) history.replaceState(null, '', location.pathname);
-    }
+    // Lien d'invitation (?joueur=…) : le compte y a déjà été relié s'il a le bon cellulaire (Store.ensureMember)
+    if (new URLSearchParams(location.search).get('joueur')) history.replaceState(null, '', location.pathname);
     // Ouverture rapide : on affiche tout de suite la dernière copie du groupe gardée sur l'appareil,
     // puis on charge la version à jour (toutes les lectures en même temps) et on rafraîchit l'écran.
     const params0 = new URLSearchParams(location.search), snapK = 'fanion.snap.' + Store.gid + '.' + (Store.uid || '');
@@ -4711,12 +4569,14 @@
     const [courses, players, quatuors, jeux, groups] = await Promise.all([
       Store.listCourses().catch(() => []), Store.listPlayers().catch(() => []), Store.listQuatuors().catch(() => []),
       Store.listJeux().catch(() => []), Store.listGroups().catch(() => [])]);
-    Object.assign(S, { courses, players, quatuors, jeux, groups });
+    // Hors ligne : la base ne répond pas ; on garde la copie de l'appareil plutôt que des listes vides
+    const garde = (v, old) => (v && v.length) || navigator.onLine !== false || !old ? v : old;
+    Object.assign(S, { courses: garde(courses, S.courses), players: garde(players, S.players), quatuors: garde(quatuors, S.quatuors), jeux: garde(jeux, S.jeux), groups: garde(groups, S.groups) });
     setTimeout(chargerRetour, 800);
     setTimeout(chargerPropositions, 1200);   // terrains proposés : en attente pour le groupe, à approuver pour l'équipe Fanion   // boucle de retour : réponses de l'équipe, nouveautés, sondage (sans retarder l'ouverture)
-    try { ls.set(snapK, { players, quatuors, jeux, groups, courses: courses.filter(c => !(window.QC_COURSES || []).some(q => q === c)), retired: (Store.retired || []).map(c => c.id), at: Date.now() }); } catch (e) { }
+    if (navigator.onLine !== false) try { ls.set(snapK, { players, quatuors, jeux, groups, courses: courses.filter(c => !(window.QC_COURSES || []).some(q => q === c)), retired: (Store.retired || []).map(c => c.id), at: Date.now() }); } catch (e) { }
     // Groupes créés avant le compteur : on l'initialise une fois avec le nombre de joueurs
-    if (Store.mode === 'firebase' && curGroup().nPlayers == null && S.players.length && canOrganize()) { try { await Store.db.collection('players').doc('_groupe_' + Store.gid).set({ nPlayers: S.players.length }, { merge: true }); S.groups = await Store.listGroups(); } catch (e) { console.warn('compteur', e.message); } }
+    // (le compteur de joueurs est tenu par la base)
     Push.refresh().catch(() => { });
     // Groupes du joueur (sans les groupes supprimés ni archivés pour le lien « Changer de groupe »)
     Store.myGroupList().then(l => { S.myPlayers = l; if (S.view === 'home' && l.some(x => !x.archived && x.gid !== Store.gid)) render(); }).catch(() => { });
