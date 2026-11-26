@@ -1,3 +1,5 @@
+/* Fichier assemblé par outils/assembler.js à partir de src/ (src/apps/fanion.json). Ne pas le modifier directement :
+   modifier les fichiers de src/, puis lancer « node outils/assembler.js fanion ». */
 /* Pelland — application (interface, voix, base de données). */
 (function () {
   'use strict';
@@ -9,6 +11,7 @@
     get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* stockage indisponible */ } }
   };
+  // ==== src/commun/base.js ====
 
   // =====================================================================
   // Base de données : Supabase (projet « Le Fanion ») avec le compte HoldingAI ; sinon stockage local
@@ -120,145 +123,13 @@
       if (r.error) { console.warn('telephones', r.error.message); this.phonesBlocked = true; if (strict) throw new Error(/duplicate|unique/i.test(r.error.message) ? 'Ce cellulaire est déjà inscrit.' : 'Numéro non conservé : ' + r.error.message); }
       else this.phonesBlocked = false;
     },
-    async ensureSeed() { return this.listCourses(); },
-    async listCourses() {
-      let list;
-      if (this.mode === 'cloud') list = (ok(await this.sb.from('terrains').select('id, data')) || []).map(r => ({ ...(r.data || {}), id: r.id }));
-      else list = ls.get('pelland.courses', []);
-      // Terrains retirés de la banque de ce groupe (les autres groupes les gardent)
-      const out = await this.retiredCourses();
-      this.retired = list.filter(c => out.includes(c.id)).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-      return list.filter(c => !out.includes(c.id)).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-    },
-    async retiredCourses() {
-      if (this.mode === 'cloud') { const g = await this.gdata(); return (g && g.terrainsRetires) || []; }
-      return ls.get('pelland.terrainsRetires.' + this.gid, []);
-    },
-    async setCourseRetired(id, out) {
-      const cur = await this.retiredCourses(), next = out ? [...new Set([...cur, id])] : cur.filter(x => x !== id);
-      if (this.mode === 'cloud') await this.setGdata('terrainsRetires', next); else ls.set('pelland.terrainsRetires.' + this.gid, next);
-    },
     // ---- Nouveaux terrains : proposés par les joueurs, approuvés par l'équipe Fanion (table admins) avant d'entrer dans la banque commune
     async isAdmin() {
       if (this.mode !== 'cloud') return !!ls.get('pelland.admin', false);
       try { return !!ok(await this.sb.from('admins').select('uid').eq('uid', this.uid).maybeSingle()); } catch (e) { return false; }
     },
-    async proposeCourse(course, meta) {
-      const p = { course: JSON.parse(JSON.stringify(course)), statut: 'propose', groupe: this.gid, cree: Date.now(), ...meta, proposeUid: this.uid || '' };
-      if (this.mode === 'cloud') { const r = ok(await this.sb.from('terrains_proposes').insert({ groupe: this.gid, propose_uid: this.uid, statut: 'propose', data: p }).select('id').single()); return { ...p, id: r.id }; }
-      const l = ls.get('pelland.terrainsProposes', []); p.id = 'p' + Date.now(); l.push(p); ls.set('pelland.terrainsProposes', l); return p;
-    },
-    async listProposals(admin) {
-      if (this.mode !== 'cloud') { const l = ls.get('pelland.terrainsProposes', []); return { mine: l.filter(p => p.groupe === this.gid), todo: admin ? l.filter(p => p.statut === 'propose') : [] }; }
-      const map = q => q.then(r => (ok(r) || []).map(x => ({ ...(x.data || {}), id: x.id, statut: x.statut, groupe: x.groupe }))).catch(() => []);
-      const cols = 'id, groupe, statut, data';
-      const [mine, todo] = await Promise.all([map(this.sb.from('terrains_proposes').select(cols).eq('groupe', this.gid)), admin ? map(this.sb.from('terrains_proposes').select(cols).eq('statut', 'propose')) : []]);
-      return { mine, todo };
-    },
-    async withdrawProposal(id) {
-      if (this.mode === 'cloud') { ok(await this.sb.from('terrains_proposes').delete().eq('id', id)); return; }
-      ls.set('pelland.terrainsProposes', ls.get('pelland.terrainsProposes', []).filter(p => p.id !== id));
-    },
-    async decideProposal(id, yes, course, photos) {
-      const ch = { statut: yes ? 'approuve' : 'refuse', decideLe: Date.now(), decideUid: this.uid || '' };
-      if (yes) {
-        const c = await this.saveCourse({ ...course, verifieLe: Date.now(), ...(photos && photos.length ? { photosCarte: photos.length } : {}) }); ch.courseId = c.id;
-        // Photos de la carte gardées à part (lues seulement quand on ouvre le terrain)
-        if (photos && photos.length) { if (this.mode === 'cloud') ok(await this.sb.from('cartes_terrains').upsert({ course_id: c.id, photos, cree: Date.now() })); else ls.set('pelland.carte.' + c.id, photos); }
-      }
-      if (this.mode === 'cloud') {
-        const cur = ok(await this.sb.from('terrains_proposes').select('data').eq('id', id).maybeSingle());
-        ok(await this.sb.from('terrains_proposes').update({ statut: ch.statut, data: { ...((cur && cur.data) || {}), ...ch } }).eq('id', id)); return;
-      }
-      ls.set('pelland.terrainsProposes', ls.get('pelland.terrainsProposes', []).map(p => p.id === id ? { ...p, ...ch } : p));
-    },
-    async cartePhotos(courseId) {
-      if (this.mode !== 'cloud') return ls.get('pelland.carte.' + courseId, []);
-      try { const r = ok(await this.sb.from('cartes_terrains').select('photos').eq('course_id', courseId).maybeSingle()); return (r && r.photos) || []; } catch (e) { return []; }
-    },
-    async saveCourse(c) {
-      c = JSON.parse(JSON.stringify(c));
-      if (!c.id) c.id = slug(c.name) + '-' + Math.random().toString(36).slice(2, 6);
-      c.updatedAt = Date.now();
-      if (this.mode === 'cloud') {
-        const u = ok(await this.sb.from('terrains').update({ data: c }).eq('id', c.id).select('id'));
-        if (!u || !u.length) ok(await this.sb.from('terrains').insert({ id: c.id, data: c }));
-        return c;
-      }
-      const list = ls.get('pelland.courses', []).filter(x => x.id !== c.id); list.push(c); ls.set('pelland.courses', list); return c;
-    },
-    async newCode() {
-      const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-      for (let n = 0; n < 20; n++) {
-        const code = Array.from({ length: 4 }, () => A[Math.floor(Math.random() * A.length)]).join('');
-        let used = null; try { used = await this.getGame(code); } catch (e) { return code; }
-        if (!used) return code;
-      }
-      return 'P' + Date.now().toString(36).toUpperCase().slice(-5);
-    },
     // ---- Parties : copie sur le téléphone + file d'attente (hors ligne sur le terrain), envoyées dès que possible
-    cacheGame(g) { const all = ls.get('fanion.parties', {}); all[g.id] = g; const ids = Object.keys(all); if (ids.length > 40) ids.sort((a, b) => (all[a].updatedAt || 0) - (all[b].updatedAt || 0)).slice(0, ids.length - 40).forEach(k => delete all[k]); ls.set('fanion.parties', all); },
-    cachedGame(id) { return ls.get('fanion.parties', {})[id] || null; },
-    async getGame(id) {
-      if (this.mode === 'cloud') {
-        try { const r = ok(await this.sb.from('parties').select('data').eq('id', id).maybeSingle()); if (r) { const g = fromDb(r.data); return this.pending(id) || g; } return this.pending(id) || null; }
-        catch (e) { const c = this.cachedGame(id); if (c) return c; throw e; }
-      }
-      return ls.get('pelland.games', {})[id] || null;
-    },
-    pending(id) { const q = ls.get('fanion.file', {}); return q[id] ? q[id] : null; },
-    async saveGame(g) {
-      g.updatedAt = Date.now(); if (!g.groupId) g.groupId = this.gid;
-      if (this.mode === 'cloud') {
-        if (!g.ownerUid) g.ownerUid = this.uid;
-        this.cacheGame(g);
-        const q = ls.get('fanion.file', {}); q[g.id] = g; ls.set('fanion.file', q);
-        this._emit(g);
-        // hors ligne : la partie reste dans la file et part au retour du réseau ; on n'attend pas plus de 5 s
-        const p = this.flush(); await Promise.race([p, new Promise(r => setTimeout(r, navigator.onLine ? 5000 : 0))]); return;
-      }
-      const all = ls.get('pelland.games', {}); all[g.id] = g; ls.set('pelland.games', all);
-      this._emit(g);
-    },
-    async flush() {
-      if (this.mode !== 'cloud' || this._flushing || navigator.onLine === false) return;
-      this._flushing = true;
-      try {
-        const q = ls.get('fanion.file', {});
-        for (const id of Object.keys(q)) {
-          const g = q[id];
-          const r = await this.sb.rpc('partie_enregistrer', { p_id: g.id, p_group: g.groupId, p_owner: g.ownerUid || '', p_data: toDb(g) });
-          const now = ls.get('fanion.file', {});
-          if (!r.error || /appartient|row-level|violates/i.test(r.error.message || '')) {
-            if (now[id] && now[id].updatedAt === g.updatedAt) { delete now[id]; ls.set('fanion.file', now); }
-            if (r.error) toast('Non enregistré : ' + r.error.message);
-          } else if (!/fetch|network|Failed/i.test(r.error.message || '')) { toast('Non enregistré : ' + r.error.message); delete now[id]; ls.set('fanion.file', now); }
-          else break;
-        }
-      } catch (e) { /* réseau : on réessaiera */ } finally { this._flushing = false; }
-    },
-    _subs: {},
-    _emit(g) { (this._subs[g.id] || []).forEach(cb => cb(g)); },
     // Temps réel : changements de la base (autres joueurs) + nos propres enregistrements (immédiats, même hors ligne)
-    watch(table, col, id, cb) {
-      const ch = this.sb.channel(table + ':' + id + ':' + Math.random().toString(36).slice(2, 7))
-        .on('postgres_changes', { event: '*', schema: 'public', table, filter: col + '=eq.' + id }, p => { if (p.new && Object.keys(p.new).length) cb(p.new); })
-        .subscribe();
-      return () => { try { this.sb.removeChannel(ch); } catch (e) { } };
-    },
-    watchGame(id, cb) {
-      (this._subs[id] = this._subs[id] || []).push(cb);
-      if (this.mode === 'cloud') {
-        const c = this.cachedGame(id); if (c) cb(c);
-        this.getGame(id).then(g => g && cb(g)).catch(e => toast('Lecture impossible : ' + e.message));
-        const off = this.watch('parties', 'id', id, r => { if (!this.pending(id)) { const g = fromDb(r.data); this.cacheGame(g); cb(g); } });
-        return () => { off(); this._subs[id] = (this._subs[id] || []).filter(x => x !== cb); };
-      }
-      this.getGame(id).then(g => g && cb(g));
-      const onStorage = e => { if (e.key === 'pelland.games') this.getGame(id).then(g => g && cb(g)); };
-      window.addEventListener('storage', onStorage);
-      return () => { this._subs[id] = (this._subs[id] || []).filter(x => x !== cb); window.removeEventListener('storage', onStorage); };
-    },
     // Groupes : chaque groupe a ses joueurs, parties, dates et quatuors (les terrains sont communs). Pelland = premier groupe.
     get gid() { return ls.get('pelland.group', 'pelland') || 'pelland'; },
     setGroup(id) { ls.set('pelland.group', id || 'pelland'); },
@@ -338,28 +209,8 @@
       try { const r = ok(await this.sb.from('donnees_groupe').select('data').eq('group_id', this.gid).maybeSingle()); return r ? r.data : null; } catch (e) { return null; }
     },
     async setGdata(field, list) { ok(await this.sb.rpc('donnees_maj', { p_group: this.gid, p_patch: { groupId: this.gid, [field]: list, updatedAt: Date.now() } })); },
-    async listQuatuors() {
-      if (this.mode === 'cloud') { const g = await this.gdata(); return (g && g.quatuors) || []; }
-      return ls.get('pelland.quatuors.' + this.gid, this.gid === 'pelland' ? ls.get('pelland.quatuors', []) : []);
-    },
-    async saveQuatuors(list) {
-      if (this.mode === 'cloud') { await this.setGdata('quatuors', list); return; }
-      ls.set('pelland.quatuors.' + this.gid, list);
-    },
     // Demandes d'ajout de jeux : table demandes (envoi seulement ; lues par l'équipe Fanion)
-    async saveGameRequest(req) {
-      if (this.mode === 'cloud') { ok(await this.sb.from('demandes').insert({ data: req })); return; }
-      ls.set('pelland.demandesJeux', ls.get('pelland.demandesJeux', []).concat([req]));
-    },
     // Jeux maison du groupe
-    async listJeux() {
-      if (this.mode === 'cloud') { const g = await this.gdata(); return (g && g.jeux) || []; }
-      return ls.get('pelland.jeux.' + this.gid, []);
-    },
-    async saveJeux(list) {
-      if (this.mode === 'cloud') { await this.setGdata('jeux', list); return; }
-      ls.set('pelland.jeux.' + this.gid, list);
-    },
     // Offres de parties : { id, groupId, course, dates:[ms], deadline:ms, by, createdAt, rep_<joueur>: { name, dates:[ms], at } }
     async listOffres() {
       if (this.mode === 'cloud') {
@@ -446,10 +297,6 @@
       if (this.mode === 'cloud') { const m = {}; if (!(ids || []).length) return m; try { (ok(await this.sb.from('presences').select('game_id, data').in('game_id', ids)) || []).forEach(r => { m[r.game_id] = r.data; }); } catch (e) { } return m; }
       return ls.get('pelland.presence', {});
     },
-    async deleteGame(id) {
-      if (this.mode === 'cloud') { const q = ls.get('fanion.file', {}); delete q[id]; ls.set('fanion.file', q); ok(await this.sb.from('parties').delete().eq('id', id)); return; }
-      const all = ls.get('pelland.games', {}); delete all[id]; ls.set('pelland.games', all);
-    },
     // Avis des joueurs : un par compte ; publié seulement si approuvé par l'équipe Fanion
     async getAvis() {
       if (this.mode !== 'cloud' || !this.uid) return ls.get('fanion.avis', null);
@@ -460,6 +307,189 @@
       ok(await this.sb.from('avis').upsert({ uid: this.uid, stars: a.stars, text: String(a.text || '').slice(0, 280), name: String(a.name || '').slice(0, 40), group_name: String(a.groupName || '').slice(0, 60), ok: !!a.ok, at: a.at || Date.now() }));
     },
     // Compétitions : { groupId, format, name, date, course, tee, allowance, flights, teams:[…], scores:{ <équipe>: { <trou>: [s1, s2] } } }
+    // Un score à la fois, fusionné, pour que deux équipes puissent entrer leurs scores en même temps
+    // Remplace un champ entier (ex. tableau.manual)
+    // Notifications : un abonnement par compte et par groupe (abonnements_push)
+    async savePushSub(g, playerId, js, etat) {
+      ok(await this.sb.from('abonnements_push').upsert({ id: this.uid + '_' + g, uid: this.uid, group_id: g, player_id: playerId, sub: js ? JSON.parse(js) : null, etat, at: Date.now() }));
+    },
+    async deletePushSub(g) { await this.sb.from('abonnements_push').delete().eq('id', this.uid + '_' + g); },
+    async listPushSubs() { return (ok(await this.sb.from('abonnements_push').select('player_id, sub, etat, at').eq('group_id', this.gid)) || []).map(r => ({ playerId: r.player_id, sub: r.sub, etat: r.etat, at: Number(r.at || 0) })); }
+  };
+  const byName = (a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' });
+  // Doublons possibles : même nom à une lettre ou deux près (accents, fautes), ou même nom de famille et même initiale.
+  function duplicateMap(list) {
+    const L2 = window.PellandLogic, n = list.map(p => L2.norm(p.name)), out = {};
+    const lev = (a, b) => { const m = a.length, k = b.length; let pr = Array.from({ length: k + 1 }, (_, j) => j); for (let i = 1; i <= m; i++) { const c = [i]; for (let j = 1; j <= k; j++) c[j] = Math.min(pr[j] + 1, c[j - 1] + 1, pr[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); pr = c; } return pr[k]; };
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const a = n[i], b = n[j], wa = a.split(' '), wb = b.split(' ');
+      const similar = lev(a, b) <= 2 || (wa.length > 1 && wb.length > 1 && wa[wa.length - 1] === wb[wb.length - 1] && wa[0][0] === wb[0][0]) || (wa.length === 1 || wb.length === 1) && (wa[0] === wb[0]);
+      if (similar) { (out[list[i].id] = out[list[i].id] || []).push(list[j].name); (out[list[j].id] = out[list[j].id] || []).push(list[i].name); }
+    }
+    return out;
+  }
+
+  // =====================================================================
+  // Voix : reconnaissance (Safari iOS) et synthèse
+  // ==== src/golf/donnees.js ====
+  // Base de données : ce qui est propre au golf (terrains, parties, quatuors, jeux, compétitions)
+  Object.assign(Store, {
+    async ensureSeed() { return this.listCourses(); },
+    async listCourses() {
+      let list;
+      if (this.mode === 'cloud') list = (ok(await this.sb.from('terrains').select('id, data')) || []).map(r => ({ ...(r.data || {}), id: r.id }));
+      else list = ls.get('pelland.courses', []);
+      // Terrains retirés de la banque de ce groupe (les autres groupes les gardent)
+      const out = await this.retiredCourses();
+      this.retired = list.filter(c => out.includes(c.id)).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+      return list.filter(c => !out.includes(c.id)).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    },
+    async retiredCourses() {
+      if (this.mode === 'cloud') { const g = await this.gdata(); return (g && g.terrainsRetires) || []; }
+      return ls.get('pelland.terrainsRetires.' + this.gid, []);
+    },
+    async setCourseRetired(id, out) {
+      const cur = await this.retiredCourses(), next = out ? [...new Set([...cur, id])] : cur.filter(x => x !== id);
+      if (this.mode === 'cloud') await this.setGdata('terrainsRetires', next); else ls.set('pelland.terrainsRetires.' + this.gid, next);
+    },
+    async proposeCourse(course, meta) {
+      const p = { course: JSON.parse(JSON.stringify(course)), statut: 'propose', groupe: this.gid, cree: Date.now(), ...meta, proposeUid: this.uid || '' };
+      if (this.mode === 'cloud') { const r = ok(await this.sb.from('terrains_proposes').insert({ groupe: this.gid, propose_uid: this.uid, statut: 'propose', data: p }).select('id').single()); return { ...p, id: r.id }; }
+      const l = ls.get('pelland.terrainsProposes', []); p.id = 'p' + Date.now(); l.push(p); ls.set('pelland.terrainsProposes', l); return p;
+    },
+    async listProposals(admin) {
+      if (this.mode !== 'cloud') { const l = ls.get('pelland.terrainsProposes', []); return { mine: l.filter(p => p.groupe === this.gid), todo: admin ? l.filter(p => p.statut === 'propose') : [] }; }
+      const map = q => q.then(r => (ok(r) || []).map(x => ({ ...(x.data || {}), id: x.id, statut: x.statut, groupe: x.groupe }))).catch(() => []);
+      const cols = 'id, groupe, statut, data';
+      const [mine, todo] = await Promise.all([map(this.sb.from('terrains_proposes').select(cols).eq('groupe', this.gid)), admin ? map(this.sb.from('terrains_proposes').select(cols).eq('statut', 'propose')) : []]);
+      return { mine, todo };
+    },
+    async withdrawProposal(id) {
+      if (this.mode === 'cloud') { ok(await this.sb.from('terrains_proposes').delete().eq('id', id)); return; }
+      ls.set('pelland.terrainsProposes', ls.get('pelland.terrainsProposes', []).filter(p => p.id !== id));
+    },
+    async decideProposal(id, yes, course, photos) {
+      const ch = { statut: yes ? 'approuve' : 'refuse', decideLe: Date.now(), decideUid: this.uid || '' };
+      if (yes) {
+        const c = await this.saveCourse({ ...course, verifieLe: Date.now(), ...(photos && photos.length ? { photosCarte: photos.length } : {}) }); ch.courseId = c.id;
+        // Photos de la carte gardées à part (lues seulement quand on ouvre le terrain)
+        if (photos && photos.length) { if (this.mode === 'cloud') ok(await this.sb.from('cartes_terrains').upsert({ course_id: c.id, photos, cree: Date.now() })); else ls.set('pelland.carte.' + c.id, photos); }
+      }
+      if (this.mode === 'cloud') {
+        const cur = ok(await this.sb.from('terrains_proposes').select('data').eq('id', id).maybeSingle());
+        ok(await this.sb.from('terrains_proposes').update({ statut: ch.statut, data: { ...((cur && cur.data) || {}), ...ch } }).eq('id', id)); return;
+      }
+      ls.set('pelland.terrainsProposes', ls.get('pelland.terrainsProposes', []).map(p => p.id === id ? { ...p, ...ch } : p));
+    },
+    async cartePhotos(courseId) {
+      if (this.mode !== 'cloud') return ls.get('pelland.carte.' + courseId, []);
+      try { const r = ok(await this.sb.from('cartes_terrains').select('photos').eq('course_id', courseId).maybeSingle()); return (r && r.photos) || []; } catch (e) { return []; }
+    },
+    async saveCourse(c) {
+      c = JSON.parse(JSON.stringify(c));
+      if (!c.id) c.id = slug(c.name) + '-' + Math.random().toString(36).slice(2, 6);
+      c.updatedAt = Date.now();
+      if (this.mode === 'cloud') {
+        const u = ok(await this.sb.from('terrains').update({ data: c }).eq('id', c.id).select('id'));
+        if (!u || !u.length) ok(await this.sb.from('terrains').insert({ id: c.id, data: c }));
+        return c;
+      }
+      const list = ls.get('pelland.courses', []).filter(x => x.id !== c.id); list.push(c); ls.set('pelland.courses', list); return c;
+    },
+    async newCode() {
+      const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+      for (let n = 0; n < 20; n++) {
+        const code = Array.from({ length: 4 }, () => A[Math.floor(Math.random() * A.length)]).join('');
+        let used = null; try { used = await this.getGame(code); } catch (e) { return code; }
+        if (!used) return code;
+      }
+      return 'P' + Date.now().toString(36).toUpperCase().slice(-5);
+    },
+    cacheGame(g) { const all = ls.get('fanion.parties', {}); all[g.id] = g; const ids = Object.keys(all); if (ids.length > 40) ids.sort((a, b) => (all[a].updatedAt || 0) - (all[b].updatedAt || 0)).slice(0, ids.length - 40).forEach(k => delete all[k]); ls.set('fanion.parties', all); },
+    cachedGame(id) { return ls.get('fanion.parties', {})[id] || null; },
+    async getGame(id) {
+      if (this.mode === 'cloud') {
+        try { const r = ok(await this.sb.from('parties').select('data').eq('id', id).maybeSingle()); if (r) { const g = fromDb(r.data); return this.pending(id) || g; } return this.pending(id) || null; }
+        catch (e) { const c = this.cachedGame(id); if (c) return c; throw e; }
+      }
+      return ls.get('pelland.games', {})[id] || null;
+    },
+    pending(id) { const q = ls.get('fanion.file', {}); return q[id] ? q[id] : null; },
+    async saveGame(g) {
+      g.updatedAt = Date.now(); if (!g.groupId) g.groupId = this.gid;
+      if (this.mode === 'cloud') {
+        if (!g.ownerUid) g.ownerUid = this.uid;
+        this.cacheGame(g);
+        const q = ls.get('fanion.file', {}); q[g.id] = g; ls.set('fanion.file', q);
+        this._emit(g);
+        // hors ligne : la partie reste dans la file et part au retour du réseau ; on n'attend pas plus de 5 s
+        const p = this.flush(); await Promise.race([p, new Promise(r => setTimeout(r, navigator.onLine ? 5000 : 0))]); return;
+      }
+      const all = ls.get('pelland.games', {}); all[g.id] = g; ls.set('pelland.games', all);
+      this._emit(g);
+    },
+    async flush() {
+      if (this.mode !== 'cloud' || this._flushing || navigator.onLine === false) return;
+      this._flushing = true;
+      try {
+        const q = ls.get('fanion.file', {});
+        for (const id of Object.keys(q)) {
+          const g = q[id];
+          const r = await this.sb.rpc('partie_enregistrer', { p_id: g.id, p_group: g.groupId, p_owner: g.ownerUid || '', p_data: toDb(g) });
+          const now = ls.get('fanion.file', {});
+          if (!r.error || /appartient|row-level|violates/i.test(r.error.message || '')) {
+            if (now[id] && now[id].updatedAt === g.updatedAt) { delete now[id]; ls.set('fanion.file', now); }
+            if (r.error) toast('Non enregistré : ' + r.error.message);
+          } else if (!/fetch|network|Failed/i.test(r.error.message || '')) { toast('Non enregistré : ' + r.error.message); delete now[id]; ls.set('fanion.file', now); }
+          else break;
+        }
+      } catch (e) { /* réseau : on réessaiera */ } finally { this._flushing = false; }
+    },
+    _subs: {},
+    _emit(g) { (this._subs[g.id] || []).forEach(cb => cb(g)); },
+    watch(table, col, id, cb) {
+      const ch = this.sb.channel(table + ':' + id + ':' + Math.random().toString(36).slice(2, 7))
+        .on('postgres_changes', { event: '*', schema: 'public', table, filter: col + '=eq.' + id }, p => { if (p.new && Object.keys(p.new).length) cb(p.new); })
+        .subscribe();
+      return () => { try { this.sb.removeChannel(ch); } catch (e) { } };
+    },
+    watchGame(id, cb) {
+      (this._subs[id] = this._subs[id] || []).push(cb);
+      if (this.mode === 'cloud') {
+        const c = this.cachedGame(id); if (c) cb(c);
+        this.getGame(id).then(g => g && cb(g)).catch(e => toast('Lecture impossible : ' + e.message));
+        const off = this.watch('parties', 'id', id, r => { if (!this.pending(id)) { const g = fromDb(r.data); this.cacheGame(g); cb(g); } });
+        return () => { off(); this._subs[id] = (this._subs[id] || []).filter(x => x !== cb); };
+      }
+      this.getGame(id).then(g => g && cb(g));
+      const onStorage = e => { if (e.key === 'pelland.games') this.getGame(id).then(g => g && cb(g)); };
+      window.addEventListener('storage', onStorage);
+      return () => { this._subs[id] = (this._subs[id] || []).filter(x => x !== cb); window.removeEventListener('storage', onStorage); };
+    },
+    async listQuatuors() {
+      if (this.mode === 'cloud') { const g = await this.gdata(); return (g && g.quatuors) || []; }
+      return ls.get('pelland.quatuors.' + this.gid, this.gid === 'pelland' ? ls.get('pelland.quatuors', []) : []);
+    },
+    async saveQuatuors(list) {
+      if (this.mode === 'cloud') { await this.setGdata('quatuors', list); return; }
+      ls.set('pelland.quatuors.' + this.gid, list);
+    },
+    async saveGameRequest(req) {
+      if (this.mode === 'cloud') { ok(await this.sb.from('demandes').insert({ data: req })); return; }
+      ls.set('pelland.demandesJeux', ls.get('pelland.demandesJeux', []).concat([req]));
+    },
+    async listJeux() {
+      if (this.mode === 'cloud') { const g = await this.gdata(); return (g && g.jeux) || []; }
+      return ls.get('pelland.jeux.' + this.gid, []);
+    },
+    async saveJeux(list) {
+      if (this.mode === 'cloud') { await this.setGdata('jeux', list); return; }
+      ls.set('pelland.jeux.' + this.gid, list);
+    },
+    async deleteGame(id) {
+      if (this.mode === 'cloud') { const q = ls.get('fanion.file', {}); delete q[id]; ls.set('fanion.file', q); ok(await this.sb.from('parties').delete().eq('id', id)); return; }
+      const all = ls.get('pelland.games', {}); delete all[id]; ls.set('pelland.games', all);
+    },
     async listComps() {
       if (this.mode === 'cloud') { try { return (ok(await this.sb.from('competitions').select('id, data, scores').eq('group_id', this.gid)) || []).map(r => ({ ...(r.data || {}), id: r.id, scores: r.scores || {} })).sort((a, b) => (b.date || '').localeCompare(a.date || '')); } catch (e) { return []; } }
       return Object.values(ls.get('pelland.comps', {})).filter(c => c.groupId === this.gid).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -468,12 +498,10 @@
       if (this.mode === 'cloud') { const { scores, ...rest } = c; ok(await this.sb.rpc('comp_fusion', { p_id: c.id, p_group: c.groupId || this.gid, p_patch: JSON.parse(JSON.stringify(rest)) })); return; }
       const all = ls.get('pelland.comps', {}); all[c.id] = { ...(all[c.id] || {}), ...c }; ls.set('pelland.comps', all);
     },
-    // Un score à la fois, fusionné, pour que deux équipes puissent entrer leurs scores en même temps
     async setCompScore(id, tid, h, arr) {
       if (this.mode === 'cloud') { ok(await this.sb.rpc('comp_score', { p_comp: id, p_equipe: String(tid), p_trou: String(h), p_valeur: arr })); return; }
       const all = ls.get('pelland.comps', {}); const c = all[id]; if (!c) return; c.scores = c.scores || {}; c.scores[tid] = c.scores[tid] || {}; c.scores[tid][h] = arr; ls.set('pelland.comps', all);
     },
-    // Remplace un champ entier (ex. tableau.manual)
     async setCompField(id, path, value) {
       if (this.mode === 'cloud') { ok(await this.sb.rpc('comp_maj', { p_comp: id, p_chemin: path.split('.'), p_valeur: value === undefined ? null : value })); return; }
       const all = ls.get('pelland.comps', {}); const c = all[id]; if (!c) return; const ks = path.split('.'); let o = c; ks.slice(0, -1).forEach(k => { o[k] = o[k] || {}; o = o[k]; }); o[ks[ks.length - 1]] = value; ls.set('pelland.comps', all);
@@ -502,13 +530,7 @@
       }
       return Object.values(ls.get('pelland.games', {})).filter(g => (g.groupId || 'pelland') === this.gid).sort((a, b) => b.createdAt - a.createdAt);
     },
-    // Notifications : un abonnement par compte et par groupe (abonnements_push)
-    async savePushSub(g, playerId, js, etat) {
-      ok(await this.sb.from('abonnements_push').upsert({ id: this.uid + '_' + g, uid: this.uid, group_id: g, player_id: playerId, sub: js ? JSON.parse(js) : null, etat, at: Date.now() }));
-    },
-    async deletePushSub(g) { await this.sb.from('abonnements_push').delete().eq('id', this.uid + '_' + g); },
-    async listPushSubs() { return (ok(await this.sb.from('abonnements_push').select('player_id, sub, etat, at').eq('group_id', this.gid)) || []).map(r => ({ playerId: r.player_id, sub: r.sub, etat: r.etat, at: Number(r.at || 0) })); }
-  };
+  });
   // Les parties gardent les équipes sous la forme { e1: [...], e2: [...] } (comme avant).
   function toDb(g) {
     const o = JSON.parse(JSON.stringify(g));
@@ -519,22 +541,8 @@
     if (o && o.teams && !Array.isArray(o.teams)) o.teams = [o.teams.e1, o.teams.e2];
     return o;
   }
-  const byName = (a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' });
-  // Doublons possibles : même nom à une lettre ou deux près (accents, fautes), ou même nom de famille et même initiale.
-  function duplicateMap(list) {
-    const L2 = window.PellandLogic, n = list.map(p => L2.norm(p.name)), out = {};
-    const lev = (a, b) => { const m = a.length, k = b.length; let pr = Array.from({ length: k + 1 }, (_, j) => j); for (let i = 1; i <= m; i++) { const c = [i]; for (let j = 1; j <= k; j++) c[j] = Math.min(pr[j] + 1, c[j - 1] + 1, pr[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); pr = c; } return pr[k]; };
-    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
-      const a = n[i], b = n[j], wa = a.split(' '), wb = b.split(' ');
-      const similar = lev(a, b) <= 2 || (wa.length > 1 && wb.length > 1 && wa[wa.length - 1] === wb[wb.length - 1] && wa[0][0] === wb[0][0]) || (wa.length === 1 || wb.length === 1) && (wa[0] === wb[0]);
-      if (similar) { (out[list[i].id] = out[list[i].id] || []).push(list[j].name); (out[list[j].id] = out[list[j].id] || []).push(list[i].name); }
-    }
-    return out;
-  }
   function slug(s) { return L.norm(s).replace(/\s+/g, '-').slice(0, 30) || 'terrain'; }
-
-  // =====================================================================
-  // Voix : reconnaissance (Safari iOS) et synthèse
+  // ==== src/commun/voix.js ====
   // =====================================================================
   const Voice = {
     SR: window.SpeechRecognition || window.webkitSpeechRecognition,
@@ -609,7 +617,7 @@
     }
   };
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Voice.wake) Voice.keepAwake(true); });
-
+  // ==== src/commun/etat.js ====
   // =====================================================================
   // État de l'interface
   // =====================================================================
@@ -619,14 +627,6 @@
   const myIdx = g => g.players.findIndex(p => L.norm(p.name) === L.norm(ls.get('pelland.me', '') || ''));
   const isOwner = () => !!S.game && (S.game.ownerUid === Store.uid || (S.game.responsable != null && myIdx(S.game) === S.game.responsable));
   const handoffBtn = (g, owner) => owner && g.status !== 'terminée' ? `<div class="row handoff-row"><span class="note">Responsable : <b>${esc((g.players[g.responsable] || {}).name || '')}</b> ★</span><span class="row" style="gap:8px"><button class="btn ghost small" data-editmoney type="button">Modifier les montants</button><button class="btn ghost small" data-handoff type="button">Changer de responsable</button></span></div>` : '';
-  function respActions(g, owner, note) {
-    if (owner) return '';
-    if (!(Store.mode === 'cloud' && Store.email)) return '';
-    const r = g.players[g.responsable];
-    return S.confirmClaim === g.id
-      ? `<div class="row game-actions"><button class="btn small" data-claim type="button">Oui, je deviens responsable</button><button class="btn ghost small" data-cancelclaim type="button">Annuler</button></div>`
-      : `<div class="row game-actions"><button class="btn ghost small light" data-askclaim type="button">Devenir responsable de cette partie</button>${note ? `<span class="note light">${r ? 'Responsable : ' + esc(r.name) + '. ' : ''}pour entrer les scores, la terminer ou l'effacer</span>` : ''}</div>`;
-  }
 
   function toast(msg) {
     const t = $('#toast'); t.textContent = msg; t.hidden = false;
@@ -686,6 +686,7 @@
   const isOrganizer = id => !ownerId() || id === ownerId() || (curGroup().organizers || []).includes(id);
   // Qui peut organiser : le propriétaire et les organisateurs qu'il nomme (tout le monde tant qu'il n'y a pas de propriétaire)
   const canOrganize = () => isOrganizer(meId());
+  // ==== src/commun/bienvenue.js ====
   // ---------------- Accueil ----------------
   // Membres invités (ni propriétaire ni organisateur) : ces tuiles sont grisées ; survol ou toucher = explication
   const LOCKED = {
@@ -788,6 +789,7 @@
     wrap.tabIndex = -1; setTimeout(() => { wrap.scrollTop = 0; wrap.focus({ preventScroll: true }); }, 50);
   }
   function maybeWelcome() { if (S.view === 'home' && isParticipant() && !ls.get(welcomeKey(), 0) && !document.getElementById('welcome')) showWelcome(); }
+  // ==== src/golf/accueil.js ====
   document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-welcome]'); if (t) { e.preventDefault(); showWelcome(); } });
   function vHome() {
     $('#barTitle').innerHTML = `${APP}<small class="bar-sous">le golf entre amis</small>`;
@@ -826,7 +828,7 @@
       <p class="note">${Store.mode === 'cloud' ? 'Base partagée active : les autres joueurs suivent la partie en direct dans Parties en cours.' : 'Mode local : les parties restent sur ce téléphone.'}</p>
       ${Store.mode === 'local' && Store.error ? `<div class="warn"><b>Pourquoi le mode local :</b> ${esc(Store.error)}</div>` : ''}`;
   }
-
+  // ==== src/commun/forfait.js ====
   // ---------------- Propriétaire et forfait du groupe ----------------
   // Forfait gardé dans players/_groupe_<g> : plan = 'groupe' (16 joueurs, payé) et paidUntil (ms). Sans forfait : Gratuit, 4 joueurs.
   function planOf(gr) {
@@ -899,7 +901,7 @@
       <ul class="info-list"><li>Jusqu’à 16 joueurs</li><li>Dates offertes, disponibilités et quatuors</li><li>Un autre groupe gratuit possible</li><li>49 $ + taxes pour la saison, au prix fondateur</li></ul>
       <div class="sheet-actions"><a class="btn" href="${url}" target="_blank" rel="noopener">Passer au forfait Groupe</a><button class="btn ghost" data-close type="button">Plus tard</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; });
   }
-
+  // ==== src/commun/demarrer.js ====
   // ---------------- Bien démarrer : 4 premiers pas pour un nouveau groupe (propriétaire et organisateur) ----------------
   // Le progrès est gardé sur le groupe (onb), donc le même sur tous les téléphones ; l'écran d'accueil est propre à chaque téléphone.
   async function markStep(key) {
@@ -943,7 +945,7 @@
       sh.querySelector('[data-ecranok]').onclick = () => { ls.set('pelland.onb.ecran', 1); closeSheet(); render(); };
     });
   });
-
+  // ==== src/commun/compte.js ====
   // ---------------- Mon compte : le compte de la personne et tous les groupes dont elle fait partie ----------------
   function groupRows(l, cur, base) {
     return `<div class="acct-groups">${l.map((x, k) => [x, base ? base.indexOf(x) : k]).map(([x, i]) => `<div class="acct-g ${x.gid === cur ? 'cur' : ''}"><div><b><span class="g-k">Groupe :</span> ${esc(x.name)}</b><small>${esc(x.playerName)} · ${x.organizer ? 'organisateur' : 'participant'}</small></div>${x.gid === cur ? '<span class="acct-cur">Groupe actuel</span>' : `<button class="btn small" data-gopen="${i}" type="button">Ouvrir</button>`}${x.gid === cur && x.owner && !S.fromLogin ? `<div class="g-manage"><button class="btn ghost small" data-pickorg type="button">${(curGroup().organizers || []).length ? 'Changer l’organisateur' : 'Nommer un organisateur'}</button>${x.archived
@@ -1046,7 +1048,7 @@
         };
       });
     }
-
+  // ==== src/commun/avis.js ====
   // ---------------- Avis des joueurs : demandés après une partie terminée ; publiés sur fanion.ai si le joueur accepte et après approbation ----------------
   const AVIS_K = 'fanion.avis.etat';   // { given: true } ou { later: date }
   function avisCard(where) {
@@ -1088,7 +1090,7 @@
     if (t.hasAttribute('data-avis')) { avisSheet(); return; }
     ls.set(AVIS_K, { ...(ls.get(AVIS_K, {}) || {}), later: Date.now() }); render();
   });
-
+  // ==== src/commun/retour.js ====
   // ---------------- Boucle de retour : idées → équipe (console HoldingAI) → réponse et nouveautés dans l'app, sondage éclair ----------------
   const RETOUR_API = 'https://fanion.ai/api/retour';
   const R = { idees: [], nouveautes: [], sondageDernier: null, charge: false, sondage: null };
@@ -1209,7 +1211,7 @@
     else if (g === 'sondage-passer') { finirSondage(''); return; }
     render();
   });
-
+  // ==== src/commun/parrainage.js ====
   // ---------------- Parrainage : le propriétaire partage son lien ; les groupes créés avec ce lien sont comptés ----------------
   function refLink(code) { return location.origin + location.pathname + '?ref=' + encodeURIComponent(code || Store.gid); }
   function referralCard() {
@@ -1226,7 +1228,7 @@
     if (t.hasAttribute('data-refshare') && navigator.share) { try { await navigator.share({ title: APP, text, url }); } catch (x) { } return; }
     try { await navigator.clipboard.writeText(text + ' ' + url); toast('Lien copié.'); } catch (x) { openSheet(`<h3>Votre lien</h3><p class="note">Copiez-le :</p><input type="text" readonly value="${esc(url)}" onclick="this.select()"><div class="sheet-actions"><button class="btn" data-close type="button">Fermer</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; }); }
   });
-
+  // ==== src/commun/viral.js ====
   // ---------------- Effet viral : chaque joueur invité peut lancer son propre groupe, gratuit ----------------
   // Montré aux membres qui ne sont pas propriétaires d'un groupe (à l'accueil, et à la fin d'une partie).
   function ownsAGroup() { const me = meId(); return (!!me && me === ownerId()) || Store.myGroups().some(x => x.owner); }
@@ -1276,18 +1278,6 @@
       });
     });
   }
-  // Créer une partie : d'abord le type, partie normale ou compétition
-  function typePartieSheet() {
-    openSheet(`<h3>Quel type de partie ?</h3>
-      <div class="type-partie">
-        <button class="type-choix" data-tp="normale" type="button"><span aria-hidden="true">⛳</span><span><b>Partie normale</b><small>Une partie entre amis : terrain, joueurs, jeu (Nassau, skins, Vegas, match…) et montants.</small></span></button>
-        <button class="type-choix" data-tp="comp" type="button"><span aria-hidden="true">🏆</span><span><b>Compétition</b><small>Un tournoi avec classement : match play, Texas scramble, Stableford… avec équipes et handicaps.</small></span></button>
-      </div>
-      <button class="btn ghost" data-close type="button">Annuler</button>`, sh => {
-      sh.querySelector('[data-close]').onclick = closeSheet;
-      sh.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => { closeSheet(); if (b.dataset.tp === 'normale') go('setup'); else go('comps', { compLive: false }); });
-    });
-  }
   document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-typepartie]'); if (!t) return; e.preventDefault(); typePartieSheet(); });
   document.addEventListener('click', e => {
     const t = e.target.closest && e.target.closest('[data-viral],[data-viralhide],#switchGroup'); if (!t) return;
@@ -1298,7 +1288,7 @@
     // Forfait Gratuit = un seul groupe : un deuxième groupe demande le forfait Groupe, comme un 5e joueur
     Store.groupeGratuit().then(g => g ? deuxiemeGroupeSheet(g) : newGroupSheet()).catch(() => newGroupSheet());
   });
-
+  // ==== src/commun/info.js ====
   // ---------------- Petit « i » d'explication ----------------
   const info = key => `<button type="button" class="info" data-info="${key}" aria-label="Explication">i</button>`;
   const HELP = {
@@ -1319,6 +1309,7 @@
     openSheet(`<h3>${esc(t)}</h3><ul class="info-list">${lines.map(l => `<li>${esc(l)}</li>`).join('')}</ul><div class="sheet-actions"><button class="btn" data-close type="button">Compris</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; });
   }
   document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-info]'); if (!b) return; e.preventDefault(); e.stopPropagation(); showInfo(b.dataset.info); }, true);
+  // ==== src/golf/jeux.js ====
   // ---------------- Les jeux (règles) ----------------
   const GAMES_INFO = [
     { f: 'pelland', who: '4 joueurs, en équipes de deux (Rouges et Bleus)', rules: [
@@ -1410,6 +1401,7 @@
       <section class="card"><h2>Résumé</h2><ul class="info-list" id="jSum">${persoLines(j).map(r => `<li>${esc(r)}</li>`).join('')}</ul></section>
       <button class="btn" id="jSave" type="button">Enregistrer le jeu</button>`;
   }
+  // ==== src/golf/quatuors.js ====
   // ---------------- Quatuors ----------------
   function vQuatuors() {
     $('#barTitle').textContent = 'Parties à préparer';
@@ -1425,6 +1417,83 @@
             : canOrganize() ? `<button class="btn small" data-qplay="${esc(x.id)}" type="button">Jouer</button><button class="btn ghost small" data-qrem="${esc(x.id)}" type="button">Rappel</button><button class="btn ghost small" data-qask="${esc(x.id)}" type="button">Retirer</button>` : ''}</span></div>`).join('')
         : ''}</div>`;
   }
+
+  // Tailles des groupes : le plus de 4 possible, des groupes de 3 au besoin (5 → 4 + 1 en attente)
+  // « 1 quatuor de 4 et 1 de 3 · 1 en attente »
+  function groupsText(n) {
+    const z = groupSizes(n), q4 = z.filter(x => x === 4).length, q3 = z.filter(x => x === 3).length, wait = n - z.reduce((a, b) => a + b, 0);
+    if (!z.length) return n ? `${n} disponible${n > 1 ? 's' : ''} : pas assez pour un groupe` : '';
+    const parts = []; if (q4) parts.push(`${q4} quatuor${q4 > 1 ? 's' : ''} de 4`); if (q3) parts.push(`${q3} quatuor${q3 > 1 ? 's' : ''} de 3`);
+    return parts.join(' et ') + (wait ? ` · ${wait} en attente` : '');
+  }
+  function groupSizes(n) {
+    for (let a = Math.floor(n / 4); a >= 0; a--) { const r = n - 4 * a; if (r % 3 === 0) return Array(a).fill(4).concat(Array(r / 3).fill(3)); }
+    return n >= 4 ? [4] : n === 3 ? [3] : [];
+  }
+  // Varier les groupes : coût = nombre de fois (récentes surtout) où deux joueurs ont déjà été ensemble
+  function pairHistory(games, quats) {
+    const m = {}, add = (names, w) => { const k = names.map(L.norm); for (let i = 0; i < k.length; i++) for (let j = i + 1; j < k.length; j++) { const key = [k[i], k[j]].sort().join('|'); m[key] = (m[key] || 0) + w; } };
+    (games || []).slice().sort((a, b) => b.createdAt - a.createdAt).slice(0, 30).forEach((g, i) => add(g.players.map(p => p.name), 1 / (1 + i * 0.15)));
+    (quats || []).forEach(q => add(q.players, 0.5));
+    return (a, b) => m[[L.norm(a), L.norm(b)].sort().join('|')] || 0;
+  }
+  function autoGroups(names, pc, hasard) {
+    if (hasard) pc = () => 0;
+    const sizes = groupSizes(names.length), placed = sizes.reduce((a, b) => a + b, 0);
+    const cost = gs => gs.reduce((t, g) => { let c = 0; for (let i = 0; i < g.length; i++) for (let j = i + 1; j < g.length; j++) c += pc(g[i], g[j]); return t + c; }, 0);
+    let best = null, bestC = Infinity;
+    for (let r = 0; r < 60; r++) {
+      const sh = names.slice().sort(() => Math.random() - 0.5);
+      // les premiers à avoir répondu sont placés ; les autres en attente
+      const pool = names.slice(0, placed).sort(() => Math.random() - 0.5);
+      let gs = [], k = 0; sizes.forEach(z => { gs.push(pool.slice(k, k + z)); k += z; });
+      let c = cost(gs), improved = true;
+      while (improved) { improved = false;
+        for (let a = 0; a < gs.length; a++) for (let b = a + 1; b < gs.length; b++) for (let i = 0; i < gs[a].length; i++) for (let j = 0; j < gs[b].length; j++) {
+          [gs[a][i], gs[b][j]] = [gs[b][j], gs[a][i]]; const c2 = cost(gs);
+          if (c2 < c - 1e-9) { c = c2; improved = true; } else [gs[a][i], gs[b][j]] = [gs[b][j], gs[a][i]];
+        } }
+      if (c < bestC) { bestC = c; best = gs.map(g => g.slice()); }
+      void sh;
+    }
+    return { groups: best || [], waiting: names.slice(placed) };
+  }
+  // Former les groupes d'une date : en variant les partenaires (selon l'historique de tous) ou au hasard.
+  // onPlay(g) : depuis Nouvelle partie, « Jouer ce groupe » remplit la partie avec ces joueurs.
+  async function autoQuatuorsSheet(o, dt, onPlay) {
+    const reps = offreReps(o).filter(r => (r.dates || []).includes(dt)).sort((a, b) => (a.at || 0) - (b.at || 0));
+    const names = reps.map(r => r.name);
+    let games = []; try { games = await Store.listGames(); } catch (e) { }
+    const pc = pairHistory(games, S.quatuors);
+    let mode = 'varier', res = autoGroups(names, pc, false);
+    const label = `${o.course.replace(/^Club de golf /i, '')} – ${fmtDate(dt)}`;
+    const draw = () => openSheet(`<h3>Former les groupes</h3><p class="note">${esc(label)} · ${names.length} disponibles : <b>${esc(groupsText(names.length))}</b>.</p>
+      <div class="seg"><button type="button" data-gmode="varier" aria-pressed="${mode === 'varier'}"><b>Varier les partenaires</b><small>Selon les parties passées de tous</small></button><button type="button" data-gmode="hasard" aria-pressed="${mode === 'hasard'}"><b>Au hasard</b><small>Tirage aléatoire</small></button></div>
+      <p class="note">${mode === 'varier' ? 'Les groupes évitent de remettre ensemble ceux qui ont souvent joué ensemble, pour que chacun joue avec tout le monde.' : 'Les joueurs sont répartis au hasard.'}</p>
+      <div class="auto-groups">${res.groups.map((g, i) => `<div class="auto-g"><b>Groupe ${i + 1}${g.length === 3 ? ' (3 joueurs)' : ''}</b><span>${g.map(esc).join(', ')}</span>${onPlay ? `<button class="btn small" data-gplay="${i}" type="button" style="margin-top:8px">Jouer ce groupe</button>` : ''}</div>`).join('')}
+      ${res.waiting.length ? `<div class="auto-g wait"><b>En attente</b><span>${res.waiting.map(esc).join(', ')}</span></div>` : ''}</div>
+      <div class="row"><button class="btn${onPlay ? ' ghost small' : ''}" data-autosave type="button">Enregistrer ces quatuors</button><button class="btn ghost small" data-autoredo type="button">Refaire</button><button class="btn ghost small" data-close type="button">Annuler</button></div>`, sh => {
+        sh.querySelector('[data-close]').onclick = closeSheet;
+        sh.querySelectorAll('[data-gmode]').forEach(b => b.onclick = () => { mode = b.dataset.gmode; res = autoGroups(names, pc, mode === 'hasard'); draw(); });
+        sh.querySelector('[data-autoredo]').onclick = () => { res = autoGroups(names, pc, mode === 'hasard'); draw(); };
+        sh.querySelectorAll('[data-gplay]').forEach(b => b.onclick = () => { closeSheet(); onPlay(res.groups[+b.dataset.gplay]); });
+        sh.querySelector('[data-autosave]').onclick = async () => {
+          const add = res.groups.map((g, i) => ({ id: 'q' + Date.now().toString(36) + i, name: `${label}${res.groups.length > 1 ? ' – groupe ' + (i + 1) : ''}`, players: g.slice(), date: dt }));
+          const list = (S.quatuors || []).concat(add);
+          try { await Store.saveQuatuors(list); S.quatuors = list; closeSheet(); toast(`${add.length} quatuor${add.length > 1 ? 's' : ''} enregistré${add.length > 1 ? 's' : ''}.`); render(); }
+          catch (e) { toast('Enregistrement impossible : ' + e.message); }
+        };
+      });
+    draw();
+  }
+  function draftFromQuatuor(x) {
+    const d = newDraft(), me = L.norm(ls.get('pelland.me', '') || '');
+
+    x.players.forEach((n, i) => { if (d.players[i]) { d.players[i].name = n; d.players[i].custom = false; } });
+    const r = x.players.findIndex(n => L.norm(n) === me); if (r >= 0) d.responsable = r;
+    return d;
+  }
+  // ==== src/commun/offres.js ====
   // ---------------- Offres de parties ----------------
   const fmtDate = ms => new Date(ms).toLocaleString('fr-CA', { weekday: 'short', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit' }).replace(' h 00', ' h').replace(/(\d+):(\d+)/, '$1 h $2');
   const fmtDay = ms => new Date(ms).toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -1495,74 +1564,6 @@
       <div class="row dispo-btns">${past ? '' : `<button class="btn" id="dispoSave" type="button">Enregistrer</button>`}<button class="btn ghost" id="dispoCancel" type="button">${past ? 'Retour' : 'Annuler'}</button></div>
       ${o[key] ? `<p class="note">Réponse enregistrée${sel.length ? '' : ' : aucune date'}.</p>` : ''}</section>`;
   }
-  // Tailles des groupes : le plus de 4 possible, des groupes de 3 au besoin (5 → 4 + 1 en attente)
-  // « 1 quatuor de 4 et 1 de 3 · 1 en attente »
-  function groupsText(n) {
-    const z = groupSizes(n), q4 = z.filter(x => x === 4).length, q3 = z.filter(x => x === 3).length, wait = n - z.reduce((a, b) => a + b, 0);
-    if (!z.length) return n ? `${n} disponible${n > 1 ? 's' : ''} : pas assez pour un groupe` : '';
-    const parts = []; if (q4) parts.push(`${q4} quatuor${q4 > 1 ? 's' : ''} de 4`); if (q3) parts.push(`${q3} quatuor${q3 > 1 ? 's' : ''} de 3`);
-    return parts.join(' et ') + (wait ? ` · ${wait} en attente` : '');
-  }
-  function groupSizes(n) {
-    for (let a = Math.floor(n / 4); a >= 0; a--) { const r = n - 4 * a; if (r % 3 === 0) return Array(a).fill(4).concat(Array(r / 3).fill(3)); }
-    return n >= 4 ? [4] : n === 3 ? [3] : [];
-  }
-  // Varier les groupes : coût = nombre de fois (récentes surtout) où deux joueurs ont déjà été ensemble
-  function pairHistory(games, quats) {
-    const m = {}, add = (names, w) => { const k = names.map(L.norm); for (let i = 0; i < k.length; i++) for (let j = i + 1; j < k.length; j++) { const key = [k[i], k[j]].sort().join('|'); m[key] = (m[key] || 0) + w; } };
-    (games || []).slice().sort((a, b) => b.createdAt - a.createdAt).slice(0, 30).forEach((g, i) => add(g.players.map(p => p.name), 1 / (1 + i * 0.15)));
-    (quats || []).forEach(q => add(q.players, 0.5));
-    return (a, b) => m[[L.norm(a), L.norm(b)].sort().join('|')] || 0;
-  }
-  function autoGroups(names, pc, hasard) {
-    if (hasard) pc = () => 0;
-    const sizes = groupSizes(names.length), placed = sizes.reduce((a, b) => a + b, 0);
-    const cost = gs => gs.reduce((t, g) => { let c = 0; for (let i = 0; i < g.length; i++) for (let j = i + 1; j < g.length; j++) c += pc(g[i], g[j]); return t + c; }, 0);
-    let best = null, bestC = Infinity;
-    for (let r = 0; r < 60; r++) {
-      const sh = names.slice().sort(() => Math.random() - 0.5);
-      // les premiers à avoir répondu sont placés ; les autres en attente
-      const pool = names.slice(0, placed).sort(() => Math.random() - 0.5);
-      let gs = [], k = 0; sizes.forEach(z => { gs.push(pool.slice(k, k + z)); k += z; });
-      let c = cost(gs), improved = true;
-      while (improved) { improved = false;
-        for (let a = 0; a < gs.length; a++) for (let b = a + 1; b < gs.length; b++) for (let i = 0; i < gs[a].length; i++) for (let j = 0; j < gs[b].length; j++) {
-          [gs[a][i], gs[b][j]] = [gs[b][j], gs[a][i]]; const c2 = cost(gs);
-          if (c2 < c - 1e-9) { c = c2; improved = true; } else [gs[a][i], gs[b][j]] = [gs[b][j], gs[a][i]];
-        } }
-      if (c < bestC) { bestC = c; best = gs.map(g => g.slice()); }
-      void sh;
-    }
-    return { groups: best || [], waiting: names.slice(placed) };
-  }
-  // Former les groupes d'une date : en variant les partenaires (selon l'historique de tous) ou au hasard.
-  // onPlay(g) : depuis Nouvelle partie, « Jouer ce groupe » remplit la partie avec ces joueurs.
-  async function autoQuatuorsSheet(o, dt, onPlay) {
-    const reps = offreReps(o).filter(r => (r.dates || []).includes(dt)).sort((a, b) => (a.at || 0) - (b.at || 0));
-    const names = reps.map(r => r.name);
-    let games = []; try { games = await Store.listGames(); } catch (e) { }
-    const pc = pairHistory(games, S.quatuors);
-    let mode = 'varier', res = autoGroups(names, pc, false);
-    const label = `${o.course.replace(/^Club de golf /i, '')} – ${fmtDate(dt)}`;
-    const draw = () => openSheet(`<h3>Former les groupes</h3><p class="note">${esc(label)} · ${names.length} disponibles : <b>${esc(groupsText(names.length))}</b>.</p>
-      <div class="seg"><button type="button" data-gmode="varier" aria-pressed="${mode === 'varier'}"><b>Varier les partenaires</b><small>Selon les parties passées de tous</small></button><button type="button" data-gmode="hasard" aria-pressed="${mode === 'hasard'}"><b>Au hasard</b><small>Tirage aléatoire</small></button></div>
-      <p class="note">${mode === 'varier' ? 'Les groupes évitent de remettre ensemble ceux qui ont souvent joué ensemble, pour que chacun joue avec tout le monde.' : 'Les joueurs sont répartis au hasard.'}</p>
-      <div class="auto-groups">${res.groups.map((g, i) => `<div class="auto-g"><b>Groupe ${i + 1}${g.length === 3 ? ' (3 joueurs)' : ''}</b><span>${g.map(esc).join(', ')}</span>${onPlay ? `<button class="btn small" data-gplay="${i}" type="button" style="margin-top:8px">Jouer ce groupe</button>` : ''}</div>`).join('')}
-      ${res.waiting.length ? `<div class="auto-g wait"><b>En attente</b><span>${res.waiting.map(esc).join(', ')}</span></div>` : ''}</div>
-      <div class="row"><button class="btn${onPlay ? ' ghost small' : ''}" data-autosave type="button">Enregistrer ces quatuors</button><button class="btn ghost small" data-autoredo type="button">Refaire</button><button class="btn ghost small" data-close type="button">Annuler</button></div>`, sh => {
-        sh.querySelector('[data-close]').onclick = closeSheet;
-        sh.querySelectorAll('[data-gmode]').forEach(b => b.onclick = () => { mode = b.dataset.gmode; res = autoGroups(names, pc, mode === 'hasard'); draw(); });
-        sh.querySelector('[data-autoredo]').onclick = () => { res = autoGroups(names, pc, mode === 'hasard'); draw(); };
-        sh.querySelectorAll('[data-gplay]').forEach(b => b.onclick = () => { closeSheet(); onPlay(res.groups[+b.dataset.gplay]); });
-        sh.querySelector('[data-autosave]').onclick = async () => {
-          const add = res.groups.map((g, i) => ({ id: 'q' + Date.now().toString(36) + i, name: `${label}${res.groups.length > 1 ? ' – groupe ' + (i + 1) : ''}`, players: g.slice(), date: dt }));
-          const list = (S.quatuors || []).concat(add);
-          try { await Store.saveQuatuors(list); S.quatuors = list; closeSheet(); toast(`${add.length} quatuor${add.length > 1 ? 's' : ''} enregistré${add.length > 1 ? 's' : ''}.`); render(); }
-          catch (e) { toast('Enregistrement impossible : ' + e.message); }
-        };
-      });
-    draw();
-  }
   // Dates offertes (Parties à préparer) avec les joueurs qui se sont dits disponibles
   function offreDates() {
     const out = [];
@@ -1571,14 +1572,7 @@
       out.push({ key: o.id + '|' + dt, course: o.course, label: `${o.course.replace(/^Club de golf /i, '')} – ${fmtDate(dt)}`, names }); }));
     return out.sort((a, b) => +a.key.split('|')[1] - +b.key.split('|')[1]);
   }
-  function draftFromQuatuor(x) {
-    const d = newDraft(), me = L.norm(ls.get('pelland.me', '') || '');
-
-    x.players.forEach((n, i) => { if (d.players[i]) { d.players[i].name = n; d.players[i].custom = false; } });
-    const r = x.players.findIndex(n => L.norm(n) === me); if (r >= 0) d.responsable = r;
-    return d;
-  }
-
+  // ==== src/golf/nouvelle-partie.js ====
   // ---------------- Nouvelle partie ----------------
   function newDraft() {
     return {
@@ -1734,8 +1728,6 @@
     return S.players.filter(p => !taken.includes(L.norm(p.name))).map(p => `<option value="${esc(p.name)}"></option>`).join('');
   }
   function money(v) { const x = parseFloat(String(v || '').replace(',', '.').replace(/[^0-9.]/g, '')); return isNaN(x) ? 0 : x; }
-  // « 20 » → « 20,00 » ; vide reste vide
-  function fmtPhone(d) { d = String(d || '').replace(/\D/g, ''); if (d.length === 11 && d[0] === '1') d = d.slice(1); return d.length === 10 ? `${d.slice(0, 3)} ${d.slice(3, 6)}-${d.slice(6)}` : d; }
   function fmtIn(v) { if (String(v || '').trim() === '') return ''; return money(v).toLocaleString('fr-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   // 15 $ ; les cents seulement s'il y en a (2,50 $)
   const fmt$ = x => { const n = Number(x || 0); const d = Number.isInteger(Math.round(n * 100) / 100) ? 0 : 2; return n.toLocaleString('fr-CA', { minimumFractionDigits: d, maximumFractionDigits: d }) + ' $'; };
@@ -1780,6 +1772,19 @@
     return `<div class="teams">${teams.map((t, k) => `<div class="team t${k} ${lead === k ? 'lead' : ''}"><span class="step tn">${L.TEAMS[k]}</span><b>${t.map(i => esc(players[i].name)).join(' et ')}</b>${pts ? `<span class="tp num">${pts[k]} <small>pts</small>${money ? ` <small class="money">· ${money[k]} $</small>` : ''}</span>` : ''}<span class="note">index ${t.map(i => String(players[i].index).replace('.', ',')).join(' et ')}</span></div>`).join('')}</div>`;
   }
 
+  // Créer une partie : d'abord le type, partie normale ou compétition
+  function typePartieSheet() {
+    openSheet(`<h3>Quel type de partie ?</h3>
+      <div class="type-partie">
+        <button class="type-choix" data-tp="normale" type="button"><span aria-hidden="true">⛳</span><span><b>Partie normale</b><small>Une partie entre amis : terrain, joueurs, jeu (Nassau, skins, Vegas, match…) et montants.</small></span></button>
+        <button class="type-choix" data-tp="comp" type="button"><span aria-hidden="true">🏆</span><span><b>Compétition</b><small>Un tournoi avec classement : match play, Texas scramble, Stableford… avec équipes et handicaps.</small></span></button>
+      </div>
+      <button class="btn ghost" data-close type="button">Annuler</button>`, sh => {
+      sh.querySelector('[data-close]').onclick = closeSheet;
+      sh.querySelectorAll('[data-tp]').forEach(b => b.onclick = () => { closeSheet(); if (b.dataset.tp === 'normale') go('setup'); else go('comps', { compLive: false }); });
+    });
+  }
+  // ==== src/golf/rejoindre.js ====
   // ---------------- Rejoindre ----------------
   function vJoin() {
     $('#barTitle').textContent = 'Rejoindre';
@@ -1789,7 +1794,7 @@
       <button class="btn" id="joinBtn" type="button">Ouvrir la partie</button>
       ${Store.mode === 'local' ? '<div class="warn">En mode local, seules les parties créées sur ce téléphone sont accessibles.</div>' : ''}</section>`;
   }
-
+  // ==== src/golf/partie.js ====
   // ---------------- Partie ----------------
   function vGame() {
     const g = S.game;
@@ -1904,6 +1909,15 @@
       <div class="legend"><span>★ responsable de la partie (il entre les scores)</span><span>${BALL} coup reçu · petit chiffre = net</span><span>Calcul : ↓ plus bas net · ↑ plus haut net · R/B équipe qui reçoit · ×2 press · ×4 reroll · S skin · O oiselet · C cabane · $ normale 3 · = résultat net</span><span>Noms à la couleur de l'équipe : <b class="tc1">Bleus</b> · <b class="tc0">Rouges</b></span><span>${g.players.map((p, i) => `<b class="tc${teamOf(g, i)}">${esc(ini[i])}</b> ${esc(p.name)}`).join(' · ')}</span><span class="narrow-only">Sous chaque trou : statut (Normal, Press, Reroll) et calcul des points</span></div>`;
   }
 
+  function respActions(g, owner, note) {
+    if (owner) return '';
+    if (!(Store.mode === 'cloud' && Store.email)) return '';
+    const r = g.players[g.responsable];
+    return S.confirmClaim === g.id
+      ? `<div class="row game-actions"><button class="btn small" data-claim type="button">Oui, je deviens responsable</button><button class="btn ghost small" data-cancelclaim type="button">Annuler</button></div>`
+      : `<div class="row game-actions"><button class="btn ghost small light" data-askclaim type="button">Devenir responsable de cette partie</button>${note ? `<span class="note light">${r ? 'Responsable : ' + esc(r.name) + '. ' : ''}pour entrer les scores, la terminer ou l'effacer</span>` : ''}</div>`;
+  }
+  // ==== src/golf/historique.js ====
   // ---------------- Historique ----------------
   let historyCache = null;
   function vHistory() {
@@ -1949,7 +1963,7 @@
           : `<button class="btn ghost small" data-askdelgame="${esc(g.id)}" type="button">Effacer</button>`) : ''}</div>`;
     }).join('')}</div>`;
   }
-
+  // ==== src/commun/connexion.js ====
   // ---------------- Terrains ----------------
   function vLogin() {
     $('#barTitle').innerHTML = `${APP}<small class="bar-sous">le golf entre amis</small>`;
@@ -1980,7 +1994,7 @@
       </section>
       <p class="note" style="text-align:center"><button class="linkbtn" id="haiOut" type="button">Changer de compte</button></p>`;
   }
-
+  // ==== src/commun/banque.js ====
   // ---------- Import de joueurs depuis Excel (ou CSV) : nom + cellulaire ----------
   function loadXLSX() {
     if (window.XLSX) return Promise.resolve(window.XLSX);
@@ -2086,6 +2100,10 @@
   }
   // Statut d'invitation d'un joueur : compte créé, invité en attente, ou sans cellulaire
   // Notifications de chaque joueur, pour l'organisateur (lu dans subs du groupe)
+
+  // « 20 » → « 20,00 » ; vide reste vide
+  function fmtPhone(d) { d = String(d || '').replace(/\D/g, ''); if (d.length === 11 && d[0] === '1') d = d.slice(1); return d.length === 10 ? `${d.slice(0, 3)} ${d.slice(3, 6)}-${d.slice(6)}` : d; }
+  // ==== src/commun/notifications.js ====
   const NOTIF = { actif: ['ok', '🔔 Notifications actives', 'Il reçoit les alertes du groupe.'], bloque: ['bad', '🔕 Notifications bloquées', 'Il les a bloquées sur son téléphone : il ne reçoit rien. Parlez-lui, ou retirez-le du groupe.'],
     a_activer: ['wait', '🔕 Notifications pas activées', 'Il n’a pas encore accepté les notifications sur son téléphone.'], a_installer: ['wait', '🔕 App pas sur l’écran d’accueil', 'Sur iPhone, il doit ajouter l’app à l’écran d’accueil pour recevoir les alertes.'],
     non_supporte: ['bad', '🔕 Téléphone sans notifications', 'Son navigateur ne reçoit pas les notifications.'] };
@@ -2108,6 +2126,7 @@
     if (p.phone || p.phoneHint) return ' <span class="pl-st wait" title="Le texto d’invitation a pu être envoyé ; le joueur n’a pas encore créé son compte">Invité · en attente</span>';
     return ' <span class="pl-st none" title="Ajoutez son cellulaire pour l’inviter">Sans cellulaire</span>';
   }
+  // ==== src/golf/terrains.js ====
   function vCourses() {
     $('#barTitle').textContent = 'Terrains';
     const ilya = t => { const j = Math.round((Date.now() - t) / 864e5); return j < 1 ? 'aujourd’hui' : j === 1 ? 'hier' : `il y a ${j} jours`; };
@@ -2139,6 +2158,7 @@
       ${(Store.retired || []).length ? `<section class="card"><h3>Terrains effacés</h3><p class="note">Ils n’apparaissent plus dans la banque ni dans Nouvelle partie. Les parties déjà jouées gardent leur terrain.</p>
         <div class="list">${Store.retired.map(c => `<div class="item"><b>${esc(c.name)}</b>${isProprio() ? `<button class="btn ghost small" data-unretire="${esc(c.id)}" type="button">Remettre</button>` : ''}</div>`).join('')}</div></section>` : ''}`;
   }
+  // ==== src/golf/terrains-web.js ====
   // ---------------- Terrains trouvés sur le web : région → clubs → carte préparée → révision et approbation ----------------
   const TERRAINS_API = 'https://fanion.ai/api/terrains';
   const REGIONS_QC = ['Montréal', 'Laval', 'Laurentides', 'Lanaudière', 'Montérégie', 'Cantons-de-l’Est', 'Centre-du-Québec', 'Mauricie', 'Québec (Capitale-Nationale)', 'Charlevoix', 'Chaudière-Appalaches', 'Outaouais', 'Abitibi-Témiscamingue', 'Saguenay–Lac-Saint-Jean', 'Bas-Saint-Laurent', 'Gaspésie', 'Côte-Nord'];
@@ -2396,7 +2416,7 @@
         ? `<div class="row retire-row"><span class="note">Effacer « ${esc(c.name)} » de la banque du groupe ?</span><button class="btn small" id="retireOk" type="button" style="background:var(--red)">Effacer</button><button class="btn ghost small" id="retireNo" type="button">Annuler</button></div>`
         : `<button class="btn ghost danger-txt" id="retireCourse" type="button">Effacer ce terrain</button>`) : ''}`;
   }
-
+  // ==== src/golf/lecture-carte.js ====
   // ---------------- Lecture de la carte (photo ou PDF) ----------------
   const loadScript = (() => { const done = {}; return src => done[src] || (done[src] = new Promise((ok, ko) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => { delete done[src]; ko(new Error('connexion requise pour lire la carte')); }; document.head.appendChild(s); })); })();
   async function fileToCanvas(file, max = 2200) {
@@ -2466,6 +2486,7 @@
   // =====================================================================
   // Interactions
   // =====================================================================
+  // ==== src/commun/liaisons.js ====
   const bind = {
     compte(v) { bindCompte(v); },
     login(v) {
@@ -2488,89 +2509,6 @@
         try { await Store.saveOffre({ id: S.offre.id, ['rep_' + presKey(me)]: rep }, true); S.offre['rep_' + presKey(me)] = rep; render(); }
         catch (e) { toast('Enregistrement impossible : ' + e.message); }
       };
-    },
-    jeux(v) {
-      commonNav(v);
-      const jn = v.querySelector('[data-jnew]'); if (jn) jn.onclick = () => askNewGame();
-      v.querySelectorAll('[data-jedit]').forEach(b => b.onclick = () => go('jeuEdit', { editJeu: JSON.parse(JSON.stringify(S.jeux.find(j => j.id === b.dataset.jedit))) }));
-      v.querySelectorAll('[data-jdel]').forEach(b => b.onclick = async () => {
-        if (S.confirmDelJ !== b.dataset.jdel) { S.confirmDelJ = b.dataset.jdel; return render(); }
-        const list = S.jeux.filter(j => j.id !== b.dataset.jdel);
-        try { await Store.saveJeux(list); S.jeux = list; S.confirmDelJ = null; render(); } catch (e) { toast('Retrait impossible : ' + e.message); }
-      });
-    },
-    jeuEdit(v) {
-      commonNav(v);
-      const j = S.editJeu, sync = () => v.querySelectorAll('[data-jf]').forEach(i => { j[i.dataset.jf] = i.dataset.jf === 'name' || i.dataset.jf === 'ranks' ? i.value : i.value.replace(',', '.'); });
-      v.querySelectorAll('[data-jf]').forEach(i => i.oninput = () => { sync(); const u = $('#jSum'); if (u) u.innerHTML = persoLines(j).map(r => `<li>${esc(r)}</li>`).join(''); });
-      v.querySelectorAll('[data-jmode]').forEach(b => b.onclick = () => { sync(); j.mode = b.dataset.jmode; render(); });
-      $('#jSave').onclick = async () => {
-        sync();
-        if (!String(j.name).trim()) return toast('Donnez un nom au jeu.');
-        ['low', 'high', 'team', 'birdie', 'stake', 'skin', 'pp'].forEach(k => { j[k] = Number(j[k]) || 0; });
-        if (j.mode === 'equipes' ? !(j.low || j.high || j.team || j.birdie) : !(String(j.ranks).trim() || j.birdie || j.skin)) return toast('Choisissez au moins une façon de gagner des points.');
-        const out = { ...j, name: String(j.name).trim(), id: j.id || 'j' + Date.now().toString(36) };
-        const list = (S.jeux || []).filter(x => x.id !== out.id).concat([out]);
-        try { await Store.saveJeux(list); S.jeux = list; S.editJeu = null; go('jeux'); } catch (e) { toast('Enregistrement impossible : ' + e.message); }
-      };
-    },
-    quatuors(v) {
-      commonNav(v);
-      const f = S.newOffre;
-      const on = $('#oNew'); if (on) on.onclick = () => { const dl = new Date(Date.now() + 3 * 864e5); S.newOffre = { course: (S.courses[0] || {}).name || '', dates: [''], deadline: dl.toISOString().slice(0, 10) }; render(); };
-      if (f) {
-        const syncO = () => { f.place = $('#oPlace').value.trim(); f.course = $('#oCourse').value; f.deadline = $('#oDeadline').value; v.querySelectorAll('[data-od]').forEach(i => { f.dates[+i.dataset.od] = i.value; }); };
-        $('#oAddDate').onclick = () => { syncO(); f.dates.push(''); render(); };
-        v.querySelectorAll('[data-odx]').forEach(b => b.onclick = () => { syncO(); f.dates.splice(+b.dataset.odx, 1); if (!f.dates.length) f.dates.push(''); render(); });
-        $('#oCancel').onclick = () => { S.newOffre = null; render(); };
-        $('#oSend').onclick = async () => {
-          syncO();
-          const dates = f.dates.filter(Boolean).map(x => new Date(x).getTime()).filter(x => !isNaN(x)).sort((a, b) => a - b);
-          if (!dates.length) return toast('Ajoutez au moins une date.');
-          if (!f.deadline) return toast('Choisissez la date butoir.');
-          const o = { id: Date.now().toString(36), course: f.course, place: f.place || '', dates, deadline: new Date(f.deadline + 'T23:59:59').getTime(), by: ls.get('pelland.me', '') || '', groupId: Store.gid, createdAt: Date.now() };
-          try { await Store.saveOffre(o); S.offres = [o].concat(S.offres || []); S.newOffre = null; markStep('offre'); render(); offreSms(o);
-            Push.notify({ title: 'Nouvelles dates – ' + o.course.replace(/^Club de golf /i, ''), body: `Indiquez vos disponibilités avant le ${fmtDay(o.deadline)}.`, url: './?offre=' + o.id, tag: 'offre-' + o.id }); }
-          catch (e) { toast('Enregistrement impossible : ' + e.message); }
-        };
-      }
-      v.querySelectorAll('[data-osms]').forEach(b => b.onclick = () => offreSms(S.offres.find(o => o.id === b.dataset.osms)));
-      v.querySelectorAll('[data-orem]').forEach(b => b.onclick = () => reminderSheet(S.offres.find(o => o.id === b.dataset.orem)));
-      v.querySelectorAll('[data-odel]').forEach(b => b.onclick = async () => {
-        if (S.confirmDelO !== b.dataset.odel) { S.confirmDelO = b.dataset.odel; return render(); }
-        try { await Store.deleteOffre(b.dataset.odel); S.offres = S.offres.filter(o => o.id !== b.dataset.odel); S.confirmDelO = null; render(); } catch (e) { toast('Retrait impossible : ' + e.message); }
-      });
-      v.querySelectorAll('[data-oauto]').forEach(b => b.onclick = () => { const [id, dt] = b.dataset.oauto.split('|'); autoQuatuorsSheet(S.offres.find(x => x.id === id), +dt); });
-      v.querySelectorAll('[data-oquat]').forEach(b => b.onclick = () => {
-        const key = b.dataset.oquat, x = offreDates().find(y => y.key === key), d = newDraft();
-        d.offre = key; void x;
-        go('setup', { draft: d });
-      });
-      const nq = S.newQuat;
-      v.querySelectorAll('[data-qp]').forEach(sl => sl.onchange = e => { nq.players[+sl.dataset.qp] = e.target.value; render(); });
-      const qs = $('#qsave'); if (qs) qs.onclick = async () => {
-        if (nq.players.some(x => !x)) return toast('Choisissez les 4 joueurs.');
-        const list = (S.quatuors || []).concat([{ id: 'q' + Date.now().toString(36), name: nq.name, players: nq.players.slice() }]);
-        try { await Store.saveQuatuors(list); S.quatuors = list; S.newQuat = null; render(); } catch (e) { toast('Enregistrement impossible : ' + e.message); }
-      };
-      v.querySelectorAll('[data-qrem]').forEach(b => b.onclick = () => {
-        const x = S.quatuors.find(q => q.id === b.dataset.qrem), me = L.norm(ls.get('pelland.me', '') || '');
-        const ps = (S.players || []).filter(p => L.norm(p.name) !== me && x.players.some(n => L.norm(n) === L.norm(p.name)));
-        const txt = `Rappel – ${groupName()} : ${x.name ? 'on joue à ' + x.name.replace(/ – groupe \d+$/, '') : x.date ? 'on joue ' + fmtDate(x.date) : 'partie à venir'}. Ton groupe : ${x.players.join(', ')}. À bientôt sur le terrain !`;
-        openSheet(`<h3>Rappel au groupe</h3><p class="note">${esc(x.players.join(', '))}</p><label>Message<textarea id="qrMsg" rows="4">${esc(txt)}</textarea></label>
-          ${ps.some(p => !p.phone) ? `<p class="warn" style="margin:6px 0">Pas de numéro pour ${esc(ps.filter(p => !p.phone).map(p => p.name).join(', '))}.</p>` : ''}
-          <div class="row"><button class="btn small" id="qrGo" type="button" ${ps.some(p => p.phone) ? '' : 'disabled'}>Envoyer le texto (${ps.filter(p => p.phone).length})</button><button class="btn ghost small" data-close type="button">Annuler</button></div>`, sh => {
-          sh.querySelector('[data-close]').onclick = closeSheet;
-          sh.querySelector('#qrGo').onclick = () => { const t = sh.querySelector('#qrMsg').value; closeSheet(); openSms(ps.filter(p => p.phone).map(p => p.phone), t); };
-        });
-      });
-      v.querySelectorAll('[data-qplay]').forEach(b => b.onclick = () => { const x = S.quatuors.find(q => q.id === b.dataset.qplay); go('setup', { draft: draftFromQuatuor(x) }); });
-      v.querySelectorAll('[data-qask]').forEach(b => b.onclick = () => { S.confirmDelQ = b.dataset.qask; render(); });
-      v.querySelectorAll('[data-qcancel]').forEach(b => b.onclick = () => { S.confirmDelQ = null; render(); });
-      v.querySelectorAll('[data-qdel]').forEach(b => b.onclick = async () => {
-        const list = S.quatuors.filter(q => q.id !== b.dataset.qdel);
-        try { await Store.saveQuatuors(list); S.quatuors = list; S.confirmDelQ = null; render(); } catch (e) { toast('Retrait impossible : ' + e.message); }
-      });
     },
     players(v) {
       if (!S.notifsAt || Date.now() - S.notifsAt > 60e3) { S.notifsAt = Date.now(); chargerNotifs(); }
@@ -2683,6 +2621,98 @@
       v.querySelectorAll('[data-delp]').forEach(b => b.onclick = async () => {
         const p = S.players.find(x => x.id === b.dataset.delp);
         try { await Store.setMembre(b.dataset.delp, false); S.players = await Store.listPlayers(); S.bank = await Store.listBank().catch(() => S.bank); S.confirmDel = null; toast(`${p ? p.name : 'Le joueur'} est retiré du groupe ; il reste dans la banque.`); render(); } catch (e) { toast('Retrait impossible : ' + e.message); }
+      });
+    },
+  };
+
+  function commonNav(v) {
+    v.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go, b.dataset.go === 'setup' ? { draft: null } : b.dataset.go === 'players' ? { pMode: b.dataset.pmode || 'banque' } : b.dataset.go === 'comps' ? { compLive: !!b.dataset.clive } : b.dataset.new ? { editCourse: null } : {}));
+    v.querySelectorAll('[data-open]').forEach(b => b.onclick = () => openGame(b.dataset.open));
+  }
+  // ==== src/golf/liaisons.js ====
+  // Interactions des écrans du golf
+  Object.assign(bind, {
+    jeux(v) {
+      commonNav(v);
+      const jn = v.querySelector('[data-jnew]'); if (jn) jn.onclick = () => askNewGame();
+      v.querySelectorAll('[data-jedit]').forEach(b => b.onclick = () => go('jeuEdit', { editJeu: JSON.parse(JSON.stringify(S.jeux.find(j => j.id === b.dataset.jedit))) }));
+      v.querySelectorAll('[data-jdel]').forEach(b => b.onclick = async () => {
+        if (S.confirmDelJ !== b.dataset.jdel) { S.confirmDelJ = b.dataset.jdel; return render(); }
+        const list = S.jeux.filter(j => j.id !== b.dataset.jdel);
+        try { await Store.saveJeux(list); S.jeux = list; S.confirmDelJ = null; render(); } catch (e) { toast('Retrait impossible : ' + e.message); }
+      });
+    },
+    jeuEdit(v) {
+      commonNav(v);
+      const j = S.editJeu, sync = () => v.querySelectorAll('[data-jf]').forEach(i => { j[i.dataset.jf] = i.dataset.jf === 'name' || i.dataset.jf === 'ranks' ? i.value : i.value.replace(',', '.'); });
+      v.querySelectorAll('[data-jf]').forEach(i => i.oninput = () => { sync(); const u = $('#jSum'); if (u) u.innerHTML = persoLines(j).map(r => `<li>${esc(r)}</li>`).join(''); });
+      v.querySelectorAll('[data-jmode]').forEach(b => b.onclick = () => { sync(); j.mode = b.dataset.jmode; render(); });
+      $('#jSave').onclick = async () => {
+        sync();
+        if (!String(j.name).trim()) return toast('Donnez un nom au jeu.');
+        ['low', 'high', 'team', 'birdie', 'stake', 'skin', 'pp'].forEach(k => { j[k] = Number(j[k]) || 0; });
+        if (j.mode === 'equipes' ? !(j.low || j.high || j.team || j.birdie) : !(String(j.ranks).trim() || j.birdie || j.skin)) return toast('Choisissez au moins une façon de gagner des points.');
+        const out = { ...j, name: String(j.name).trim(), id: j.id || 'j' + Date.now().toString(36) };
+        const list = (S.jeux || []).filter(x => x.id !== out.id).concat([out]);
+        try { await Store.saveJeux(list); S.jeux = list; S.editJeu = null; go('jeux'); } catch (e) { toast('Enregistrement impossible : ' + e.message); }
+      };
+    },
+    quatuors(v) {
+      commonNav(v);
+      const f = S.newOffre;
+      const on = $('#oNew'); if (on) on.onclick = () => { const dl = new Date(Date.now() + 3 * 864e5); S.newOffre = { course: (S.courses[0] || {}).name || '', dates: [''], deadline: dl.toISOString().slice(0, 10) }; render(); };
+      if (f) {
+        const syncO = () => { f.place = $('#oPlace').value.trim(); f.course = $('#oCourse').value; f.deadline = $('#oDeadline').value; v.querySelectorAll('[data-od]').forEach(i => { f.dates[+i.dataset.od] = i.value; }); };
+        $('#oAddDate').onclick = () => { syncO(); f.dates.push(''); render(); };
+        v.querySelectorAll('[data-odx]').forEach(b => b.onclick = () => { syncO(); f.dates.splice(+b.dataset.odx, 1); if (!f.dates.length) f.dates.push(''); render(); });
+        $('#oCancel').onclick = () => { S.newOffre = null; render(); };
+        $('#oSend').onclick = async () => {
+          syncO();
+          const dates = f.dates.filter(Boolean).map(x => new Date(x).getTime()).filter(x => !isNaN(x)).sort((a, b) => a - b);
+          if (!dates.length) return toast('Ajoutez au moins une date.');
+          if (!f.deadline) return toast('Choisissez la date butoir.');
+          const o = { id: Date.now().toString(36), course: f.course, place: f.place || '', dates, deadline: new Date(f.deadline + 'T23:59:59').getTime(), by: ls.get('pelland.me', '') || '', groupId: Store.gid, createdAt: Date.now() };
+          try { await Store.saveOffre(o); S.offres = [o].concat(S.offres || []); S.newOffre = null; markStep('offre'); render(); offreSms(o);
+            Push.notify({ title: 'Nouvelles dates – ' + o.course.replace(/^Club de golf /i, ''), body: `Indiquez vos disponibilités avant le ${fmtDay(o.deadline)}.`, url: './?offre=' + o.id, tag: 'offre-' + o.id }); }
+          catch (e) { toast('Enregistrement impossible : ' + e.message); }
+        };
+      }
+      v.querySelectorAll('[data-osms]').forEach(b => b.onclick = () => offreSms(S.offres.find(o => o.id === b.dataset.osms)));
+      v.querySelectorAll('[data-orem]').forEach(b => b.onclick = () => reminderSheet(S.offres.find(o => o.id === b.dataset.orem)));
+      v.querySelectorAll('[data-odel]').forEach(b => b.onclick = async () => {
+        if (S.confirmDelO !== b.dataset.odel) { S.confirmDelO = b.dataset.odel; return render(); }
+        try { await Store.deleteOffre(b.dataset.odel); S.offres = S.offres.filter(o => o.id !== b.dataset.odel); S.confirmDelO = null; render(); } catch (e) { toast('Retrait impossible : ' + e.message); }
+      });
+      v.querySelectorAll('[data-oauto]').forEach(b => b.onclick = () => { const [id, dt] = b.dataset.oauto.split('|'); autoQuatuorsSheet(S.offres.find(x => x.id === id), +dt); });
+      v.querySelectorAll('[data-oquat]').forEach(b => b.onclick = () => {
+        const key = b.dataset.oquat, x = offreDates().find(y => y.key === key), d = newDraft();
+        d.offre = key; void x;
+        go('setup', { draft: d });
+      });
+      const nq = S.newQuat;
+      v.querySelectorAll('[data-qp]').forEach(sl => sl.onchange = e => { nq.players[+sl.dataset.qp] = e.target.value; render(); });
+      const qs = $('#qsave'); if (qs) qs.onclick = async () => {
+        if (nq.players.some(x => !x)) return toast('Choisissez les 4 joueurs.');
+        const list = (S.quatuors || []).concat([{ id: 'q' + Date.now().toString(36), name: nq.name, players: nq.players.slice() }]);
+        try { await Store.saveQuatuors(list); S.quatuors = list; S.newQuat = null; render(); } catch (e) { toast('Enregistrement impossible : ' + e.message); }
+      };
+      v.querySelectorAll('[data-qrem]').forEach(b => b.onclick = () => {
+        const x = S.quatuors.find(q => q.id === b.dataset.qrem), me = L.norm(ls.get('pelland.me', '') || '');
+        const ps = (S.players || []).filter(p => L.norm(p.name) !== me && x.players.some(n => L.norm(n) === L.norm(p.name)));
+        const txt = `Rappel – ${groupName()} : ${x.name ? 'on joue à ' + x.name.replace(/ – groupe \d+$/, '') : x.date ? 'on joue ' + fmtDate(x.date) : 'partie à venir'}. Ton groupe : ${x.players.join(', ')}. À bientôt sur le terrain !`;
+        openSheet(`<h3>Rappel au groupe</h3><p class="note">${esc(x.players.join(', '))}</p><label>Message<textarea id="qrMsg" rows="4">${esc(txt)}</textarea></label>
+          ${ps.some(p => !p.phone) ? `<p class="warn" style="margin:6px 0">Pas de numéro pour ${esc(ps.filter(p => !p.phone).map(p => p.name).join(', '))}.</p>` : ''}
+          <div class="row"><button class="btn small" id="qrGo" type="button" ${ps.some(p => p.phone) ? '' : 'disabled'}>Envoyer le texto (${ps.filter(p => p.phone).length})</button><button class="btn ghost small" data-close type="button">Annuler</button></div>`, sh => {
+          sh.querySelector('[data-close]').onclick = closeSheet;
+          sh.querySelector('#qrGo').onclick = () => { const t = sh.querySelector('#qrMsg').value; closeSheet(); openSms(ps.filter(p => p.phone).map(p => p.phone), t); };
+        });
+      });
+      v.querySelectorAll('[data-qplay]').forEach(b => b.onclick = () => { const x = S.quatuors.find(q => q.id === b.dataset.qplay); go('setup', { draft: draftFromQuatuor(x) }); });
+      v.querySelectorAll('[data-qask]').forEach(b => b.onclick = () => { S.confirmDelQ = b.dataset.qask; render(); });
+      v.querySelectorAll('[data-qcancel]').forEach(b => b.onclick = () => { S.confirmDelQ = null; render(); });
+      v.querySelectorAll('[data-qdel]').forEach(b => b.onclick = async () => {
+        const list = S.quatuors.filter(q => q.id !== b.dataset.qdel);
+        try { await Store.saveQuatuors(list); S.quatuors = list; S.confirmDelQ = null; render(); } catch (e) { toast('Retrait impossible : ' + e.message); }
       });
     },
     home(v) {
@@ -3026,12 +3056,9 @@
         catch (e) { S.presenceBlocked = true; render(); }
       });
       v.querySelectorAll('[data-hole]').forEach(b => b.onclick = () => { const h = +b.dataset.hole; if (isOwner() && isAlt(S.game)) commit([{ type: 'goto', hole: h }], false); else if (isOwner()) holeSheet(h); else { S.game.currentHole = h; render(); } });
-    }
-  };
-  function commonNav(v) {
-    v.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go, b.dataset.go === 'setup' ? { draft: null } : b.dataset.go === 'players' ? { pMode: b.dataset.pmode || 'banque' } : b.dataset.go === 'comps' ? { compLive: !!b.dataset.clive } : b.dataset.new ? { editCourse: null } : {}));
-    v.querySelectorAll('[data-open]').forEach(b => b.onclick = () => openGame(b.dataset.open));
-  }
+    },
+  });
+  // ==== src/golf/actions-partie.js ====
 
   // Invitation : lien direct vers la partie, envoyé avec le menu Partager de l'iPhone
   function inviteLink(g) { return location.origin + location.pathname + '?partie=' + encodeURIComponent(g.id); } // sans « cadre »
@@ -3190,7 +3217,7 @@
     else reply = isOwner() ? 'Je n\'ai pas compris. Exemple : « Trou 3, Marc 4, Luc 5 ».' : 'Je n\'ai pas compris. Exemple : « Qui a des coups au 7 ? »';
     setReply(reply); Voice.say(reply);
   }
-
+  // ==== src/commun/feuilles.js ====
   // ---------------- Feuilles (saisie manuelle) ----------------
   function openSheet(html, bindFn) {
     const w = $('#sheetWrap'), s = $('#sheet');
@@ -3199,31 +3226,6 @@
     bindFn(s);
   }
   function closeSheet() { $('#sheetWrap').hidden = true; }
-  // Saisie manuelle : les 4 scores du trou et la skin, en une seule fois.
-  // Gain par joueur de l'équipe qui mène : game + revirements + normales 3 (net) + points × $/point
-  function leaderMoney(g) {
-    const t = L.teamPoints(g).tot, d = Math.abs(t[0] - t[1]), k = t[0] > t[1] ? 0 : 1, o = 1 - k, p3 = L.par3Results(g);
-    const stake = money(g.stake), lc = L.leadChanges(g), lcv = money(g.leadChangeValue), pp = g.perPoint == null || g.perPoint === '' ? 1 : money(g.perPoint);
-    const parts = [[stake, 'game'], [lc * lcv, `${lc} revirement${lc > 1 ? 's' : ''}`], [p3.money[k] - p3.money[o], 'normales 3'], [d * pp, `${d} pt${d > 1 ? 's' : ''} × ${fmt$(pp)}`]];
-    return { t, d, k, tie: t[0] === t[1], parts, tot: parts.reduce((a, x) => a + x[0], 0) };
-  }
-  // Texto aux joueurs : ouvre Messages avec les numéros et le résumé de la partie
-  function smsSummary(g) {
-    if (isAlt(g)) return smsSummaryNeuf(g);
-    const m = leaderMoney(g), T = L.getTeams(g);
-    const played = Object.keys(g.scores || {}).filter(x => (g.scores[x] || []).some(v => v != null)).map(Number);
-    const last = played.length ? Math.max(...played) : 0, done = g.status === 'terminée';
-    const date = new Date(g.createdAt || Date.now()).toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' });
-    const lines = [`${groupName()} – ${gameName(g)} – ${g.course.name.replace(/^Club de golf /i, '')}, ${date}`];
-    lines.push(done ? 'Résultat final :' : last ? `Après ${last} trou${last > 1 ? 's' : ''} :` : 'La partie commence.');
-    if (last) {
-      if (m.tie) lines.push(`Égalité, ${m.t[0]} points chacun.`);
-      else lines.push(`${L.TEAMS[m.k]} ${done ? 'gagnent' : 'mènent'} par ${m.d} point${m.d > 1 ? 's' : ''} nets (Bleus ${m.t[1]} · Rouges ${m.t[0]}).`, `${done ? 'Gain' : 'Gain en ce moment'} : ${fmt$(m.tot)} par joueur pour les ${L.TEAMS[m.k]}.`);
-    }
-    lines.push(`Bleus : ${T[1].map(i => g.players[i].name).join(', ')}`, `Rouges : ${T[0].map(i => g.players[i].name).join(', ')}`);
-    lines.push(inviteLink(g));
-    return lines.join('\n');
-  }
   // Texto d'invitation quand on ajoute un joueur avec son téléphone
   function inviteText(name, phone, id) {
     const d = String(phone || '').replace(/\D/g, ''); if (d.length < 10) return;
@@ -3238,12 +3240,7 @@
     const body = `Salut ${name.split(' ')[0]} ! Tu as été invité à te joindre au groupe « ${groupName()} » sur ${APP}, l’app de golf entre amis. Ouvre l’app : ${url} — ton nom est déjà choisi. La première fois, crée ton compte avec ton cellulaire (${fmtPhone(d)}) : tu reçois un code par texto, puis tu choisis un mot de passe. Sur iPhone : bouton Partager, puis « Sur l’écran d’accueil ».`;
     openSms([d], body);
   }
-  // Lignes de la carte selon les trous joués (18, aller ou retour)
-  function scoreRows(g, row, sumRow) {
-    const [h0, h1] = L.holeRange(g), rows = a => Array.from({ length: 9 }, (_, i) => row(a + i)).join('');
-    if (h0 === 1 && h1 === 18) return rows(1) + sumRow('Aller', 1, 9) + rows(10) + sumRow('Retour', 10, 18) + sumRow('Total', 1, 18, true);
-    return rows(h0) + sumRow('Total', h0, h1, true);
-  }
+  // ==== src/golf/neuf-points.js ====
   // ---------------- Le 9 points (3 joueurs) ----------------
   const isAlt = g => !!g && L.formatOf(g) !== 'pelland';
   const fmtPts = x => String(Math.round(x * 10) / 10).replace('.', ',').replace('-', '−');
@@ -3388,6 +3385,7 @@
           : '<button class="btn ghost small" data-askdelthis type="button">Effacer la partie</button>'}</div>` : ''}
       <div class="legend"><span>★ responsable de la partie (il entre les scores)</span><span>${BALL} coup reçu · petit chiffre = net</span><span>${esc(ruleText(g))} Touchez la ligne sous un trou pour le détail.</span><span>${g.players.map((p, i) => `<b>${esc(ini[i])}</b> ${esc(p.name)}`).join(' · ')}</span></div>`;
   }
+  // ==== src/golf/presences.js ====
   // ---------------- Présences ----------------
   const presKey = name => L.norm(name).replace(/[^a-z0-9]+/g, '-');
   function myIndex(g) { const me = L.norm(ls.get('pelland.me', '') || ''); return g.players.findIndex(p => L.norm(p.name) === me); }
@@ -3435,6 +3433,7 @@
   //   rounds?:[{date, courseId, course, tee}], ryder?:{sides, sessions}, tableau?:{entrants, seeding, consolation, manual},
   //   scores:{ <équipe | équipe@ronde | match>: { <trou>: [scores] } } }
   // =====================================================================
+  // ==== src/golf/competitions.js ====
   const CLASSES_LETTRES = ['A', 'B', 'C', 'D'];
   const toParTxt = x => x === 0 ? 'Par' : (x > 0 ? '+' : '−') + Math.abs(x);
   const parseIdx = v => { const n = parseFloat(String(v == null ? '' : v).replace(',', '.')); return isNaN(n) ? null : n; };
@@ -3567,7 +3566,7 @@
   const fmtPt = x => String(x).replace('.5', ',5');
   const drivesTxt = (c, r) => { const min = (c.minDrives || 0) * (r.rounds ? r.rounds.length : 1); return r.t.p.map((p, i) => `${prenom(p.name)} ${r.drives[i]}${min && r.drives[i] < min ? '⚠' : ''}`).join(' · '); };
   const sumHtml = (c, r) => `<span>${r.thru ? `Après ${r.thru} trou${r.thru > 1 ? 's' : ''}` : 'Aucun score'}</span><b class="${eff(c) !== 'stableford' && r.toPar < 0 ? 'under' : ''}">${!r.thru ? '' : eff(c) === 'stableford' ? r.pts + ' pts' : toParTxt(r.toPar)}</b>`;
-
+  // ==== src/golf/ryder.js ====
   // ---------- Coupe Ryder : deux camps, sessions de matchs ----------
   const RY_TYPES = { quatre: 'Quatre balles (meilleure balle, 2 contre 2)', alterne: 'Coups alternés (une balle, 2 contre 2)', simple: 'Simples (1 contre 1)' };
   const RY_COURT = { quatre: 'Quatre balles', alterne: 'Coups alternés', simple: 'Simples' };
@@ -3586,7 +3585,7 @@
     const [A, B] = c.ryder.sides.map(s => s.p.map(p => p.id)), k = type === 'simple' ? 1 : 2, n = Math.floor(Math.min(A.length, B.length) / k);
     return Array.from({ length: n }, (_, i) => ({ id: uid6(), a: A.slice(i * k, i * k + k), b: B.slice(i * k, i * k + k) }));
   }
-
+  // ==== src/golf/tableau.js ====
   // ---------- Tableau à élimination ----------
   // Ordre des têtes de série dans un tableau de taille 2^k (1 contre 16, 8 contre 9, …)
   function seedOrder(n) { let o = [1]; while (o.length < n) { const m = o.length * 2 + 1; o = o.flatMap(x => [x, m - x]); } return o; }
@@ -3633,7 +3632,7 @@
     return { seeds, main, conso };
   }
   const tbName = (c, p, pend) => { if (pend) return '<i class="tb-tbd">à déterminer</i>'; if (!p) return '<i class="tb-tbd">—</i>'; const s = tbSeeds(c).indexOf(p) + 1; return `${s ? `<small class="tb-seed">${s}</small>` : ''}${esc(p.name)}`; };
-
+  // ==== src/golf/merite.js ====
   // ---------- Ordre du mérite : points selon la position, cumulés sur la saison ----------
   const MERIT_PTS = [100, 80, 65, 55, 50, 45, 40, 36, 32, 29, 26, 24, 22, 20, 18, 16, 14, 12, 10, 8];
   // Une compétition compte dans l'ordre du mérite seulement une fois terminée
@@ -3723,7 +3722,7 @@
       ${merit.length ? `<section class="card"><table class="cm-lb merit"><thead><tr><th>Pos.</th><th>Joueur</th><th>Comp.</th><th>Pts</th></tr></thead><tbody>${merit.map(x => `<tr class="${x.pos === 1 ? 'lead' : ''}"><td>${x.pos}</td><td>${esc(x.name)}</td><td>${x.n}</td><td class="tp">${x.pts}</td></tr>`).join('')}</tbody></table></section>` : `<p class="note">Aucun point cette saison : les points apparaissent dès qu’une compétition de ${year} est terminée.</p>`}
       <div class="row"><button class="btn ghost small" data-merit="${year - 1}" type="button">‹ ${year - 1}</button>${year < new Date().getFullYear() ? `<button class="btn ghost small" data-merit="${year + 1}" type="button">${year + 1} ›</button>` : ''}</div>`;
   }
-
+  // ==== src/golf/competition-edition.js ====
   // ---------- Création et modification ----------
   const blankTeam = n => ({ id: uid6(), dep: '', p: Array.from({ length: n }, () => ({ name: '', index: '' })) });
   const teamSizeOf = d => ['texas', 'scramble'].includes(d.format) ? (d.format === 'scramble' ? 4 : d.teamSize || 4) : 2;
@@ -3833,7 +3832,7 @@
       };
     });
   }
-
+  // ==== src/golf/competition-affichage.js ====
   // ---------- Affichage d'une compétition ----------
   function compHead(c) {
     const info = c.format === 'ryder' ? 'Coupe Ryder · match play net' : c.format === 'tableau' ? `Tableau à élimination · match play net, 100 % de l’écart` : eff(c) === 'texas' ? `${c.format === 'scramble' ? 'Scramble à 4' : 'Texas scramble'} · équipes de ${c.teamSize || 4}${c.minDrives ? ` · ${c.minDrives} départ(s) minimum par joueur` : ''}` : `${c.format === 'invite' ? 'Membre-invité · ' : ''}${eff(c) === 'coups' ? 'Meilleure balle nette en coups' : eff(c) === 'stableford' ? 'Stableford, meilleure balle nette' : 'Match play, meilleure balle nette'} · ${c.allowance} % du handicap`;
@@ -3929,7 +3928,7 @@
       <tbody>${r.holes.map(hh => `<tr><td>${hh.h}</td><td>${hh.par}</td><td>${hh.si}</td>${r.ps.map((p, i) => { const k = L.strokesOnHole(p.ph, hh.si); return `<td class="cm-in">${k > 0 ? `<i class="dots">${'•'.repeat(Math.min(k, 3))}</i>` : ''}<input data-cms="${hh.h}.${i}" type="text" inputmode="numeric" maxlength="2" value="${hh.s[i] == null ? '' : esc(hh.s[i])}" aria-label="Trou ${hh.h}, ${esc(p.name)}"></td>`; }).join('')}<td class="cm-best ${hh.best != null && hh.best < hh.par ? 'under' : ''}">${hh.best == null ? '' : hh.best}${eff(c) === 'stableford' && hh.sp != null ? `<small>${hh.sp} pt${hh.sp > 1 ? 's' : ''}</small>` : ''}</td></tr>`).join('')}</tbody></table></div>
       <p class="note">Entrez les scores bruts. Les points (•) sont les coups reçus avec le plein handicap de jeu ; la colonne Équipe montre le meilleur score net du trou.${eff(c) !== 'match' ? '' : ' En match play, l’app recalcule les coups de chaque match à partir du plus bas handicap des quatre joueurs.'}</p>`;
   }
-
+  // ==== src/golf/ecran-tele.js ====
   // ---------- Écran télé : classement plein écran, en direct, les classes défilent ----------
   function vCompTv() {
     const c = S.comp; if (!c) return '<p class="note">Chargement…</p>';
@@ -3941,7 +3940,7 @@
     else inner = boardHtml(c, null);
     return `<div class="tv"><div class="tv-top"><h1>${esc(c.name)}</h1><span>${esc(c.course.name)} · ${esc(dateLong(c.date))}</span><span class="tv-live">● En direct</span><button class="btn ghost small" data-tvquit type="button">Fermer</button></div><div class="tv-body">${inner}</div></div>`;
   }
-
+  // ==== src/golf/impressions.js ====
   // ---------- Impressions : cartes de pointage et affiches de voiturette ----------
   function imprimer(c, kind) {
     const tee = compTee(c), holes = c.course.holes, par = h => L.holePar(c.course, tee, h);
@@ -4144,7 +4143,7 @@
       S.tvTimer = setInterval(() => { if (S.view !== 'compTv') return clearInterval(S.tvTimer); if (!body || body.scrollHeight <= body.clientHeight + 4) return; body.scrollTop = body.scrollTop + body.clientHeight >= body.scrollHeight - 4 ? 0 : body.scrollTop + body.clientHeight * 0.85; }, 12000);
     }
   });
-
+  // ==== src/commun/textos-push.js ====
   const SMS_API = 'https://fanion.ai/api/sms';
   // =====================================================================
   // Notifications de l'app (Web Push) : gratuites, envoyées par le serveur Fanion aux membres abonnés du groupe
@@ -4238,6 +4237,31 @@
     try { await Push.enable(); toast('Notifications activées.'); } catch (x) { toast(x.message); Push.signaler(); }
     render();
   });
+
+  async function smsService() {
+    if (S.smsReady != null) return S.smsReady;
+    try { const r = await fetch(SMS_API + '/status'); S.smsReady = r.ok && !!(await r.json()).ready; } catch (e) { S.smsReady = false; }
+    return S.smsReady;
+  }
+  async function openSms(nums, text) {
+    nums = (nums || []).filter(Boolean);
+    if (Store.mode === 'cloud' && nums.length && await smsService()) {
+      try {
+        const tok = await Store.token();
+        const r = await fetch(SMS_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify({ to: nums, text }) });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.sent) { toast(`Texto envoyé à ${d.sent} joueur${d.sent > 1 ? 's' : ''}${(d.failed || []).length ? ` · ${d.failed.length} non envoyé${d.failed.length > 1 ? 's' : ''}` : ''}.`); return; }
+        toast('Envoi automatique impossible' + (d.error ? ' : ' + d.error : '') + '. Messages s’ouvre à la place.');
+      } catch (e) { }
+    }
+    openSmsApp(nums, text);
+  }
+  function openSmsApp(nums, text) {
+    const body = encodeURIComponent(text), ios = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
+    const url = ios ? `sms:/open?addresses=${nums.join(',')}&body=${body}` : `sms:${nums.join(',')}?body=${body}`;
+    window.__lastSms = url; (window.top || window).location.href = url;
+  }
+  // ==== src/commun/caddie.js ====
   // ---------------- Le Caddie : l'agent qui répond aux questions (API Claude, par le serveur Fanion) ----------------
   const CADDIE_API = 'https://fanion.ai/api/caddie';
   const SCREENS = { home: 'Accueil', players: 'Inviter des joueurs', quatuors: 'Parties à préparer', setup: 'Créer une partie', jeux: 'Banque de jeux', courses: 'Banque de terrains', live: 'Parties en cours', history: 'Parties et compétitions jouées', comps: 'Banque de compétitions', compte: 'Mon compte' };
@@ -4290,7 +4314,7 @@
     return 'mailto:bonjour@fanion.ai?subject=' + encodeURIComponent('le fanion.ai – question') + '&body=' + encodeURIComponent(body.slice(0, 1800));
   }
   document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-caddie]'); if (t) { e.preventDefault(); openCaddie(); } });
-
+  // ==== src/commun/leo.js ====
   // ---------------- Léo, le caddie en personne : visage dans le coin, salut à l'arrivée, visite guidée ----------------
   let leo = null;
   const LEO_CACHE = ['game', 'setup', 'compEdit', 'comp', 'compTv', 'offre', 'login', 'join', 'jeuEdit', 'course'];   // écrans de saisie : on ne cache rien
@@ -4340,30 +4364,8 @@
       fin: { titre: 'Une question ? Je suis dans le coin.', texte: 'Touchez mon visage en bas à droite, n’importe quand. On commence par inviter vos joueurs ?', bouton: (S.players || []).length < 4 ? 'Inviter des joueurs' : 'C’est parti', action: () => { if ((S.players || []).length < 4) go('players', { pMode: 'banque' }); } },
     });
   }
-  async function smsService() {
-    if (S.smsReady != null) return S.smsReady;
-    try { const r = await fetch(SMS_API + '/status'); S.smsReady = r.ok && !!(await r.json()).ready; } catch (e) { S.smsReady = false; }
-    return S.smsReady;
-  }
-  async function openSms(nums, text) {
-    nums = (nums || []).filter(Boolean);
-    if (Store.mode === 'cloud' && nums.length && await smsService()) {
-      try {
-        const tok = await Store.token();
-        const r = await fetch(SMS_API, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify({ to: nums, text }) });
-        const d = await r.json().catch(() => ({}));
-        if (r.ok && d.sent) { toast(`Texto envoyé à ${d.sent} joueur${d.sent > 1 ? 's' : ''}${(d.failed || []).length ? ` · ${d.failed.length} non envoyé${d.failed.length > 1 ? 's' : ''}` : ''}.`); return; }
-        toast('Envoi automatique impossible' + (d.error ? ' : ' + d.error : '') + '. Messages s’ouvre à la place.');
-      } catch (e) { }
-    }
-    openSmsApp(nums, text);
-  }
-  function openSmsApp(nums, text) {
-    const body = encodeURIComponent(text), ios = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
-    const url = ios ? `sms:/open?addresses=${nums.join(',')}&body=${body}` : `sms:${nums.join(',')}?body=${body}`;
-    window.__lastSms = url; (window.top || window).location.href = url;
-  }
   // Texto : les joueurs de la partie sont cochés ; on peut ajouter des joueurs d'une autre partie (ou du groupe)
+  // ==== src/golf/pointage.js ====
   async function textPlayers(g) {
     const me = L.norm(ls.get('pelland.me', '') || '');
     const inGame = new Set(g.players.map(p => L.norm(p.name)));
@@ -4519,6 +4521,39 @@
       s.querySelector('[data-close]').onclick = closeSheet;
     });
   }
+
+  // Saisie manuelle : les 4 scores du trou et la skin, en une seule fois.
+  // Gain par joueur de l'équipe qui mène : game + revirements + normales 3 (net) + points × $/point
+  function leaderMoney(g) {
+    const t = L.teamPoints(g).tot, d = Math.abs(t[0] - t[1]), k = t[0] > t[1] ? 0 : 1, o = 1 - k, p3 = L.par3Results(g);
+    const stake = money(g.stake), lc = L.leadChanges(g), lcv = money(g.leadChangeValue), pp = g.perPoint == null || g.perPoint === '' ? 1 : money(g.perPoint);
+    const parts = [[stake, 'game'], [lc * lcv, `${lc} revirement${lc > 1 ? 's' : ''}`], [p3.money[k] - p3.money[o], 'normales 3'], [d * pp, `${d} pt${d > 1 ? 's' : ''} × ${fmt$(pp)}`]];
+    return { t, d, k, tie: t[0] === t[1], parts, tot: parts.reduce((a, x) => a + x[0], 0) };
+  }
+  // Texto aux joueurs : ouvre Messages avec les numéros et le résumé de la partie
+  function smsSummary(g) {
+    if (isAlt(g)) return smsSummaryNeuf(g);
+    const m = leaderMoney(g), T = L.getTeams(g);
+    const played = Object.keys(g.scores || {}).filter(x => (g.scores[x] || []).some(v => v != null)).map(Number);
+    const last = played.length ? Math.max(...played) : 0, done = g.status === 'terminée';
+    const date = new Date(g.createdAt || Date.now()).toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' });
+    const lines = [`${groupName()} – ${gameName(g)} – ${g.course.name.replace(/^Club de golf /i, '')}, ${date}`];
+    lines.push(done ? 'Résultat final :' : last ? `Après ${last} trou${last > 1 ? 's' : ''} :` : 'La partie commence.');
+    if (last) {
+      if (m.tie) lines.push(`Égalité, ${m.t[0]} points chacun.`);
+      else lines.push(`${L.TEAMS[m.k]} ${done ? 'gagnent' : 'mènent'} par ${m.d} point${m.d > 1 ? 's' : ''} nets (Bleus ${m.t[1]} · Rouges ${m.t[0]}).`, `${done ? 'Gain' : 'Gain en ce moment'} : ${fmt$(m.tot)} par joueur pour les ${L.TEAMS[m.k]}.`);
+    }
+    lines.push(`Bleus : ${T[1].map(i => g.players[i].name).join(', ')}`, `Rouges : ${T[0].map(i => g.players[i].name).join(', ')}`);
+    lines.push(inviteLink(g));
+    return lines.join('\n');
+  }
+  // Lignes de la carte selon les trous joués (18, aller ou retour)
+  function scoreRows(g, row, sumRow) {
+    const [h0, h1] = L.holeRange(g), rows = a => Array.from({ length: 9 }, (_, i) => row(a + i)).join('');
+    if (h0 === 1 && h1 === 18) return rows(1) + sumRow('Aller', 1, 9) + rows(10) + sumRow('Retour', 10, 18) + sumRow('Total', 1, 18, true);
+    return rows(h0) + sumRow('Total', h0, h1, true);
+  }
+  // ==== src/commun/demarrage.js ====
 
   // =====================================================================
   // Démarrage

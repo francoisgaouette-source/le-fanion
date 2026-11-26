@@ -1,0 +1,26 @@
+#!/usr/bin/env node
+/* Assemble une app à partir de src/ : node outils/assembler.js [fanion] [--verifier]
+   - src/apps/<app>.json donne le fichier de sortie et la liste ordonnée des morceaux (src/commun, src/golf, …).
+   - Les morceaux sont mis bout à bout, dans l'ordre, à l'intérieur de la même fonction : ils partagent leurs variables.
+   - --verifier : n'écrit rien ; échoue si le fichier de sortie n'est pas à jour (à lancer avant chaque envoi). */
+'use strict';
+const fs = require('fs'), path = require('path');
+const RACINE = path.join(__dirname, '..');
+const args = process.argv.slice(2), verifier = args.includes('--verifier');
+const app = args.find(a => !a.startsWith('--')) || 'fanion';
+const conf = JSON.parse(fs.readFileSync(path.join(RACINE, 'src', 'apps', app + '.json'), 'utf8'));
+const morceaux = conf.fichiers.map(f => {
+  const t = fs.readFileSync(path.join(RACINE, 'src', f), 'utf8').replace(/\s+$/, '');
+  return f === conf.fichiers[0] ? t : `  // ==== src/${f} ====\n` + t;
+});
+const entete = `/* Fichier assemblé par outils/assembler.js à partir de src/ (src/apps/${app}.json). Ne pas le modifier directement :\n   modifier les fichiers de src/, puis lancer « node outils/assembler.js ${app} ». */\n`;
+const texte = entete + morceaux.join('\n') + '\n';
+const sortie = path.join(RACINE, conf.sortie);
+if (verifier) {
+  const actuel = fs.existsSync(sortie) ? fs.readFileSync(sortie, 'utf8') : '';
+  if (actuel !== texte) { console.error(`${conf.sortie} n'est pas à jour avec src/ : lancer « node outils/assembler.js ${app} ».`); process.exit(1); }
+  console.log(`${conf.sortie} est à jour.`);
+} else {
+  fs.writeFileSync(sortie, texte);
+  console.log(`${conf.sortie} assemblé : ${conf.fichiers.length} morceaux, ${texte.split('\n').length - 1} lignes.`);
+}
