@@ -26,13 +26,18 @@ function dossierApp() {
   const dos = path.dirname(sortie); fs.mkdirSync(dos, { recursive: true });
   if (conf.page) for (const f of fs.readdirSync(path.join(RACINE, 'src', conf.page))) fs.copyFileSync(path.join(RACINE, 'src', conf.page, f), path.join(dos, f));
   for (const f of conf.copier || []) fs.copyFileSync(path.join(RACINE, f), path.join(dos, path.basename(f)));
+  // Chaque fichier de l'app reçoit ?v=<empreinte> dans index.html : le téléphone prend la nouvelle version dès qu'il change
+  const page = path.join(dos, 'index.html');
+  if (fs.existsSync(page)) fs.writeFileSync(page, fs.readFileSync(page, 'utf8').replace(/(src|href)="([\w.-]+\.(?:js|css))"/g, (m, a, f) =>
+    fs.existsSync(path.join(dos, f)) ? `${a}="${f}?v=${require('crypto').createHash('sha1').update(fs.readFileSync(path.join(dos, f))).digest('hex').slice(0, 10)}"` : m));
 }
 if (verifier) {
   const actuel = fs.existsSync(sortie) ? fs.readFileSync(sortie, 'utf8') : '';
   if (actuel !== texte) { console.error(`${conf.sortie} n'est pas à jour avec src/ : lancer « node outils/assembler.js ${app} ».`); process.exit(1); }
   console.log(`${conf.sortie} est à jour.`);
 } else {
-  if (conf.page || conf.copier) dossierApp();
+  fs.mkdirSync(path.dirname(sortie), { recursive: true });
   fs.writeFileSync(sortie, texte);
+  if (conf.page || conf.copier) dossierApp();
   console.log(`${conf.sortie} assemblé : ${conf.fichiers.length} morceaux, ${texte.split('\n').length - 1} lignes.`);
 }

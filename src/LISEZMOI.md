@@ -41,5 +41,7 @@ Le tronc commun ne doit appeler aucune fonction d'un module directement : seulem
 ## Ce qui reste à faire
 
 - `logic.js` (calculs du golf) est encore chargé par l'app raquette, pour `L.norm`.
-- Le menu d'Albert (porte.js), le dessin de Léo (caddie-guide.js), l'installation obligatoire (install-gate.js) et
-  les services du serveur (textos, notifications, Léo) ne sont pas encore branchés pour l'app raquette (étape 5).
+- Mise en ligne de l'échange.ai : `wrangler.lechange.jsonc` (Cloudflare, domaine lechange.ai). Il reste le projet
+  Supabase et le client HoldingAI (à mettre dans `raquette/page/config.js`), puis les services du serveur (textos,
+  notifications, assistant), qui demandent de rendre `worker.js` multi-app.
+- Le dessin de Léo (caddie-guide.js) n'est pas branché pour l'échange.ai.
