@@ -1,5 +1,5 @@
   // ---------------- Le Caddie : l'agent qui répond aux questions (API Claude, par le serveur Fanion) ----------------
-  const CADDIE_API = MARQUE.site + '/api/caddie';
+  const CADDIE_API = MARQUE.api + '/api/caddie';
   const SCREENS = SPORT.ecrans;
   let caddieReady = null;
   async function caddieStatus() {

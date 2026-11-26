@@ -12,7 +12,7 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* stockage indisponible */ } }
   };
   // ==== src/apps/fanion.json (marque) ====
-  const MARQUE = Object.freeze({"id":"fanion","nom":"le fanion.ai","nomMaj":"Le fanion.ai","duNom":"du fanion.ai","nomApp":"Le Fanion","domaine":"fanion.ai","site":"https://fanion.ai","courriel":"bonjour@fanion.ai","slogan":"le golf entre amis","accroche":"Le golf entre amis : pointage, jeux et parties à venir.","description":"l’app de golf entre amis","groupeDefaut":"La gang à Pelland","personnage":"Léo","role":"votre caddie","roleMaj":"Votre caddie","leRole":"le caddie","icone":"L’icône du fanion","logoVue":"0 0 26 30","logo":"<path d=\"M5 2v26\" stroke=\"currentColor\" stroke-width=\"2.6\" stroke-linecap=\"round\"/><path d=\"M6 3l15 5.5L6 14z\" fill=\"#e3a90c\"/>"});
+  const MARQUE = Object.freeze({"id":"fanion","nom":"le fanion.ai","nomMaj":"Le fanion.ai","duNom":"du fanion.ai","nomApp":"Le Fanion","domaine":"fanion.ai","site":"https://fanion.ai","api":"https://fanion.ai","courriel":"bonjour@fanion.ai","slogan":"le golf entre amis","accroche":"Le golf entre amis : pointage, jeux et parties à venir.","description":"l’app de golf entre amis","groupeDefaut":"La gang à Pelland","personnage":"Léo","role":"votre caddie","roleMaj":"Votre caddie","leRole":"le caddie","icone":"L’icône du fanion","logoVue":"0 0 26 30","logo":"<path d=\"M5 2v26\" stroke=\"currentColor\" stroke-width=\"2.6\" stroke-linecap=\"round\"/><path d=\"M6 3l15 5.5L6 14z\" fill=\"#e3a90c\"/>"});
   // ==== src/golf/sport.js ====
   // =====================================================================
   // Contenu propre au golf, lu par le tronc commun (accueil, aperçus, Léo, textes d'invitation)
@@ -1132,7 +1132,7 @@ ${SPORT.bienvenueVous}</ul></section>
   });
   // ==== src/commun/retour.js ====
   // ---------------- Boucle de retour : idées → équipe (console HoldingAI) → réponse et nouveautés dans l'app, sondage éclair ----------------
-  const RETOUR_API = MARQUE.site + '/api/retour';
+  const RETOUR_API = MARQUE.api + '/api/retour';
   const R = { idees: [], nouveautes: [], sondageDernier: null, charge: false, sondage: null };
   const JOUR = 864e5;
   const STATUT_IDEE = { recue: ['Reçue', ''], etudiee: ['À l’étude', 'etude'], prevue: ['Prévue', 'prevue'], faite: ['Faite ✓', 'faite'], non: ['Pas pour l’instant', 'non'] };
@@ -4181,11 +4181,11 @@ ${SPORT.bienvenueVous}</ul></section>
     }
   });
   // ==== src/commun/textos-push.js ====
-  const SMS_API = MARQUE.site + '/api/sms';
+  const SMS_API = MARQUE.api + '/api/sms';
   // =====================================================================
   // Notifications de l'app (Web Push) : gratuites, envoyées par le serveur Fanion aux membres abonnés du groupe
   // =====================================================================
-  const PUSH_API = MARQUE.site + '/api/push', PUSH_KEY = 'BOTntJP973w0RiGfVtYr4Lh2Edy0_GwQeqtkp4tLXHez-BEiVKdv0DiBHlKY-0WgPi6zOGeKhdbbBmrH6s_JXzU';
+  const PUSH_API = MARQUE.api + '/api/push', PUSH_KEY = 'BOTntJP973w0RiGfVtYr4Lh2Edy0_GwQeqtkp4tLXHez-BEiVKdv0DiBHlKY-0WgPi6zOGeKhdbbBmrH6s_JXzU';
   const Push = {
     supported() { return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; },
     // iPhone : les notifications n'existent que pour l'app ajoutée à l'écran d'accueil
@@ -4300,7 +4300,7 @@ ${SPORT.bienvenueVous}</ul></section>
   }
   // ==== src/commun/caddie.js ====
   // ---------------- Le Caddie : l'agent qui répond aux questions (API Claude, par le serveur Fanion) ----------------
-  const CADDIE_API = MARQUE.site + '/api/caddie';
+  const CADDIE_API = MARQUE.api + '/api/caddie';
   const SCREENS = SPORT.ecrans;
   let caddieReady = null;
   async function caddieStatus() {

@@ -6,7 +6,7 @@
 // Sécurité : seuls les membres connectés peuvent texter, et seulement les numéros de leur propre groupe. Maximum 30 numéros par envoi.
 // Connexion : compte HoldingAI (jeton de compte.holdingai.app), lu dans Supabase « Le Fanion » avec le jeton du membre (règles RLS).
 
-const ORIGINS = ['https://francoisgaouette-source.github.io', 'https://fanion.ai', 'https://www.fanion.ai', 'https://app.fanion.ai'];
+const ORIGINS = ['https://francoisgaouette-source.github.io', 'https://fanion.ai', 'https://www.fanion.ai', 'https://app.fanion.ai', 'https://app.lechange.ai'];
 const MAX_TO = 30, MAX_LEN = 1200;
 
 const cors = origin => ({
@@ -35,12 +35,12 @@ async function verifyHai(h, p, sig, head, pay) {
   return { ...pay, kind: 'hai' };
 }
 // Lecture dans Supabase avec le jeton du membre (donc selon les règles de la base)
-async function sbGet(tok, path) {
-  const r = await fetch(SB + '/rest/v1/' + path, { headers: { apikey: SB_KEY, Authorization: 'Bearer ' + tok } });
+async function sbGet(tok, path, app = APPS.fanion) {
+  const r = await fetch(app.sb + '/rest/v1/' + path, { headers: { apikey: app.sbKey, Authorization: 'Bearer ' + tok } });
   if (!r.ok) throw new Error('lecture refusée'); return r.json();
 }
-async function haiGroup(tok, uid) {
-  const l = await sbGet(tok, 'liens?select=group_id&uid=eq.' + encodeURIComponent(uid));
+async function haiGroup(tok, uid, app) {
+  const l = await sbGet(tok, 'liens?select=group_id&uid=eq.' + encodeURIComponent(uid), app);
   if (!l.length) throw new Error('membre sans groupe'); return l[0].group_id;
 }
 
@@ -54,9 +54,9 @@ async function verifyToken(tok) {
 }
 
 // --- Numéros du groupe du membre (lus avec son jeton, donc selon les règles de la base) ---
-async function knownPhones(tok, uid) {
-  const g = await haiGroup(tok, uid);
-  return new Set((await sbGet(tok, 'telephones?select=phone&group_id=eq.' + encodeURIComponent(g))).map(x => String(x.phone || '').replace(/\D/g, '').slice(-10)).filter(Boolean));
+async function knownPhones(tok, uid, app) {
+  const g = await haiGroup(tok, uid, app);
+  return new Set((await sbGet(tok, 'telephones?select=phone&group_id=eq.' + encodeURIComponent(g), app)).map(x => String(x.phone || '').replace(/\D/g, '').slice(-10)).filter(Boolean));
 }
 
 async function sendSms(env, to, body) {
@@ -103,27 +103,27 @@ async function vapidAuth(endpoint, jwk, subject, publicKey) {
   const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, wpEnc.encode(head + '.' + body));
   return `vapid t=${head}.${body}.${wpB64u(sig)}, k=${publicKey}`;
 }
-async function sendPush(env, sub, data) {
+async function sendPush(env, sub, data, app = APPS.fanion) {
   const jwk = JSON.parse(env.VAPID_PRIVATE_JWK);
   const pub = wpB64u(wpCat(new Uint8Array([4]), wpUnb64u(jwk.x), wpUnb64u(jwk.y)));
   const body = await encryptPush(sub, JSON.stringify(data));
   const r = await fetch(sub.endpoint, { method: 'POST', headers: {
-    Authorization: await vapidAuth(sub.endpoint, jwk, 'mailto:bonjour@fanion.ai', pub),
+    Authorization: await vapidAuth(sub.endpoint, jwk, 'mailto:' + app.courriel, pub),
     'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', TTL: '86400', Urgency: 'normal'
   }, body });
   return r.status;
 }
 
 // Envoie une notification aux membres d'un groupe abonnés (subs/<uid>_<groupe>), sauf à l'expéditeur
-async function pushGroup(env, tok, uid, data) {
-  const g = await haiGroup(tok, uid);
+async function pushGroup(env, tok, uid, data, app = APPS.fanion) {
+  const g = await haiGroup(tok, uid, app);
   if (g !== data.groupId) throw new Error('groupe non autorisé');
   const only = Array.isArray(data.playerIds) && data.playerIds.length ? new Set(data.playerIds) : null;
-  const membres = new Set((await sbGet(tok, 'joueurs?select=id&group_id=eq.' + encodeURIComponent(g))).map(x => x.id));
-  const subs = (await sbGet(tok, 'abonnements_push?select=uid,player_id,sub&group_id=eq.' + encodeURIComponent(g)))
+  const membres = new Set((await sbGet(tok, 'joueurs?select=id&group_id=eq.' + encodeURIComponent(g), app)).map(x => x.id));
+  const subs = (await sbGet(tok, 'abonnements_push?select=uid,player_id,sub&group_id=eq.' + encodeURIComponent(g), app))
     .map(x => ({ uid: x.uid, playerId: x.player_id, sub: x.sub })).filter(x => x.sub && x.sub.endpoint && x.uid !== uid && (!only || only.has(x.playerId)) && membres.has(x.playerId));
-  const msg = { title: String(data.title || 'le fanion.ai').slice(0, 80), body: String(data.body || '').slice(0, 240), url: String(data.url || './').slice(0, 300), tag: data.tag ? String(data.tag).slice(0, 60) : undefined };
-  const res = await Promise.all(subs.map(x => sendPush(env, x.sub, msg).catch(() => 0)));
+  const msg = { title: String(data.title || app.nom).slice(0, 80), body: String(data.body || '').slice(0, 240), url: String(data.url || './').slice(0, 300), tag: data.tag ? String(data.tag).slice(0, 60) : undefined };
+  const res = await Promise.all(subs.map(x => sendPush(env, x.sub, msg, app).catch(() => 0)));
   return { sent: res.filter(s => s >= 200 && s < 300).length, total: subs.length, gone: res.filter(s => s === 404 || s === 410).length };
 }
 
@@ -181,19 +181,40 @@ Les règles détaillées sont sur fanion.ai/regles/.`;
 const JOURNAL_CADDIE = 'https://gandliltstmtfsmsjaew.supabase.co/functions/v1/journal-caddie';
 // Boucle de retour (idées, réponses de l'équipe, nouveautés, sondage) : notée dans la console HoldingAI, jeton HoldingAI revérifié là-bas
 const RETOUR_FANION = 'https://gandliltstmtfsmsjaew.supabase.co/functions/v1/retour-fanion';
+// Les apps servies par ce serveur, reconnues par l'adresse de l'app qui appelle (en-tête Origin) : le Fanion par défaut
+const LECHANGE_SYSTEM = `Tu es Léo, l'assistant de l'app l'échange.ai, une app québécoise pour organiser des soirées de sports de raquette entre amis : pickleball, tennis, badminton, padel, squash et tennis de table. Tu es souriant, efficace et encourageant.
+Tu parles français québécois simple et chaleureux, tu vouvoies, tu réponds court (3 à 6 phrases, ou une petite liste d'étapes). Tu ne parles que de l'app, des six sports et de leurs règles de pointage.
+Si tu ne sais pas, ou si la personne veut parler à quelqu'un, un remboursement, un problème de paiement ou de compte : dis-lui d'écrire à bonjour@lechange.ai (le bouton « Écrire à l'équipe » sous la conversation).
+Pour amener la personne au bon écran, ajoute à la fin une ligne [[ecran:CLE]] (une seule), avec CLE parmi : home (accueil), players (Inviter des joueurs), soirees (Soirées), lieux (Lieux et terrains), compte (Mon compte).
+Ce que fait l'app :
+- Connexion : compte HoldingAI (Albert), par cellulaire. Installation sur le téléphone obligatoire (écran d'accueil).
+- Joueurs : l'organisateur ajoute chaque joueur avec son cellulaire ; l'invitation part par texto. Banque de 64 joueurs au maximum.
+- Lieux et terrains : les endroits où le groupe joue, avec leur nombre de terrains (ou de tables).
+- Soirées : l'organisateur offre une date, une heure, un lieu, le nombre de terrains réservés et, au besoin, un nombre de places. Chacun répond « je viens » ou « je ne viens pas » ; quand c'est complet, les suivants vont sur la liste d'attente.
+- Lancer la soirée : à l'arrivée, l'organisateur coche les présents et touche « Lancer la soirée ». L'app prépare les manches : qui joue avec qui, contre qui, sur quel terrain. On repose à tour de rôle ceux qui se sont le moins reposés, et on évite de rejouer avec le même partenaire.
+- Retard ou départ : l'organisateur coche ou décoche la personne ; les manches suivantes se refont, celles commencées restent.
+- Pointage : à la fin d'une manche, un joueur par terrain entre le pointage. Un pointage inhabituel demande une confirmation. La manche suivante apparaît quand tous les terrains ont fini.
+- Classement de la soirée : manches gagnées, puis écart de points.
+- Règles : pickleball, squash et tennis de table en manches à 11 (gagner par 2) ; badminton à 21 (gagner par 2, maximum 30) ; tennis et padel en sets à 6 jeux avec bris d'égalité à 6-6 (ou sets courts à 4). Le padel se joue en double seulement.
+- Forfaits : un groupe gratuit jusqu'à 4 joueurs, puis le forfait Groupe ; 5 $ de rabais par groupe parrainé.`;
+const APPS = {
+  fanion: { id: 'fanion', nom: 'le fanion.ai', courriel: 'bonjour@fanion.ai', sb: SB, sbKey: SB_KEY, caddie: CADDIE_SYSTEM },
+  lechange: { id: 'lechange', nom: 'l’échange.ai', courriel: 'bonjour@lechange.ai', sb: 'https://vdhlidlgwutlgihrypgo.supabase.co', sbKey: 'sb_publishable_RXZGbjuF6U5Fgu5Kdo1LBQ_Jv6xKnZ6', caddie: LECHANGE_SYSTEM },
+};
+const appDe = origin => origin === 'https://app.lechange.ai' ? APPS.lechange : APPS.fanion;
 const RATE = new Map();
 function tooMany(uid) {
   const now = Date.now(), r = (RATE.get(uid) || []).filter(t => now - t < 3600e3);
   r.push(now); RATE.set(uid, r); return r.length > 40;
 }
-async function caddie(env, messages) {
+async function caddie(env, messages, app = APPS.fanion) {
   const msgs = (messages || []).slice(-12).map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 1500) })).filter(m => m.content);
   while (msgs.length && msgs[0].role !== 'user') msgs.shift();
   if (!msgs.length) throw new Error('question manquante');
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: env.CADDIE_MODEL || CADDIE_MODEL, max_tokens: 700, system: CADDIE_SYSTEM, messages: msgs })
+    body: JSON.stringify({ model: env.CADDIE_MODEL || CADDIE_MODEL, max_tokens: 700, system: app.caddie, messages: msgs })
   });
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error((d.error && d.error.message) || 'API ' + r.status);
@@ -294,7 +315,7 @@ Réponds par : {"name":"…","city":"…","holes":[{"par":4,"si":7}, … 18 trou
 
 export default {
   async fetch(req, env, ctx) {
-    const url = new URL(req.url), origin = req.headers.get('Origin') || '';
+    const url = new URL(req.url), origin = req.headers.get('Origin') || '', app = appDe(origin);
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(req);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(origin) });
     if (url.pathname === '/api/avis') {
@@ -311,13 +332,15 @@ export default {
       const uid = who.user_id || who.sub;
       if (tooMany('push:' + uid)) return json({ error: 'Trop de notifications d’un coup.' }, 429, origin);
       let data; try { data = await req.json(); } catch (e) { return json({ error: 'requête invalide' }, 400, origin); }
-      try { return json(await pushGroup(env, tk, uid, data, who), 200, origin); } catch (e) { return json({ error: e.message }, 403, origin); }
+      try { return json(await pushGroup(env, tk, uid, data, app), 200, origin); } catch (e) { return json({ error: e.message }, 403, origin); }
     }
     if (url.pathname === '/api/retour' && req.method === 'POST') {
       const tk = (req.headers.get('Authorization') || '').replace(/^Bearer /, '');
       let who; try { who = await verifyToken(tk); } catch (e) { return json({ error: 'Connexion requise.' }, 401, origin); }
       if (tooMany('retour:' + (who.user_id || who.sub))) return json({ error: 'Beaucoup d’envois d’un coup : réessayez plus tard.' }, 429, origin);
-      const body = (await req.text()).slice(0, 8000);
+      let body = (await req.text()).slice(0, 8000);
+      // Console des idées : partagée avec le Fanion pour l'instant ; l'app est notée devant le nom du groupe
+      if (app.id !== 'fanion') { try { const b = JSON.parse(body); b.groupe = (app.nom + ' · ' + (b.groupe || '')).slice(0, 80); body = JSON.stringify(b); } catch (e) { } }
       const r = await fetch(RETOUR_FANION, { method: 'POST', headers: { Authorization: 'Bearer ' + tk, 'Content-Type': 'application/json' }, body }).catch(() => null);
       if (!r) return json({ error: 'Service indisponible.' }, 502, origin);
       const d = await r.json().catch(() => ({}));
@@ -367,10 +390,10 @@ export default {
       if (tooMany(who.user_id || who.sub)) return json({ error: 'Beaucoup de questions d’un coup : réessayez dans quelques minutes.' }, 429, origin);
       let data; try { data = await req.json(); } catch (e) { return json({ error: 'requête invalide' }, 400, origin); }
       try {
-        const text = await caddie(env, data.messages);
+        const text = await caddie(env, data.messages, app);
         // La question et la réponse sont notées dans la console HoldingAI (sans retarder la réponse au joueur)
         const q = [...(data.messages || [])].reverse().find(m => m && m.role !== 'assistant');
-        if (ctx && q) ctx.waitUntil(fetch(JOURNAL_CADDIE, { method: 'POST', headers: { Authorization: 'Bearer ' + tk, 'Content-Type': 'application/json' }, body: JSON.stringify({ question: String(q.content || '').slice(0, 2000), reponse: text.slice(0, 4000) }) }).catch(() => {}));
+        if (ctx && q) ctx.waitUntil(fetch(JOURNAL_CADDIE, { method: 'POST', headers: { Authorization: 'Bearer ' + tk, 'Content-Type': 'application/json' }, body: JSON.stringify({ question: (app.id === 'fanion' ? '' : '[' + app.nom + '] ') + String(q.content || '').slice(0, 2000 - (app.id === 'fanion' ? 0 : app.nom.length + 3)), reponse: text.slice(0, 4000) }) }).catch(() => {}));
         return json({ text }, 200, origin);
       } catch (e) { return json({ error: e.message }, 502, origin); }
     }
@@ -385,7 +408,7 @@ export default {
     const to = [...new Set((data.to || []).map(n => String(n).replace(/\D/g, '').slice(-10)).filter(n => n.length === 10))];
     if (!body || !to.length) return json({ error: 'message ou numéros manquants' }, 400, origin);
     if (to.length > MAX_TO) return json({ error: `maximum ${MAX_TO} numéros par envoi` }, 400, origin);
-    let known; try { known = await knownPhones(tok, who.user_id || who.sub, who); } catch (e) { return json({ error: e.message }, 403, origin); }
+    let known; try { known = await knownPhones(tok, who.user_id || who.sub, app); } catch (e) { return json({ error: e.message }, 403, origin); }
     const sent = [], failed = [];
     for (const n of to) {
       if (!known.has(n)) { failed.push({ to: n, error: 'numéro hors du groupe' }); continue; }
