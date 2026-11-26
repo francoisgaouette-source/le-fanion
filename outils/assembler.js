@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /* Assemble une app à partir de src/ : node outils/assembler.js [fanion] [--verifier]
-   - src/apps/<app>.json donne le fichier de sortie et la liste ordonnée des morceaux (src/commun, src/golf, …).
+   - src/apps/<app>.json donne le fichier de sortie, l'identité de l'app (« marque » → const MARQUE)
+     et la liste ordonnée des morceaux (src/commun, src/golf, …).
    - Les morceaux sont mis bout à bout, dans l'ordre, à l'intérieur de la même fonction : ils partagent leurs variables.
    - --verifier : n'écrit rien ; échoue si le fichier de sortie n'est pas à jour (à lancer avant chaque envoi). */
 'use strict';
@@ -14,6 +15,8 @@ const morceaux = conf.fichiers.map(f => {
   return f === conf.fichiers[0] ? t : `  // ==== src/${f} ====\n` + t;
 });
 const entete = `/* Fichier assemblé par outils/assembler.js à partir de src/ (src/apps/${app}.json). Ne pas le modifier directement :\n   modifier les fichiers de src/, puis lancer « node outils/assembler.js ${app} ». */\n`;
+// L'identité de l'app (nom, domaine, personnage, textes) : « marque » dans src/apps/<app>.json, lue par le tronc commun
+if (conf.marque) morceaux.splice(1, 0, `  // ==== src/apps/${app}.json (marque) ====\n  const MARQUE = Object.freeze(${JSON.stringify(conf.marque)});`);
 const texte = entete + morceaux.join('\n') + '\n';
 const sortie = path.join(RACINE, conf.sortie);
 if (verifier) {

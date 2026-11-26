@@ -17,6 +17,6 @@
   }
   function inviteSms(name, d, id) {
     const url = location.origin + location.pathname + (id ? '?joueur=' + encodeURIComponent(id) : '');
-    const body = `Salut ${name.split(' ')[0]} ! Tu as été invité à te joindre au groupe « ${groupName()} » sur ${APP}, l’app de golf entre amis. Ouvre l’app : ${url} — ton nom est déjà choisi. La première fois, crée ton compte avec ton cellulaire (${fmtPhone(d)}) : tu reçois un code par texto, puis tu choisis un mot de passe. Sur iPhone : bouton Partager, puis « Sur l’écran d’accueil ».`;
+    const body = `Salut ${name.split(' ')[0]} ! Tu as été invité à te joindre au groupe « ${groupName()} » sur ${APP}, ${MARQUE.description}. Ouvre l’app : ${url} — ton nom est déjà choisi. La première fois, crée ton compte avec ton cellulaire (${fmtPhone(d)}) : tu reçois un code par texto, puis tu choisis un mot de passe. Sur iPhone : bouton Partager, puis « Sur l’écran d’accueil ».`;
     openSms([d], body);
   }

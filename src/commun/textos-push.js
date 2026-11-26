@@ -1,8 +1,8 @@
-  const SMS_API = 'https://fanion.ai/api/sms';
+  const SMS_API = MARQUE.site + '/api/sms';
   // =====================================================================
   // Notifications de l'app (Web Push) : gratuites, envoyées par le serveur Fanion aux membres abonnés du groupe
   // =====================================================================
-  const PUSH_API = 'https://fanion.ai/api/push', PUSH_KEY = 'BOTntJP973w0RiGfVtYr4Lh2Edy0_GwQeqtkp4tLXHez-BEiVKdv0DiBHlKY-0WgPi6zOGeKhdbbBmrH6s_JXzU';
+  const PUSH_API = MARQUE.site + '/api/push', PUSH_KEY = 'BOTntJP973w0RiGfVtYr4Lh2Edy0_GwQeqtkp4tLXHez-BEiVKdv0DiBHlKY-0WgPi6zOGeKhdbbBmrH6s_JXzU';
   const Push = {
     supported() { return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; },
     // iPhone : les notifications n'existent que pour l'app ajoutée à l'écran d'accueil
@@ -80,7 +80,7 @@
     if (!install && !Push.supported()) return '';
     return `<section class="card push-card"><span class="push-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 3a6 6 0 0 0-6 6v3.6L4.3 15.4A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6z" fill="currentColor"/><path d="M9.5 19a2.5 2.5 0 0 0 5 0" fill="currentColor"/></svg></span>
       <div><h3>Activez les notifications du groupe</h3><p>Elles sont obligatoires pour les membres : nouvelles dates, rappels, début des parties et résultats. Elles restent actives tant que vous êtes dans le groupe.</p>
-      ${bloque ? '<p class="note"><b>Elles sont bloquées sur ce téléphone.</b> Permettez-les dans les réglages : iPhone, Réglages → Notifications → le fanion.ai ; Android, appui long sur l’icône du fanion.ai → Infos sur l’appli → Notifications. Puis rouvrez l’app.</p>'
+      ${bloque ? '<p class="note"><b>Elles sont bloquées sur ce téléphone.</b> Permettez-les dans les réglages : iPhone, Réglages → Notifications → ' + APP + ' ; Android, appui long sur l’icône ' + MARQUE.duNom + ' → Infos sur l’appli → Notifications. Puis rouvrez l’app.</p>'
         : `<div class="row">${install ? '<button class="btn small" data-onbact="ecran" type="button">Ajouter l’app à l’écran d’accueil</button>' : '<button class="btn small" data-pushon type="button">Activer les notifications</button>'}</div>`}
       ${install ? '<p class="note">Sur iPhone, les notifications fonctionnent une fois l’app ajoutée à l’écran d’accueil. Ouvrez-la ensuite par son icône.</p>' : ''}</div></section>`;
   }

@@ -11,6 +11,75 @@
     get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* stockage indisponible */ } }
   };
+  // ==== src/apps/fanion.json (marque) ====
+  const MARQUE = Object.freeze({"id":"fanion","nom":"le fanion.ai","nomMaj":"Le fanion.ai","duNom":"du fanion.ai","nomApp":"Le Fanion","domaine":"fanion.ai","site":"https://fanion.ai","courriel":"bonjour@fanion.ai","slogan":"le golf entre amis","accroche":"Le golf entre amis : pointage, jeux et parties à venir.","description":"l’app de golf entre amis","groupeDefaut":"La gang à Pelland","personnage":"Léo","role":"votre caddie","roleMaj":"Votre caddie","leRole":"le caddie","icone":"L’icône du fanion","logoVue":"0 0 26 30","logo":"<path d=\"M5 2v26\" stroke=\"currentColor\" stroke-width=\"2.6\" stroke-linecap=\"round\"/><path d=\"M6 3l15 5.5L6 14z\" fill=\"#e3a90c\"/>"});
+  // ==== src/golf/sport.js ====
+  // =====================================================================
+  // Contenu propre au golf, lu par le tronc commun (accueil, aperçus, Léo, textes d'invitation)
+  // =====================================================================
+  const SPORT = {
+    // Tuiles réservées à l'organisateur : explication, aperçu dessiné et fiche
+    verrous: {
+      courses: 'Réservé à l’organisateur : il ajoute et corrige les terrains du groupe.',
+      players: 'Réservé à l’organisateur : il ajoute les joueurs et leur cellulaire.',
+      jeux: 'Réservé à l’organisateur : il choisit les jeux, les règles et les montants du groupe.',
+      quatuors: 'Réservé à l’organisateur : il offre les dates et forme les quatuors. Vous répondez avec le lien reçu par texto.',
+      setup: 'Réservé à l’organisateur : il crée les parties. Vous les suivez en direct dans Parties en cours.',
+    },
+    apercus: {
+      players: () => `<div class="mk mk-list">${[['Marc Lavoie', 'ok', 'Compte créé'], ['Julie Roy', 'ok', 'Compte créé'], ['Éric Gagnon', 'wait', 'Invité']].map(([n, c, t]) =>
+      `<div class="mk-row"><span class="mk-av">${n.split(' ').map(x => x[0]).join('')}</span><b>${n}</b><span class="mk-pill ${c}">${t}</span></div>`).join('')}<div class="mk-add">+ Ajouter un joueur et son cellulaire</div></div>`,
+      quatuors: () => `<div class="mk mk-offre"><div class="mk-date"><b>Samedi 14 juin, 8 h</b><span>Pinegrove</span></div>
+      <div class="mk-yes">${['Marc', 'Julie', 'Éric', 'Luc', 'Ana', 'Paul', 'Guy', 'Bob'].map(n => `<span>${n}</span>`).join('')}</div>
+      <div class="mk-q"><span>Quatuor 1 : Marc, Julie, Éric, Luc</span><span>Quatuor 2 : Ana, Paul, Guy, Bob</span></div></div>`,
+      setup: () => `<div class="mk mk-setup"><div class="mk-f"><span>Terrain</span><b>Pinegrove, tertres blancs</b></div><div class="mk-f"><span>Jeu</span><b>La game à Pelland</b></div>
+      <div class="mk-teams"><div class="r"><b>Rouges</b>Marc et Paul</div><div class="b"><b>Bleus</b>Julie et Luc</div></div><div class="mk-f"><span>La game commence à</span><b>10 $</b></div></div>`,
+      courses: () => `<div class="mk mk-course"><b>Pinegrove</b><span>Saint-Jean-sur-Richelieu, normale 72</span>
+      <div class="mk-holes">${[5, 3, 4, 4, 5, 3, 5, 3, 4, 4, 5, 3, 5, 4, 3, 4, 4, 4].map((p, i) => `<i><small>${i + 1}</small>${p}</i>`).join('')}</div></div>`,
+      jeux: () => `<div class="mk mk-jeu"><b>La game à Pelland</b><ul><li>Plus bas net du trou : 2 points</li><li>Skin, oiselet, press et reroll</li></ul>
+      <div class="mk-money"><span>Départ <b>10 $</b></span><span>Revirement <b>5 $</b></span><span>Normale 3 <b>5 $</b></span></div></div>`,
+    },
+    apercuInfos: {
+      players: { t: 'Inviter des joueurs', d: 'L’organisateur ajoute chaque joueur avec son cellulaire ; l’invitation part par texto.', you: 'Vous avez reçu cette invitation : votre compte est créé.' },
+      quatuors: { t: 'Parties à préparer', d: 'L’organisateur offre des dates ; l’app voit qui est disponible et forme les quatuors.', you: 'Vous recevez un texto avec un lien : cochez vos dates, c’est tout.' },
+      setup: { t: 'Créer une partie', d: 'Terrain, joueurs, équipes, jeu et montants : l’organisateur lance la partie et entre les scores.', you: 'Vous suivez la partie en direct dans Parties en cours.' },
+      courses: { t: 'Banque de terrains', d: 'Les terrains du groupe, avec leurs normales, la difficulté de chaque trou et leurs tertres.', you: 'Les coups de handicap de chacun en découlent automatiquement.' },
+      jeux: { t: 'Banque de jeux', d: 'Les règles et les montants de chaque jeu : la game à Pelland, Nassau, Vegas, skins, Wolf…', you: 'Les règles détaillées sont aussi sur fanion.ai/regles.' },
+    },
+    // Accueil du participant
+    bienvenueVous: `          <li><b>Répondre aux dates</b> avec le lien reçu par texto.</li>
+          <li><b>Suivre les parties en direct</b> : scores, points et argent, trou par trou.</li>
+          <li><b>Revoir les parties jouées</b> et qui doit quoi à qui.</li>
+          <li><b>Voir le classement</b> des compétitions.</li>
+          <li><b>Poser vos questions</b> à Léo, votre caddie : touchez son visage dans le coin.</li>`,
+    bienvenueOrg: '<li>Inviter les joueurs</li><li>Offrir les dates et former les quatuors</li><li>Créer les parties</li><li>Gérer les terrains et les jeux</li>',
+    // Bien démarrer
+    etapeJoueurs: n => `${n} joueur${n > 1 ? 's' : ''} avec cellulaire : il en faut 3 pour un premier quatuor.`,
+    etapeOffre: 'Vos joueurs répondent par texto ; l’app forme les quatuors.',
+    etapePartie: 'Choisissez le terrain et le jeu ; l’app compte tout, en direct.',
+    // Léo
+    ecrans: { home: 'Accueil', players: 'Inviter des joueurs', quatuors: 'Parties à préparer', setup: 'Créer une partie', jeux: 'Banque de jeux', courses: 'Banque de terrains', live: 'Parties en cours', history: 'Parties et compétitions jouées', comps: 'Banque de compétitions', compte: 'Mon compte' },
+    questionsLeo: ['Comment inviter mes joueurs ?', 'Comment marche la press ?', 'Combien coûte le forfait Groupe ?'],
+    leoAccueil: 'Posez-moi vos questions sur l’app, les règles des jeux ou les forfaits.',
+    visite: nom => [
+      { puce: 'Bonjour !', titre: `Bienvenue${nom ? ', ' + nom : ''} ! Moi, c’est Léo, votre caddie.`, texte: `Je vous fais faire le tour de « ${groupName()} » en six coups. Ça prend une minute.` },
+      { puce: 'Étape 1', titre: 'Inviter des joueurs', texte: 'Le nom et le cellulaire de chacun : l’invitation part par texto. Chaque joueur crée son compte une fois, pour tous ses groupes.' },
+      { puce: 'Étape 2', titre: 'Parties à préparer', texte: 'Offrez quelques dates. Chacun coche les siennes, et je forme les quatuors à la date butoir.' },
+      { puce: 'Étapes 3 et 4', titre: 'Créer une partie, la suivre en direct', texte: 'Terrain, équipes, jeu et montants. Un joueur entre les scores ; les autres suivent la partie sur leur téléphone.' },
+      { puce: 'Étapes 5 et 6', titre: 'Compétitions et résultats', texte: 'Membre-membre, membre-invité, scrambles, Coupe Ryder ou tableau à élimination, avec le classement en direct. À la fin, je dis qui doit quoi à qui.' },
+      { puce: 'Les banques', titre: 'Joueurs, terrains, jeux, compétitions', texte: 'Tout ce que le groupe bâtit reste là pour la prochaine saison : vos terrains, vos jeux maison, vos formats.' },
+    ],
+    // Textes
+    parrainage: app => `On organise notre golf avec ${app} : invitations par texto, quatuors, pointage et gageures calculées. Crée ton groupe, c’est gratuit pour un quatuor :`,
+    avisExemple: 'ex. Plus besoin de 40 textos pour former les quatuors.',
+    lieuExemple: 'ex. Golf Simulateur Laval, baies 2 et 3',
+    amiJoueur: 'un ami golfeur',
+    autreGroupe: 'un autre groupe de golf',
+    gratuitPour: 'un quatuor',
+    quatuors: 'quatuors',
+    atouts: 'invitations par texto, quatuors, pointage et argent calculés',
+    leoProchaine: 'Prêt pour la prochaine ronde ? Offrez des dates et je forme les quatuors.',
+  };
   // ==== src/commun/base.js ====
 
   // =====================================================================
@@ -138,7 +207,7 @@
       let list = [];
       if (this.mode === 'cloud') { try { list = (ok(await this.sb.from('groupes').select('*')) || []).map(rowGroupe); } catch (e) { } }
       else list = Object.values(ls.get('pelland.groups', {}));
-      if (!list.find(g => g.id === 'pelland') && this.mode !== 'cloud') list.push({ id: 'pelland', name: 'La gang à Pelland' });
+      if (!list.find(g => g.id === 'pelland') && this.mode !== 'cloud') list.push({ id: 'pelland', name: MARQUE.groupeDefaut });
       return list.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'fr'));
     },
     async saveGroup(gr) {
@@ -677,8 +746,8 @@
     leoApres();
   }
 
-  const APP = 'le fanion.ai';
-  function curGroup() { return (S.groups || []).find(x => x.id === Store.gid) || { id: Store.gid, name: 'La gang à Pelland' }; }
+  const APP = MARQUE.nom;
+  function curGroup() { return (S.groups || []).find(x => x.id === Store.gid) || { id: Store.gid, name: MARQUE.groupeDefaut }; }
   function groupName() { return curGroup().name; }
   const ownerId = () => curGroup().owner || null;
   // Banques (joueurs, terrains, compétitions) : seul le propriétaire du groupe ajoute ou enlève
@@ -690,13 +759,7 @@
   // ==== src/commun/bienvenue.js ====
   // ---------------- Accueil ----------------
   // Membres invités (ni propriétaire ni organisateur) : ces tuiles sont grisées ; survol ou toucher = explication
-  const LOCKED = {
-    courses: 'Réservé à l’organisateur : il ajoute et corrige les terrains du groupe.',
-    players: 'Réservé à l’organisateur : il ajoute les joueurs et leur cellulaire.',
-    jeux: 'Réservé à l’organisateur : il choisit les jeux, les règles et les montants du groupe.',
-    quatuors: 'Réservé à l’organisateur : il offre les dates et forme les quatuors. Vous répondez avec le lien reçu par texto.',
-    setup: 'Réservé à l’organisateur : il crée les parties. Vous les suivez en direct dans Parties en cours.',
-  };
+  const LOCKED = SPORT.verrous;
   function lockTiles(html) {
     if (canOrganize()) return html;
     return html.replace(/<button class="tile" data-go="(courses|players|jeux|quatuors|setup)"/g, (m, k) => `<button class="tile locked" data-locked="${k}" data-tip="${esc(LOCKED[k])} Touchez pour voir un aperçu."`)
@@ -714,26 +777,8 @@
   const isParticipant = () => !Store.needLogin && !!meId() && !canOrganize();
   const welcomeKey = () => 'pelland.welcome.' + Store.gid + '.' + meId();
   // Petits aperçus dessinés de chaque écran réservé (données d'exemple)
-  const MOCK = {
-    players: () => `<div class="mk mk-list">${[['Marc Lavoie', 'ok', 'Compte créé'], ['Julie Roy', 'ok', 'Compte créé'], ['Éric Gagnon', 'wait', 'Invité']].map(([n, c, t]) =>
-      `<div class="mk-row"><span class="mk-av">${n.split(' ').map(x => x[0]).join('')}</span><b>${n}</b><span class="mk-pill ${c}">${t}</span></div>`).join('')}<div class="mk-add">+ Ajouter un joueur et son cellulaire</div></div>`,
-    quatuors: () => `<div class="mk mk-offre"><div class="mk-date"><b>Samedi 14 juin, 8 h</b><span>Pinegrove</span></div>
-      <div class="mk-yes">${['Marc', 'Julie', 'Éric', 'Luc', 'Ana', 'Paul', 'Guy', 'Bob'].map(n => `<span>${n}</span>`).join('')}</div>
-      <div class="mk-q"><span>Quatuor 1 : Marc, Julie, Éric, Luc</span><span>Quatuor 2 : Ana, Paul, Guy, Bob</span></div></div>`,
-    setup: () => `<div class="mk mk-setup"><div class="mk-f"><span>Terrain</span><b>Pinegrove, tertres blancs</b></div><div class="mk-f"><span>Jeu</span><b>La game à Pelland</b></div>
-      <div class="mk-teams"><div class="r"><b>Rouges</b>Marc et Paul</div><div class="b"><b>Bleus</b>Julie et Luc</div></div><div class="mk-f"><span>La game commence à</span><b>10 $</b></div></div>`,
-    courses: () => `<div class="mk mk-course"><b>Pinegrove</b><span>Saint-Jean-sur-Richelieu, normale 72</span>
-      <div class="mk-holes">${[5, 3, 4, 4, 5, 3, 5, 3, 4, 4, 5, 3, 5, 4, 3, 4, 4, 4].map((p, i) => `<i><small>${i + 1}</small>${p}</i>`).join('')}</div></div>`,
-    jeux: () => `<div class="mk mk-jeu"><b>La game à Pelland</b><ul><li>Plus bas net du trou : 2 points</li><li>Skin, oiselet, press et reroll</li></ul>
-      <div class="mk-money"><span>Départ <b>10 $</b></span><span>Revirement <b>5 $</b></span><span>Normale 3 <b>5 $</b></span></div></div>`,
-  };
-  const LOCKED_INFO = {
-    players: { t: 'Inviter des joueurs', d: 'L’organisateur ajoute chaque joueur avec son cellulaire ; l’invitation part par texto.', you: 'Vous avez reçu cette invitation : votre compte est créé.' },
-    quatuors: { t: 'Parties à préparer', d: 'L’organisateur offre des dates ; l’app voit qui est disponible et forme les quatuors.', you: 'Vous recevez un texto avec un lien : cochez vos dates, c’est tout.' },
-    setup: { t: 'Créer une partie', d: 'Terrain, joueurs, équipes, jeu et montants : l’organisateur lance la partie et entre les scores.', you: 'Vous suivez la partie en direct dans Parties en cours.' },
-    courses: { t: 'Banque de terrains', d: 'Les terrains du groupe, avec leurs normales, la difficulté de chaque trou et leurs tertres.', you: 'Les coups de handicap de chacun en découlent automatiquement.' },
-    jeux: { t: 'Banque de jeux', d: 'Les règles et les montants de chaque jeu : la game à Pelland, Nassau, Vegas, skins, Wolf…', you: 'Les règles détaillées sont aussi sur fanion.ai/regles.' },
-  };
+  const MOCK = SPORT.apercus;
+  const LOCKED_INFO = SPORT.apercuInfos;
   function lockedSheet(k) {
     const x = LOCKED_INFO[k], org = organizerOf();
     openSheet(`<div class="lk">
@@ -758,7 +803,7 @@
         <span class="wl-strap"></span>
         <div class="wl-card">
           <span class="wl-hole"></span>
-          <div class="wl-brand"><svg width="16" height="19" viewBox="0 0 26 30"><path d="M5 2v26" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="M6 3l15 5.5L6 14z" fill="#e3a90c"/></svg>le fanion.ai</div>
+          <div class="wl-brand"><svg width="16" height="19" viewBox="${MARQUE.logoVue}">${MARQUE.logo}</svg>${APP}</div>
           <div class="wl-name">${esc(me.name)}</div>
           <div class="wl-grp">${esc(groupName())}</div>
           <div class="wl-role">Participant</div>
@@ -768,13 +813,9 @@
       <p class="wl-lead">Vous faites partie de « ${esc(groupName())} » comme participant. ${org ? esc(firstName(org.name)) + ' organise' : 'L’organisateur s’occupe de tout'} ; vous, vous jouez.</p>
       <div class="wl-cols">
         <section class="wl-you"><h2>Ce que vous faites</h2><ul>
-          <li><b>Répondre aux dates</b> avec le lien reçu par texto.</li>
-          <li><b>Suivre les parties en direct</b> : scores, points et argent, trou par trou.</li>
-          <li><b>Revoir les parties jouées</b> et qui doit quoi à qui.</li>
-          <li><b>Voir le classement</b> des compétitions.</li>
-          <li><b>Poser vos questions</b> à Léo, votre caddie : touchez son visage dans le coin.</li></ul></section>
+${SPORT.bienvenueVous}</ul></section>
         <section class="wl-org"><h2>Ce que ${org ? esc(firstName(org.name)) : 'l’organisateur'} fait pour le groupe</h2><ul>
-          <li>Inviter les joueurs</li><li>Offrir les dates et former les quatuors</li><li>Créer les parties</li><li>Gérer les terrains et les jeux</li></ul>
+          ${SPORT.bienvenueOrg}</ul>
           <p>Ces tuiles sont grisées pour vous. Touchez-en une pour voir à quoi elle sert.</p></section>
       </div>
       <p class="wl-notif">🔔 En entrant, les notifications du groupe s’activent : nouvelles dates, rappels, parties et résultats. Elles restent actives tant que vous êtes membre du groupe.</p>
@@ -866,7 +907,7 @@
   const hasAccepted = p => !!(p && (p.acct || p.authEmail));
   function pickOrganizerSheet() {
     const cur = (curGroup().organizers || [])[0] || ownerId();
-    openSheet(`<h3>Organisateur du groupe</h3><p class="note">Il prépare les parties : dates offertes, quatuors, nouvelles parties. Le propriétaire garde le forfait.</p>
+    openSheet(`<h3>Organisateur du groupe</h3><p class="note">Il prépare les parties : dates offertes, ${SPORT.quatuors}, nouvelles parties. Le propriétaire garde le forfait.</p>
       <div class="pick-list">${(S.players || []).map(p => { const ok = p.id === ownerId() || hasAccepted(p); return `<button class="btn ${p.id === cur ? '' : 'ghost'} small ${ok ? '' : 'pick-off'}" ${ok ? `data-orgpick="${esc(p.id)}"` : 'disabled'} type="button">${esc(p.name)}${p.id === ownerId() ? ' · propriétaire' : ''}${p.id === cur ? ' ✓' : ''}${ok ? '' : '<small>Invitation pas encore acceptée</small>'}</button>`; }).join('')}</div>
       <p class="note">Seuls les joueurs qui ont accepté leur invitation (compte créé) peuvent être organisateurs.</p>
       <div class="sheet-actions"><button class="btn ghost" data-close type="button">Fermer</button></div>`, sh => {
@@ -880,26 +921,26 @@
   document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-pickorg]'); if (t) { e.preventDefault(); pickOrganizerSheet(); } });
 
   // Lien d'achat : le site transmet l'identifiant du groupe à Stripe, pour activer le bon groupe
-  function buyUrl() { return 'https://fanion.ai/achat.html?groupe=' + encodeURIComponent(Store.gid) + '&nom=' + encodeURIComponent(groupName()); }
+  function buyUrl() { return MARQUE.site + '/achat.html?groupe=' + encodeURIComponent(Store.gid) + '&nom=' + encodeURIComponent(groupName()); }
   // Places qui restent dans le forfait (Gratuit : 4 joueurs ; Groupe : 16)
   function roomLeft() { return planOf().max - (S.players || []).length; }
   function limitSheet(wanted) {
     const pl = planOf(), own = (S.players || []).find(p => p.id === ownerId()), meOwner = !!meId() && meId() === ownerId();
     const left = Math.max(0, roomLeft());
     openSheet(`<h3>${pl.paid ? 'Le groupe est complet' : 'Passez au forfait Groupe'}</h3>
-      <p>${pl.paid ? `Le forfait ${pl.name} permet ${pl.max} joueurs.` : `Le forfait Gratuit permet ${pl.max} joueurs, pour essayer avec un quatuor.`}${wanted ? ` Vous voulez en ajouter ${wanted}, il reste ${left} place${left > 1 ? 's' : ''}.` : ''}</p>
-      ${pl.paid ? '<p class="note">Pour une ligue de plus de 16 joueurs, écrivez à bonjour@fanion.ai.</p>'
-        : `<ul class="info-list"><li>Jusqu’à 16 joueurs</li><li>Dates offertes, disponibilités et quatuors</li><li>49 $ + taxes pour la saison, au prix fondateur</li></ul>
+      <p>${pl.paid ? `Le forfait ${pl.name} permet ${pl.max} joueurs.` : `Le forfait Gratuit permet ${pl.max} joueurs, pour essayer avec ${SPORT.gratuitPour}.`}${wanted ? ` Vous voulez en ajouter ${wanted}, il reste ${left} place${left > 1 ? 's' : ''}.` : ''}</p>
+      ${pl.paid ? '<p class="note">Pour une ligue de plus de 16 joueurs, écrivez à ' + MARQUE.courriel + '.</p>'
+        : `<ul class="info-list"><li>Jusqu’à 16 joueurs</li><li>Dates offertes, disponibilités et ${SPORT.quatuors}</li><li>49 $ + taxes pour la saison, au prix fondateur</li></ul>
       ${meOwner ? '' : `<p class="note">Seul le propriétaire du groupe${own ? ', ' + esc(own.name) + ',' : ''} peut changer de forfait.</p>`}`}
       <div class="sheet-actions">${!pl.paid && meOwner ? `<a class="btn" href="${buyUrl()}" target="_blank" rel="noopener">Passer au forfait Groupe</a>` : ''}<button class="btn ghost" data-close type="button">${!pl.paid && meOwner ? 'Plus tard' : 'Compris'}</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; });
   }
 
   // Deuxième groupe avec le forfait Gratuit : même offre que pour un 5e joueur
   function deuxiemeGroupeSheet(g) {
-    const url = 'https://fanion.ai/achat.html?groupe=' + encodeURIComponent(g.id) + '&nom=' + encodeURIComponent(g.name || '');
+    const url = MARQUE.site + '/achat.html?groupe=' + encodeURIComponent(g.id) + '&nom=' + encodeURIComponent(g.name || '');
     openSheet(`<h3>Passez au forfait Groupe</h3>
-      <p>Le forfait Gratuit permet un groupe de 4 joueurs, pour essayer avec un quatuor. Vous avez déjà « ${esc(g.name)} » : pour créer un deuxième groupe, passez-le au forfait Groupe.</p>
-      <ul class="info-list"><li>Jusqu’à 16 joueurs</li><li>Dates offertes, disponibilités et quatuors</li><li>Un autre groupe gratuit possible</li><li>49 $ + taxes pour la saison, au prix fondateur</li></ul>
+      <p>Le forfait Gratuit permet un groupe de 4 joueurs, pour essayer avec ${SPORT.gratuitPour}. Vous avez déjà « ${esc(g.name)} » : pour créer un deuxième groupe, passez-le au forfait Groupe.</p>
+      <ul class="info-list"><li>Jusqu’à 16 joueurs</li><li>Dates offertes, disponibilités et ${SPORT.quatuors}</li><li>Un autre groupe gratuit possible</li><li>49 $ + taxes pour la saison, au prix fondateur</li></ul>
       <div class="sheet-actions"><a class="btn" href="${url}" target="_blank" rel="noopener">Passer au forfait Groupe</a><button class="btn ghost" data-close type="button">Plus tard</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; });
   }
   // ==== src/commun/demarrer.js ====
@@ -916,9 +957,9 @@
     const onb = curGroup().onb || {}, me = meId();
     const withPhone = (S.players || []).filter(p => p.id !== me && (p.phone || p.authEmail)).length;
     return [
-      { k: 'joueurs', done: withPhone >= 3, t: 'Ajoutez vos joueurs', d: withPhone ? `${withPhone} joueur${withPhone > 1 ? 's' : ''} avec cellulaire : il en faut 3 pour un premier quatuor.` : 'Avec leur cellulaire : chacun reçoit son invitation par texto.', go: 'players', b: 'Joueurs' },
-      { k: 'offre', done: !!onb.offre || (S.offres || []).length > 0, t: 'Offrez une première date', d: 'Vos joueurs répondent par texto ; l’app forme les quatuors.', go: 'quatuors', b: 'Offrir' },
-      { k: 'partie', done: !!onb.partie, t: 'Jouez une première partie', d: 'Choisissez le terrain et le jeu ; l’app compte tout, en direct.', go: 'setup', b: 'Commencer' },
+      { k: 'joueurs', done: withPhone >= 3, t: 'Ajoutez vos joueurs', d: withPhone ? SPORT.etapeJoueurs(withPhone) : 'Avec leur cellulaire : chacun reçoit son invitation par texto.', go: 'players', b: 'Joueurs' },
+      { k: 'offre', done: !!onb.offre || (S.offres || []).length > 0, t: 'Offrez une première date', d: SPORT.etapeOffre, go: 'quatuors', b: 'Offrir' },
+      { k: 'partie', done: !!onb.partie, t: 'Jouez une première partie', d: SPORT.etapePartie, go: 'setup', b: 'Commencer' },
       { k: 'ecran', done: standalone() || !!ls.get('pelland.onb.ecran', 0), t: 'Ajoutez l’app à votre écran d’accueil', d: 'Elle s’ouvre ensuite comme une vraie app.', act: 'ecran', b: 'Comment' },
     ];
   }
@@ -930,17 +971,17 @@
     return `<section class="card onboard"><div class="onb-head"><h3>Bien démarrer</h3><span class="onb-count">${n} / ${st.length}</span></div>
       <div class="onb-bar"><i style="width:${Math.round(n / st.length * 100)}%"></i></div>
       <ol class="onb-list">${st.map(x => `<li class="${x.done ? 'done' : x === next ? 'next' : ''}"><span class="onb-dot">${x.done ? '✓' : ''}</span><div><b>${esc(x.t)}</b>${x === next ? `<small>${esc(x.d)}</small>` : ''}</div>${x.done ? '' : x === next ? `<button class="btn small" ${x.go ? `data-go="${x.go}"` : `data-onbact="${x.act}"`} type="button">${esc(x.b)}</button>` : `<button class="onb-more" ${x.go ? `data-go="${x.go}"` : `data-onbact="${x.act}"`} type="button" aria-label="${esc(x.b)}">›</button>`}</li>`).join('')}</ol>
-      <p class="note onb-foot">Une question ? <button class="linkbtn" data-caddie type="button">Demandez à Léo, votre caddie</button> · <button class="linkbtn" data-onbhide type="button">Masquer</button></p></section>`;
+      <p class="note onb-foot">Une question ? <button class="linkbtn" data-caddie type="button">Demandez à ${MARQUE.personnage}, ${MARQUE.role}</button> · <button class="linkbtn" data-onbhide type="button">Masquer</button></p></section>`;
   }
   document.addEventListener('click', e => {
     const t = e.target.closest && e.target.closest('[data-onbact],[data-onbhide]'); if (!t) return;
     e.preventDefault();
     if (t.hasAttribute('data-onbhide')) { ls.set('pelland.onb.hide.' + Store.gid, 1); return render(); }
     const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
-    openSheet(`<h3>Le fanion.ai sur votre écran d’accueil</h3>
-      <ol class="info-list">${ios ? '<li>Ouvrez le fanion.ai dans <b>Safari</b>.</li><li>Touchez le bouton <b>Partager</b> (le carré avec une flèche vers le haut).</li><li>Choisissez <b>Sur l’écran d’accueil</b>, puis <b>Ajouter</b>.</li>'
-        : '<li>Ouvrez le fanion.ai dans <b>Chrome</b>.</li><li>Touchez le menu <b>⋮</b> en haut à droite.</li><li>Choisissez <b>Ajouter à l’écran d’accueil</b> (ou <b>Installer l’application</b>).</li>'}</ol>
-      <p class="note">L’icône du fanion apparaît avec vos autres apps. Partagez ces étapes avec vos joueurs.</p>
+    openSheet(`<h3>${MARQUE.nomMaj} sur votre écran d’accueil</h3>
+      <ol class="info-list">${ios ? '<li>Ouvrez ' + APP + ' dans <b>Safari</b>.</li><li>Touchez le bouton <b>Partager</b> (le carré avec une flèche vers le haut).</li><li>Choisissez <b>Sur l’écran d’accueil</b>, puis <b>Ajouter</b>.</li>'
+        : '<li>Ouvrez ' + APP + ' dans <b>Chrome</b>.</li><li>Touchez le menu <b>⋮</b> en haut à droite.</li><li>Choisissez <b>Ajouter à l’écran d’accueil</b> (ou <b>Installer l’application</b>).</li>'}</ol>
+      <p class="note">${MARQUE.icone} apparaît avec vos autres apps. Partagez ces étapes avec vos joueurs.</p>
       <div class="sheet-actions"><button class="btn" data-ecranok type="button">C’est fait</button><button class="btn ghost" data-close type="button">Plus tard</button></div>`, sh => {
       sh.querySelector('[data-close]').onclick = closeSheet;
       sh.querySelector('[data-ecranok]').onclick = () => { ls.set('pelland.onb.ecran', 1); closeSheet(); render(); };
@@ -1059,7 +1100,7 @@
     if (st.given || (st.later && Date.now() - st.later < 30 * 864e5)) return '';
     if (where === 'home' && !st.eligible) return '';
     return `<section class="card avis-card"><div class="av-stars" aria-hidden="true">★★★★★</div>
-      <h3>Le fanion.ai vous plaît ?</h3><p>Dites-le en une phrase. Avec votre accord, votre commentaire pourra paraître sur fanion.ai pour aider d’autres groupes à se lancer.</p>
+      <h3>${MARQUE.nomMaj} vous plaît ?</h3><p>Dites-le en une phrase. Avec votre accord, votre commentaire pourra paraître sur ${MARQUE.domaine} pour aider d’autres groupes à se lancer.</p>
       <div class="row"><button class="btn small" data-avis type="button">Donner mon avis</button><button class="btn ghost small" data-avislater type="button">Plus tard</button></div></section>`;
   }
   const shortName = n => { const w = String(n || '').trim().split(/\s+/); return (w[0] || '') + (w.length > 1 ? ' ' + w[w.length - 1][0].toUpperCase() + '.' : ''); };
@@ -1067,11 +1108,11 @@
     const me = (S.players || []).find(p => p.id === meId()) || { name: ls.get('pelland.me', '') };
     const old = await Store.getAvis() || {};
     let stars = old.stars || 0;
-    openSheet(`<div class="avis-sheet"><h3>Votre avis sur le fanion.ai</h3>
+    openSheet(`<div class="avis-sheet"><h3>Votre avis sur ${APP}</h3>
       <div class="av-pick" role="radiogroup" aria-label="Note sur 5">${[1, 2, 3, 4, 5].map(n => `<button type="button" role="radio" data-star="${n}" aria-label="${n} étoile${n > 1 ? 's' : ''}">★</button>`).join('')}</div>
-      <label class="fld">En une phrase, qu’est-ce que le fanion.ai change pour votre groupe ?<textarea id="avText" maxlength="280" rows="3" placeholder="ex. Plus besoin de 40 textos pour former les quatuors.">${esc(old.text || '')}</textarea></label>
+      <label class="fld">En une phrase, qu’est-ce que ${APP} change pour votre groupe ?<textarea id="avText" maxlength="280" rows="3" placeholder="${SPORT.avisExemple}">${esc(old.text || '')}</textarea></label>
       <p class="note" id="avCount"></p>
-      <label class="av-ok"><input type="checkbox" id="avOk" ${old.ok === false ? '' : 'checked'}><span>J’accepte que le fanion.ai publie ce commentaire sur fanion.ai, signé <b>${esc(shortName(me.name))}</b>, ${esc(groupName())}.</span></label>
+      <label class="av-ok"><input type="checkbox" id="avOk" ${old.ok === false ? '' : 'checked'}><span>J’accepte que ${APP} publie ce commentaire sur ${MARQUE.domaine}, signé <b>${esc(shortName(me.name))}</b>, ${esc(groupName())}.</span></label>
       <div class="sheet-actions"><button class="btn" id="avSend" type="button">Envoyer</button><button class="btn ghost" data-close type="button">Annuler</button></div></div>`, sh => {
       const paint = () => { sh.querySelectorAll('[data-star]').forEach(b => { const on = +b.dataset.star <= stars; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(+b.dataset.star === stars)); }); };
       const ta = sh.querySelector('#avText'), cnt = () => { sh.querySelector('#avCount').textContent = `${ta.value.length} / 280`; };
@@ -1093,7 +1134,7 @@
   });
   // ==== src/commun/retour.js ====
   // ---------------- Boucle de retour : idées → équipe (console HoldingAI) → réponse et nouveautés dans l'app, sondage éclair ----------------
-  const RETOUR_API = 'https://fanion.ai/api/retour';
+  const RETOUR_API = MARQUE.site + '/api/retour';
   const R = { idees: [], nouveautes: [], sondageDernier: null, charge: false, sondage: null };
   const JOUR = 864e5;
   const STATUT_IDEE = { recue: ['Reçue', ''], etudiee: ['À l’étude', 'etude'], prevue: ['Prévue', 'prevue'], faite: ['Faite ✓', 'faite'], non: ['Pas pour l’instant', 'non'] };
@@ -1143,7 +1184,7 @@
       return `<section class="card retour-carte"><b>✨ Nouveau : ${esc(n.titre)}</b>${n.texte ? `<p>${esc(n.texte)}</p>` : ''}
         <div class="row"><button class="btn small" type="button" data-retour="vu-nv" data-t="${new Date(n.cree).getTime()}">Super</button><button class="btn ghost small" type="button" data-idee>Proposer une idée</button></div></section>`;
     }
-    if (!R.sondage) return `<section class="card retour-carte"><b>Recommanderiez-vous le fanion.ai à un ami golfeur ?</b>
+    if (!R.sondage) return `<section class="card retour-carte"><b>Recommanderiez-vous ${APP} à ${SPORT.amiJoueur} ?</b>
         <p class="note">0 = pas du tout, 10 = sans hésiter. Une seule question.</p>
         <div class="nps" role="group" aria-label="Note de 0 à 10">${Array.from({ length: 11 }, (_, n) => `<button type="button" class="nps-n" data-note="${n}">${n}</button>`).join('')}</div>
         <div class="row"><button class="linkbtn" type="button" data-retour="sondage-plus-tard">Plus tard</button></div></section>`;
@@ -1157,7 +1198,7 @@
     retourApi({ action: 'sondage', note: n, raison: raison || null, groupe: groupName() }).catch(() => { });
     if (raison) envoyerIdee({ type: n >= 9 ? 'aime' : n <= 6 ? 'probleme' : 'idee', texte: raison, source: 'sondage' }).catch(() => { });
     render();
-    if (n >= 9) openSheet(`<h3>Merci, ça fait vraiment plaisir !</h3><p>Vous connaissez un autre groupe de golf qui court après ses joueurs ? Envoyez-lui votre lien : c’est gratuit pour un quatuor${meId() === ownerId() ? ', et vous obtenez 5 $ de rabais sur votre prochaine saison s’il passe au forfait Groupe' : ''}.</p>
+    if (n >= 9) openSheet(`<h3>Merci, ça fait vraiment plaisir !</h3><p>Vous connaissez ${SPORT.autreGroupe} qui court après ses joueurs ? Envoyez-lui votre lien : c’est gratuit pour ${SPORT.gratuitPour}${meId() === ownerId() ? ', et vous obtenez 5 $ de rabais sur votre prochaine saison s’il passe au forfait Groupe' : ''}.</p>
       <div class="sheet-actions"><button class="btn" data-refshare type="button">Partager mon lien</button><button class="btn ghost" data-close type="button">Plus tard</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; sh.querySelector('[data-refshare]').addEventListener('click', () => setTimeout(closeSheet, 300)); });
     else toast('Merci ! Votre réponse est bien reçue. L’équipe la lit.');
   }
@@ -1175,7 +1216,7 @@
         <p>${esc(i.texte)}</p>${i.reponse ? `<p class="idee-rep"><b>Réponse de l’équipe :</b> ${esc(i.reponse)}</p>` : ''}</li>`;
     }).join('')}</ul>` : '';
     openSheet(`<h3>Une idée ? Un pépin ?</h3>
-      <p class="note">Ça va directement à l’équipe du fanion.ai. On lit tout, et la réponse s’affiche ici, dans l’app.</p>
+      <p class="note">Ça va directement à l’équipe ${MARQUE.duNom}. On lit tout, et la réponse s’affiche ici, dans l’app.</p>
       <div class="seg idee-types">${Object.entries(TYPE_IDEE).map(([k, [ic, mot]]) => `<button type="button" data-itype="${k}" aria-pressed="${k === type}"><b>${ic}</b><small>${esc(mot)}</small></button>`).join('')}</div>
       <label class="fld"><span class="sr-only">Votre message</span><textarea id="ideeTexte" rows="4" maxlength="2000" placeholder="${esc(PLACE_IDEE[type])}"></textarea></label>
       <label class="av-ok"><input type="checkbox" id="ideeContact"><span>L’équipe peut me texter pour en parler.</span></label>
@@ -1225,7 +1266,7 @@
   }
   document.addEventListener('click', async e => {
     const t = e.target.closest && e.target.closest('[data-refshare],[data-refcopy]'); if (!t) return;
-    const url = refLink(), text = `On organise notre golf avec ${APP} : invitations par texto, quatuors, pointage et gageures calculées. Crée ton groupe, c’est gratuit pour un quatuor :`;
+    const url = refLink(), text = SPORT.parrainage(APP);
     if (t.hasAttribute('data-refshare') && navigator.share) { try { await navigator.share({ title: APP, text, url }); } catch (x) { } return; }
     try { await navigator.clipboard.writeText(text + ' ' + url); toast('Lien copié.'); } catch (x) { openSheet(`<h3>Votre lien</h3><p class="note">Copiez-le :</p><input type="text" readonly value="${esc(url)}" onclick="this.select()"><div class="sheet-actions"><button class="btn" data-close type="button">Fermer</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; }); }
   });
@@ -1238,7 +1279,7 @@
     if (where === 'home' && (ls.get('pelland.viral.hide', 0) || 0) > Date.now()) return '';
     return `<section class="card viral"><div class="viral-flag" aria-hidden="true"><svg width="22" height="26" viewBox="0 0 26 30"><path d="M5 2v26" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M6 3l15 5.5L6 14z" fill="#e3a90b"/></svg></div>
       <div><h3>Vous aussi, organisez votre gang</h3>
-      <p>Créez votre propre groupe en une minute : invitations par texto, quatuors, pointage et argent calculés. <b>Gratuit pour 4 joueurs.</b></p>
+      <p>Créez votre propre groupe en une minute : ${SPORT.atouts}. <b>Gratuit pour 4 joueurs.</b></p>
       <div class="row"><button class="btn small" data-viral type="button">Créer mon groupe</button>${where === 'home' ? '<button class="btn ghost small" data-viralhide type="button">Plus tard</button>' : ''}</div>
       <p class="note">Vous restez dans « ${esc(groupName())} » : passez d’un groupe à l’autre à l’accueil.</p></div></section>`;
   }
@@ -1289,7 +1330,7 @@
     // Forfait Gratuit = un seul groupe : un deuxième groupe demande le forfait Groupe, comme un 5e joueur
     Store.groupeGratuit().then(g => g ? deuxiemeGroupeSheet(g) : newGroupSheet()).catch(() => newGroupSheet());
   });
-  // ==== src/commun/info.js ====
+  // ==== src/golf/aide.js ====
   // ---------------- Petit « i » d'explication ----------------
   const info = key => `<button type="button" class="info" data-info="${key}" aria-label="Explication">i</button>`;
   const HELP = {
@@ -1509,7 +1550,7 @@
         ${canOrganize() ? '' : '<!--'}<div class="row"><button class="btn small" data-orem="${esc(o.id)}" type="button">Rappel</button><button class="btn ghost small" data-osms="${esc(o.id)}" type="button">Renvoyer le texto</button><button class="btn ghost small" data-odel="${esc(o.id)}" type="button">${S.confirmDelO === o.id ? 'Confirmer' : 'Retirer'}</button></div>${canOrganize() ? '' : '-->'}</div>`; }).join('');
     const form = f ? `<div class="offre-form">
         <label>Terrain<select id="oCourse">${S.courses.map(c => `<option value="${esc(c.name)}" ${c.name === f.course ? 'selected' : ''}>${esc(c.name)}${c.sim ? ' (simulateur)' : ''}</option>`).join('')}</select></label>
-        <label>Lieu (facultatif)<input id="oPlace" type="text" value="${esc(f.place || '')}" placeholder="ex. Golf Simulateur Laval, baies 2 et 3"></label>
+        <label>Lieu (facultatif)<input id="oPlace" type="text" value="${esc(f.place || '')}" placeholder="${SPORT.lieuExemple}"></label>
         <div class="lbl">Dates offertes</div>
         ${f.dates.map((d, i) => `<div class="row" style="flex-wrap:nowrap"><input type="datetime-local" data-od="${i}" value="${esc(d)}" style="flex:1;min-width:0"><button class="x" type="button" data-odx="${i}" aria-label="Retirer">×</button></div>`).join('')}
         <button class="btn ghost small" id="oAddDate" type="button">+ Ajouter une date</button>
@@ -1967,12 +2008,12 @@
   // ==== src/commun/connexion.js ====
   // ---------------- Terrains ----------------
   function vLogin() {
-    $('#barTitle').innerHTML = `${APP}<small class="bar-sous">le golf entre amis</small>`;
+    $('#barTitle').innerHTML = `${APP}<small class="bar-sous">${MARQUE.slogan}</small>`;
     $('#back').hidden = true;
     const refQ = new URLSearchParams(location.search).get('ref');
     const groups = S.groups || [];
     const refGroup = refQ && groups.find(g => g.id === refQ);
-    const hero = `<div class="hero"><h1>${APP}</h1><p>Le golf entre amis : pointage, jeux et parties à venir.</p></div>`;
+    const hero = `<div class="hero"><h1>${APP}</h1><p>${MARQUE.accroche}</p></div>`;
     // Pas encore connecté : le compte HoldingAI (le même pour toutes les apps HoldingAI)
     if (!Store.uid) return hero + `<section class="card"><h2>Connexion</h2>
         <p class="note">Un seul compte pour toutes les apps HoldingAI : votre cellulaire et votre mot de passe. Albert s’en occupe.</p>
@@ -1981,7 +2022,7 @@
         <p class="note" id="loginMsg">${esc(S.loginMsg || Store.error || '')}</p></section>`;
     // Connecté, mais ce cellulaire n'est inscrit dans aucun groupe : invitation à demander, ou nouveau groupe
     const nom = Store.nom || '';
-    return hero + `${refQ ? `<div class="ref-hello">${refGroup ? `Recommandé par <b>${esc(refGroup.name)}</b>. ` : ''}Créez votre groupe : c’est gratuit pour un quatuor, et vos joueurs reçoivent l’invitation par texto.</div>` : ''}
+    return hero + `${refQ ? `<div class="ref-hello">${refGroup ? `Recommandé par <b>${esc(refGroup.name)}</b>. ` : ''}Créez votre groupe : c’est gratuit pour ${SPORT.gratuitPour}, et vos joueurs reçoivent l’invitation par texto.</div>` : ''}
       <section class="card"><h2>${nom ? 'Bienvenue, ' + esc(nom.split(' ')[0]) + ' !' : 'Bienvenue !'}</h2>
         <p class="note">Votre cellulaire${Store.e164 ? ' (' + esc(fmtPhone(Store.e164.slice(2))) + ')' : ''} n’est inscrit dans aucun groupe pour l’instant.</p>
         <p class="note"><b>Invité par un organisateur ?</b> Demandez-lui de vérifier votre cellulaire dans Joueurs, puis rouvrez le lien de son texto.</p>
@@ -2580,7 +2621,7 @@
           <p class="note">${pl.phone ? `Numéro actuel : <b style="font-size:20px">${esc(fmtPhone(pl.phone))}</b>` : pl.authEmail ? `Numéro actuel : se termine par <b>${esc(pl.phoneHint || '')}</b>. Entrez le numéro complet une fois ci-dessous et touchez Enregistrer : il s’affichera ensuite.` : 'Aucun numéro pour l’instant.'}</p>
           <label>${pl.authEmail ? 'Nouveau numéro' : 'Numéro'}<input id="phIn" type="tel" inputmode="tel" placeholder="450 555-1234" value="${esc(pl.phone ? fmtPhone(pl.phone) : '')}"></label>
           <p class="note">Ce numéro sert à se connecter. Il est visible seulement par les joueurs du groupe.</p>
-          ${Store.phonesBlocked ? '<div class="warn">La base a refusé d’enregistrer ce numéro. Réessayez, ou écrivez à bonjour@fanion.ai.</div>' : ''}
+          ${Store.phonesBlocked ? '<div class="warn">La base a refusé d’enregistrer ce numéro. Réessayez, ou écrivez à ' + MARQUE.courriel + '.</div>' : ''}
           <div class="row"><button class="btn small" id="phSave" type="button">Enregistrer</button><button class="btn ghost small" data-close type="button">Annuler</button></div>`, sh => {
           sh.querySelector('[data-close]').onclick = closeSheet;
           sh.querySelector('#phSave').onclick = async () => {
@@ -3238,7 +3279,7 @@
   }
   function inviteSms(name, d, id) {
     const url = location.origin + location.pathname + (id ? '?joueur=' + encodeURIComponent(id) : '');
-    const body = `Salut ${name.split(' ')[0]} ! Tu as été invité à te joindre au groupe « ${groupName()} » sur ${APP}, l’app de golf entre amis. Ouvre l’app : ${url} — ton nom est déjà choisi. La première fois, crée ton compte avec ton cellulaire (${fmtPhone(d)}) : tu reçois un code par texto, puis tu choisis un mot de passe. Sur iPhone : bouton Partager, puis « Sur l’écran d’accueil ».`;
+    const body = `Salut ${name.split(' ')[0]} ! Tu as été invité à te joindre au groupe « ${groupName()} » sur ${APP}, ${MARQUE.description}. Ouvre l’app : ${url} — ton nom est déjà choisi. La première fois, crée ton compte avec ton cellulaire (${fmtPhone(d)}) : tu reçois un code par texto, puis tu choisis un mot de passe. Sur iPhone : bouton Partager, puis « Sur l’écran d’accueil ».`;
     openSms([d], body);
   }
   // ==== src/golf/neuf-points.js ====
@@ -4145,11 +4186,11 @@
     }
   });
   // ==== src/commun/textos-push.js ====
-  const SMS_API = 'https://fanion.ai/api/sms';
+  const SMS_API = MARQUE.site + '/api/sms';
   // =====================================================================
   // Notifications de l'app (Web Push) : gratuites, envoyées par le serveur Fanion aux membres abonnés du groupe
   // =====================================================================
-  const PUSH_API = 'https://fanion.ai/api/push', PUSH_KEY = 'BOTntJP973w0RiGfVtYr4Lh2Edy0_GwQeqtkp4tLXHez-BEiVKdv0DiBHlKY-0WgPi6zOGeKhdbbBmrH6s_JXzU';
+  const PUSH_API = MARQUE.site + '/api/push', PUSH_KEY = 'BOTntJP973w0RiGfVtYr4Lh2Edy0_GwQeqtkp4tLXHez-BEiVKdv0DiBHlKY-0WgPi6zOGeKhdbbBmrH6s_JXzU';
   const Push = {
     supported() { return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; },
     // iPhone : les notifications n'existent que pour l'app ajoutée à l'écran d'accueil
@@ -4227,7 +4268,7 @@
     if (!install && !Push.supported()) return '';
     return `<section class="card push-card"><span class="push-ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 3a6 6 0 0 0-6 6v3.6L4.3 15.4A1 1 0 0 0 5.2 17h13.6a1 1 0 0 0 .9-1.6L18 12.6V9a6 6 0 0 0-6-6z" fill="currentColor"/><path d="M9.5 19a2.5 2.5 0 0 0 5 0" fill="currentColor"/></svg></span>
       <div><h3>Activez les notifications du groupe</h3><p>Elles sont obligatoires pour les membres : nouvelles dates, rappels, début des parties et résultats. Elles restent actives tant que vous êtes dans le groupe.</p>
-      ${bloque ? '<p class="note"><b>Elles sont bloquées sur ce téléphone.</b> Permettez-les dans les réglages : iPhone, Réglages → Notifications → le fanion.ai ; Android, appui long sur l’icône du fanion.ai → Infos sur l’appli → Notifications. Puis rouvrez l’app.</p>'
+      ${bloque ? '<p class="note"><b>Elles sont bloquées sur ce téléphone.</b> Permettez-les dans les réglages : iPhone, Réglages → Notifications → ' + APP + ' ; Android, appui long sur l’icône ' + MARQUE.duNom + ' → Infos sur l’appli → Notifications. Puis rouvrez l’app.</p>'
         : `<div class="row">${install ? '<button class="btn small" data-onbact="ecran" type="button">Ajouter l’app à l’écran d’accueil</button>' : '<button class="btn small" data-pushon type="button">Activer les notifications</button>'}</div>`}
       ${install ? '<p class="note">Sur iPhone, les notifications fonctionnent une fois l’app ajoutée à l’écran d’accueil. Ouvrez-la ensuite par son icône.</p>' : ''}</div></section>`;
   }
@@ -4264,8 +4305,8 @@
   }
   // ==== src/commun/caddie.js ====
   // ---------------- Le Caddie : l'agent qui répond aux questions (API Claude, par le serveur Fanion) ----------------
-  const CADDIE_API = 'https://fanion.ai/api/caddie';
-  const SCREENS = { home: 'Accueil', players: 'Inviter des joueurs', quatuors: 'Parties à préparer', setup: 'Créer une partie', jeux: 'Banque de jeux', courses: 'Banque de terrains', live: 'Parties en cours', history: 'Parties et compétitions jouées', comps: 'Banque de compétitions', compte: 'Mon compte' };
+  const CADDIE_API = MARQUE.site + '/api/caddie';
+  const SCREENS = SPORT.ecrans;
   let caddieReady = null;
   async function caddieStatus() {
     if (caddieReady !== null) return caddieReady;
@@ -4279,15 +4320,15 @@
     return `<div class="cad-msg ${m.role === 'assistant' ? 'bot' : 'me'}">${html}${go && m.role === 'assistant' ? `<button class="btn small cad-go" data-cadgo="${go}" type="button">Aller à : ${SCREENS[go]}</button>` : ''}</div>`;
   }
   async function openCaddie() {
-    S.caddie = S.caddie || [{ role: 'assistant', content: `Bonjour${firstName(ls.get('pelland.me', '')) ? ' ' + firstName(ls.get('pelland.me', '')) : ''} ! Moi, c’est Léo, votre caddie. Posez-moi vos questions sur l’app, les règles des jeux ou les forfaits.` }];
+    S.caddie = S.caddie || [{ role: 'assistant', content: `Bonjour${firstName(ls.get('pelland.me', '')) ? ' ' + firstName(ls.get('pelland.me', '')) : ''} ! Moi, c’est ${MARQUE.personnage}, ${MARQUE.role}. ${SPORT.leoAccueil}` }];
     const ready = Store.mode === 'cloud' && await caddieStatus();
     const draw = sh => {
-      sh.innerHTML = `<div class="cad-id"><span class="cad-av" aria-hidden="true">${window.CaddieGuide ? CaddieGuide.avatar() : ''}</span><div><h3>Léo</h3><p class="note">Votre caddie. Posez votre question sur l’app.</p></div></div>
+      sh.innerHTML = `<div class="cad-id"><span class="cad-av" aria-hidden="true">${window.CaddieGuide ? CaddieGuide.avatar() : ''}</span><div><h3>${MARQUE.personnage}</h3><p class="note">${MARQUE.roleMaj}. Posez votre question sur l’app.</p></div></div>
         <div class="cad-log" id="cadLog">${S.caddie.map(caddieMsg).join('')}${S.caddieBusy ? '<div class="cad-msg bot busy">…</div>' : ''}</div>
         ${ready ? `<form class="cad-form" id="cadForm"><input id="cadIn" type="text" placeholder="Votre question" autocomplete="off" ${S.caddieBusy ? 'disabled' : ''}><button class="btn small" type="submit" ${S.caddieBusy ? 'disabled' : ''}>Envoyer</button></form>
-          ${S.caddie.length < 2 ? `<div class="cad-sugg">${['Comment inviter mes joueurs ?', 'Comment marche la press ?', 'Combien coûte le forfait Groupe ?'].map(q => `<button class="chip" data-cadq="${esc(q)}" type="button">${esc(q)}</button>`).join('')}</div>` : ''}`
-        : '<p class="note">Léo arrive bientôt. En attendant, écrivez-nous : nous répondons rapidement.</p>'}
-        ${window.CaddieGuide && !Store.needLogin ? '<p class="note cad-visite"><button class="linkbtn" data-leovisite type="button">Revoir la visite avec Léo</button> · <button class="linkbtn" data-idee type="button">Proposer une idée à l’équipe</button></p>' : ''}
+          ${S.caddie.length < 2 ? `<div class="cad-sugg">${SPORT.questionsLeo.map(q => `<button class="chip" data-cadq="${esc(q)}" type="button">${esc(q)}</button>`).join('')}</div>` : ''}`
+        : '<p class="note">' + MARQUE.personnage + ' arrive bientôt. En attendant, écrivez-nous : nous répondons rapidement.</p>'}
+        ${window.CaddieGuide && !Store.needLogin ? '<p class="note cad-visite"><button class="linkbtn" data-leovisite type="button">Revoir la visite avec ' + MARQUE.personnage + '</button> · <button class="linkbtn" data-idee type="button">Proposer une idée à l’équipe</button></p>' : ''}
         <div class="sheet-actions"><a class="btn ghost" href="${caddieMail()}">Écrire à l’équipe</a><button class="btn ghost" data-close type="button">Fermer</button></div>`;
       sh.querySelector('[data-close]').onclick = closeSheet;
       sh.querySelectorAll('[data-cadgo]').forEach(b => b.onclick = () => { closeSheet(); go(b.dataset.cadgo); });
@@ -4310,9 +4351,9 @@
     openSheet('', sh => draw(sh));
   }
   function caddieMail() {
-    const conv = (S.caddie || []).slice(1).map(m => (m.role === 'user' ? 'Moi : ' : 'Léo : ') + m.content.replace(/\[\[ecran:[a-z]+\]\]/g, '')).join('\n\n');
-    const body = `Groupe : ${groupName()}\nJoueur : ${ls.get('pelland.me', '') || ''}\n\n${conv ? 'Ma conversation avec Léo, le caddie :\n\n' + conv + '\n\n' : ''}Ma question :\n`;
-    return 'mailto:bonjour@fanion.ai?subject=' + encodeURIComponent('le fanion.ai – question') + '&body=' + encodeURIComponent(body.slice(0, 1800));
+    const conv = (S.caddie || []).slice(1).map(m => (m.role === 'user' ? 'Moi : ' : MARQUE.personnage + ' : ') + m.content.replace(/\[\[ecran:[a-z]+\]\]/g, '')).join('\n\n');
+    const body = `Groupe : ${groupName()}\nJoueur : ${ls.get('pelland.me', '') || ''}\n\n${conv ? 'Ma conversation avec ' + MARQUE.personnage + ', ' + MARQUE.leRole + ' :\n\n' + conv + '\n\n' : ''}Ma question :\n`;
+    return 'mailto:' + MARQUE.courriel + '?subject=' + encodeURIComponent(APP + ' – question') + '&body=' + encodeURIComponent(body.slice(0, 1800));
   }
   document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-caddie]'); if (t) { e.preventDefault(); openCaddie(); } });
   // ==== src/commun/leo.js ====
@@ -4326,7 +4367,7 @@
     if (!window.CaddieGuide) return;
     const off = Store.needLogin || !meId() || LEO_CACHE.includes(S.view);
     if (off) { if (leo) leo.cacher(true); return; }
-    if (!leo) leo = CaddieGuide.presence({ surFace: () => openCaddie(), label: 'Parler à Léo, votre caddie' });
+    if (!leo) leo = CaddieGuide.presence({ surFace: () => openCaddie(), label: 'Parler à ' + MARQUE.personnage + ', ' + MARQUE.role });
     leo.cacher(false);
     document.body.classList.add('avec-leo');
     if (S.view !== 'home' || document.getElementById('welcome') || document.querySelector('.cd-fond')) return;
@@ -4345,8 +4386,8 @@
     let texte, bouton = null, action = null;
     if (live) { texte = `${live} partie${live > 1 ? 's' : ''} en cours dans le groupe.`; bouton = 'Suivre en direct'; action = () => go('live'); }
     else if (compAuj) { texte = `Une compétition se joue aujourd’hui. Bonne chance !`; bouton = 'Voir le classement'; action = () => go('comps', { compLive: true }); }
-    else if (canOrganize() && nbJ < 4) { texte = `Il vous faut au moins 4 joueurs pour un quatuor. On les invite ?`; bouton = 'Inviter des joueurs'; action = () => go('players', { pMode: 'banque' }); }
-    else if (canOrganize()) { texte = 'Prêt pour la prochaine ronde ? Offrez des dates et je forme les quatuors.'; bouton = 'Parties à préparer'; action = () => go('quatuors'); }
+    else if (canOrganize() && nbJ < 4) { texte = `Il vous faut au moins 4 joueurs pour ${SPORT.gratuitPour}. On les invite ?`; bouton = 'Inviter des joueurs'; action = () => go('players', { pMode: 'banque' }); }
+    else if (canOrganize()) { texte = SPORT.leoProchaine; bouton = 'Parties à préparer'; action = () => go('quatuors'); }
     else texte = 'Tout est en ordre. Touchez mon visage si vous avez une question.';
     return { titre: `${salut}${nom ? ', ' + nom : ''} !`, texte, bouton, action, duree: 9000 };
   }
@@ -4354,14 +4395,7 @@
     if (!window.CaddieGuide) return;
     const nom = firstName(ls.get('pelland.me', ''));
     CaddieGuide.ouvrir({
-      etapes: [
-        { puce: 'Bonjour !', titre: `Bienvenue${nom ? ', ' + nom : ''} ! Moi, c’est Léo, votre caddie.`, texte: `Je vous fais faire le tour de « ${groupName()} » en six coups. Ça prend une minute.` },
-        { puce: 'Étape 1', titre: 'Inviter des joueurs', texte: 'Le nom et le cellulaire de chacun : l’invitation part par texto. Chaque joueur crée son compte une fois, pour tous ses groupes.' },
-        { puce: 'Étape 2', titre: 'Parties à préparer', texte: 'Offrez quelques dates. Chacun coche les siennes, et je forme les quatuors à la date butoir.' },
-        { puce: 'Étapes 3 et 4', titre: 'Créer une partie, la suivre en direct', texte: 'Terrain, équipes, jeu et montants. Un joueur entre les scores ; les autres suivent la partie sur leur téléphone.' },
-        { puce: 'Étapes 5 et 6', titre: 'Compétitions et résultats', texte: 'Membre-membre, membre-invité, scrambles, Coupe Ryder ou tableau à élimination, avec le classement en direct. À la fin, je dis qui doit quoi à qui.' },
-        { puce: 'Les banques', titre: 'Joueurs, terrains, jeux, compétitions', texte: 'Tout ce que le groupe bâtit reste là pour la prochaine saison : vos terrains, vos jeux maison, vos formats.' },
-      ],
+      etapes: SPORT.visite(nom),
       fin: { titre: 'Une question ? Je suis dans le coin.', texte: 'Touchez mon visage en bas à droite, n’importe quand. On commence par inviter vos joueurs ?', bouton: (S.players || []).length < 4 ? 'Inviter des joueurs' : 'C’est parti', action: () => { if ((S.players || []).length < 4) go('players', { pMode: 'banque' }); } },
     });
   }
@@ -4590,9 +4624,9 @@
     // Menu d'Albert (compte HoldingAI), en haut à droite, comme dans toutes les apps HoldingAI
     if (Store.mode === 'cloud') {
       window.HOLDINGAI_PORTE = Store.uid
-        ? { app: 'fanion', nomApp: 'Le Fanion', personnage: 'Léo', prenom: Store.nom || '', connecte: true,
+        ? { app: MARQUE.id, nomApp: MARQUE.nomApp, personnage: MARQUE.personnage, prenom: Store.nom || '', connecte: true,
             liens: Store.noGroup ? [] : [{ texte: 'Mes groupes et forfait', action: () => go('compte') }], surDeconnexion: () => Store.logout() }
-        : { app: 'fanion', nomApp: 'Le Fanion', personnage: 'Léo', barriere: true };
+        : { app: MARQUE.id, nomApp: MARQUE.nomApp, personnage: MARQUE.personnage, barriere: true };
       if (!Store.uid && window.HoldingAIPorte) try { HoldingAIPorte.barriere(); } catch (e) { }
     }
     if (Store.needLogin) {

@@ -33,9 +33,9 @@
     // Menu d'Albert (compte HoldingAI), en haut à droite, comme dans toutes les apps HoldingAI
     if (Store.mode === 'cloud') {
       window.HOLDINGAI_PORTE = Store.uid
-        ? { app: 'fanion', nomApp: 'Le Fanion', personnage: 'Léo', prenom: Store.nom || '', connecte: true,
+        ? { app: MARQUE.id, nomApp: MARQUE.nomApp, personnage: MARQUE.personnage, prenom: Store.nom || '', connecte: true,
             liens: Store.noGroup ? [] : [{ texte: 'Mes groupes et forfait', action: () => go('compte') }], surDeconnexion: () => Store.logout() }
-        : { app: 'fanion', nomApp: 'Le Fanion', personnage: 'Léo', barriere: true };
+        : { app: MARQUE.id, nomApp: MARQUE.nomApp, personnage: MARQUE.personnage, barriere: true };
       if (!Store.uid && window.HoldingAIPorte) try { HoldingAIPorte.barriere(); } catch (e) { }
     }
     if (Store.needLogin) {

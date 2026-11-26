@@ -7,7 +7,7 @@
     if (st.given || (st.later && Date.now() - st.later < 30 * 864e5)) return '';
     if (where === 'home' && !st.eligible) return '';
     return `<section class="card avis-card"><div class="av-stars" aria-hidden="true">★★★★★</div>
-      <h3>Le fanion.ai vous plaît ?</h3><p>Dites-le en une phrase. Avec votre accord, votre commentaire pourra paraître sur fanion.ai pour aider d’autres groupes à se lancer.</p>
+      <h3>${MARQUE.nomMaj} vous plaît ?</h3><p>Dites-le en une phrase. Avec votre accord, votre commentaire pourra paraître sur ${MARQUE.domaine} pour aider d’autres groupes à se lancer.</p>
       <div class="row"><button class="btn small" data-avis type="button">Donner mon avis</button><button class="btn ghost small" data-avislater type="button">Plus tard</button></div></section>`;
   }
   const shortName = n => { const w = String(n || '').trim().split(/\s+/); return (w[0] || '') + (w.length > 1 ? ' ' + w[w.length - 1][0].toUpperCase() + '.' : ''); };
@@ -15,11 +15,11 @@
     const me = (S.players || []).find(p => p.id === meId()) || { name: ls.get('pelland.me', '') };
     const old = await Store.getAvis() || {};
     let stars = old.stars || 0;
-    openSheet(`<div class="avis-sheet"><h3>Votre avis sur le fanion.ai</h3>
+    openSheet(`<div class="avis-sheet"><h3>Votre avis sur ${APP}</h3>
       <div class="av-pick" role="radiogroup" aria-label="Note sur 5">${[1, 2, 3, 4, 5].map(n => `<button type="button" role="radio" data-star="${n}" aria-label="${n} étoile${n > 1 ? 's' : ''}">★</button>`).join('')}</div>
-      <label class="fld">En une phrase, qu’est-ce que le fanion.ai change pour votre groupe ?<textarea id="avText" maxlength="280" rows="3" placeholder="ex. Plus besoin de 40 textos pour former les quatuors.">${esc(old.text || '')}</textarea></label>
+      <label class="fld">En une phrase, qu’est-ce que ${APP} change pour votre groupe ?<textarea id="avText" maxlength="280" rows="3" placeholder="${SPORT.avisExemple}">${esc(old.text || '')}</textarea></label>
       <p class="note" id="avCount"></p>
-      <label class="av-ok"><input type="checkbox" id="avOk" ${old.ok === false ? '' : 'checked'}><span>J’accepte que le fanion.ai publie ce commentaire sur fanion.ai, signé <b>${esc(shortName(me.name))}</b>, ${esc(groupName())}.</span></label>
+      <label class="av-ok"><input type="checkbox" id="avOk" ${old.ok === false ? '' : 'checked'}><span>J’accepte que ${APP} publie ce commentaire sur ${MARQUE.domaine}, signé <b>${esc(shortName(me.name))}</b>, ${esc(groupName())}.</span></label>
       <div class="sheet-actions"><button class="btn" id="avSend" type="button">Envoyer</button><button class="btn ghost" data-close type="button">Annuler</button></div></div>`, sh => {
       const paint = () => { sh.querySelectorAll('[data-star]').forEach(b => { const on = +b.dataset.star <= stars; b.classList.toggle('on', on); b.setAttribute('aria-checked', String(+b.dataset.star === stars)); }); };
       const ta = sh.querySelector('#avText'), cnt = () => { sh.querySelector('#avCount').textContent = `${ta.value.length} / 280`; };

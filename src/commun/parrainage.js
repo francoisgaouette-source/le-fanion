@@ -10,7 +10,7 @@
   }
   document.addEventListener('click', async e => {
     const t = e.target.closest && e.target.closest('[data-refshare],[data-refcopy]'); if (!t) return;
-    const url = refLink(), text = `On organise notre golf avec ${APP} : invitations par texto, quatuors, pointage et gageures calculées. Crée ton groupe, c’est gratuit pour un quatuor :`;
+    const url = refLink(), text = SPORT.parrainage(APP);
     if (t.hasAttribute('data-refshare') && navigator.share) { try { await navigator.share({ title: APP, text, url }); } catch (x) { } return; }
     try { await navigator.clipboard.writeText(text + ' ' + url); toast('Lien copié.'); } catch (x) { openSheet(`<h3>Votre lien</h3><p class="note">Copiez-le :</p><input type="text" readonly value="${esc(url)}" onclick="this.select()"><div class="sheet-actions"><button class="btn" data-close type="button">Fermer</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; }); }
   });

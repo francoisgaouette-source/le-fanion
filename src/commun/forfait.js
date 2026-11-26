@@ -34,7 +34,7 @@
   const hasAccepted = p => !!(p && (p.acct || p.authEmail));
   function pickOrganizerSheet() {
     const cur = (curGroup().organizers || [])[0] || ownerId();
-    openSheet(`<h3>Organisateur du groupe</h3><p class="note">Il prépare les parties : dates offertes, quatuors, nouvelles parties. Le propriétaire garde le forfait.</p>
+    openSheet(`<h3>Organisateur du groupe</h3><p class="note">Il prépare les parties : dates offertes, ${SPORT.quatuors}, nouvelles parties. Le propriétaire garde le forfait.</p>
       <div class="pick-list">${(S.players || []).map(p => { const ok = p.id === ownerId() || hasAccepted(p); return `<button class="btn ${p.id === cur ? '' : 'ghost'} small ${ok ? '' : 'pick-off'}" ${ok ? `data-orgpick="${esc(p.id)}"` : 'disabled'} type="button">${esc(p.name)}${p.id === ownerId() ? ' · propriétaire' : ''}${p.id === cur ? ' ✓' : ''}${ok ? '' : '<small>Invitation pas encore acceptée</small>'}</button>`; }).join('')}</div>
       <p class="note">Seuls les joueurs qui ont accepté leur invitation (compte créé) peuvent être organisateurs.</p>
       <div class="sheet-actions"><button class="btn ghost" data-close type="button">Fermer</button></div>`, sh => {
@@ -48,25 +48,25 @@
   document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-pickorg]'); if (t) { e.preventDefault(); pickOrganizerSheet(); } });
 
   // Lien d'achat : le site transmet l'identifiant du groupe à Stripe, pour activer le bon groupe
-  function buyUrl() { return 'https://fanion.ai/achat.html?groupe=' + encodeURIComponent(Store.gid) + '&nom=' + encodeURIComponent(groupName()); }
+  function buyUrl() { return MARQUE.site + '/achat.html?groupe=' + encodeURIComponent(Store.gid) + '&nom=' + encodeURIComponent(groupName()); }
   // Places qui restent dans le forfait (Gratuit : 4 joueurs ; Groupe : 16)
   function roomLeft() { return planOf().max - (S.players || []).length; }
   function limitSheet(wanted) {
     const pl = planOf(), own = (S.players || []).find(p => p.id === ownerId()), meOwner = !!meId() && meId() === ownerId();
     const left = Math.max(0, roomLeft());
     openSheet(`<h3>${pl.paid ? 'Le groupe est complet' : 'Passez au forfait Groupe'}</h3>
-      <p>${pl.paid ? `Le forfait ${pl.name} permet ${pl.max} joueurs.` : `Le forfait Gratuit permet ${pl.max} joueurs, pour essayer avec un quatuor.`}${wanted ? ` Vous voulez en ajouter ${wanted}, il reste ${left} place${left > 1 ? 's' : ''}.` : ''}</p>
-      ${pl.paid ? '<p class="note">Pour une ligue de plus de 16 joueurs, écrivez à bonjour@fanion.ai.</p>'
-        : `<ul class="info-list"><li>Jusqu’à 16 joueurs</li><li>Dates offertes, disponibilités et quatuors</li><li>49 $ + taxes pour la saison, au prix fondateur</li></ul>
+      <p>${pl.paid ? `Le forfait ${pl.name} permet ${pl.max} joueurs.` : `Le forfait Gratuit permet ${pl.max} joueurs, pour essayer avec ${SPORT.gratuitPour}.`}${wanted ? ` Vous voulez en ajouter ${wanted}, il reste ${left} place${left > 1 ? 's' : ''}.` : ''}</p>
+      ${pl.paid ? '<p class="note">Pour une ligue de plus de 16 joueurs, écrivez à ' + MARQUE.courriel + '.</p>'
+        : `<ul class="info-list"><li>Jusqu’à 16 joueurs</li><li>Dates offertes, disponibilités et ${SPORT.quatuors}</li><li>49 $ + taxes pour la saison, au prix fondateur</li></ul>
       ${meOwner ? '' : `<p class="note">Seul le propriétaire du groupe${own ? ', ' + esc(own.name) + ',' : ''} peut changer de forfait.</p>`}`}
       <div class="sheet-actions">${!pl.paid && meOwner ? `<a class="btn" href="${buyUrl()}" target="_blank" rel="noopener">Passer au forfait Groupe</a>` : ''}<button class="btn ghost" data-close type="button">${!pl.paid && meOwner ? 'Plus tard' : 'Compris'}</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; });
   }
 
   // Deuxième groupe avec le forfait Gratuit : même offre que pour un 5e joueur
   function deuxiemeGroupeSheet(g) {
-    const url = 'https://fanion.ai/achat.html?groupe=' + encodeURIComponent(g.id) + '&nom=' + encodeURIComponent(g.name || '');
+    const url = MARQUE.site + '/achat.html?groupe=' + encodeURIComponent(g.id) + '&nom=' + encodeURIComponent(g.name || '');
     openSheet(`<h3>Passez au forfait Groupe</h3>
-      <p>Le forfait Gratuit permet un groupe de 4 joueurs, pour essayer avec un quatuor. Vous avez déjà « ${esc(g.name)} » : pour créer un deuxième groupe, passez-le au forfait Groupe.</p>
-      <ul class="info-list"><li>Jusqu’à 16 joueurs</li><li>Dates offertes, disponibilités et quatuors</li><li>Un autre groupe gratuit possible</li><li>49 $ + taxes pour la saison, au prix fondateur</li></ul>
+      <p>Le forfait Gratuit permet un groupe de 4 joueurs, pour essayer avec ${SPORT.gratuitPour}. Vous avez déjà « ${esc(g.name)} » : pour créer un deuxième groupe, passez-le au forfait Groupe.</p>
+      <ul class="info-list"><li>Jusqu’à 16 joueurs</li><li>Dates offertes, disponibilités et ${SPORT.quatuors}</li><li>Un autre groupe gratuit possible</li><li>49 $ + taxes pour la saison, au prix fondateur</li></ul>
       <div class="sheet-actions"><a class="btn" href="${url}" target="_blank" rel="noopener">Passer au forfait Groupe</a><button class="btn ghost" data-close type="button">Plus tard</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; });
   }

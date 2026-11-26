@@ -6,7 +6,7 @@
     if (where === 'home' && (ls.get('pelland.viral.hide', 0) || 0) > Date.now()) return '';
     return `<section class="card viral"><div class="viral-flag" aria-hidden="true"><svg width="22" height="26" viewBox="0 0 26 30"><path d="M5 2v26" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M6 3l15 5.5L6 14z" fill="#e3a90b"/></svg></div>
       <div><h3>Vous aussi, organisez votre gang</h3>
-      <p>Créez votre propre groupe en une minute : invitations par texto, quatuors, pointage et argent calculés. <b>Gratuit pour 4 joueurs.</b></p>
+      <p>Créez votre propre groupe en une minute : ${SPORT.atouts}. <b>Gratuit pour 4 joueurs.</b></p>
       <div class="row"><button class="btn small" data-viral type="button">Créer mon groupe</button>${where === 'home' ? '<button class="btn ghost small" data-viralhide type="button">Plus tard</button>' : ''}</div>
       <p class="note">Vous restez dans « ${esc(groupName())} » : passez d’un groupe à l’autre à l’accueil.</p></div></section>`;
   }

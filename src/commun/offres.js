@@ -12,7 +12,7 @@
         ${canOrganize() ? '' : '<!--'}<div class="row"><button class="btn small" data-orem="${esc(o.id)}" type="button">Rappel</button><button class="btn ghost small" data-osms="${esc(o.id)}" type="button">Renvoyer le texto</button><button class="btn ghost small" data-odel="${esc(o.id)}" type="button">${S.confirmDelO === o.id ? 'Confirmer' : 'Retirer'}</button></div>${canOrganize() ? '' : '-->'}</div>`; }).join('');
     const form = f ? `<div class="offre-form">
         <label>Terrain<select id="oCourse">${S.courses.map(c => `<option value="${esc(c.name)}" ${c.name === f.course ? 'selected' : ''}>${esc(c.name)}${c.sim ? ' (simulateur)' : ''}</option>`).join('')}</select></label>
-        <label>Lieu (facultatif)<input id="oPlace" type="text" value="${esc(f.place || '')}" placeholder="ex. Golf Simulateur Laval, baies 2 et 3"></label>
+        <label>Lieu (facultatif)<input id="oPlace" type="text" value="${esc(f.place || '')}" placeholder="${SPORT.lieuExemple}"></label>
         <div class="lbl">Dates offertes</div>
         ${f.dates.map((d, i) => `<div class="row" style="flex-wrap:nowrap"><input type="datetime-local" data-od="${i}" value="${esc(d)}" style="flex:1;min-width:0"><button class="x" type="button" data-odx="${i}" aria-label="Retirer">×</button></div>`).join('')}
         <button class="btn ghost small" id="oAddDate" type="button">+ Ajouter une date</button>

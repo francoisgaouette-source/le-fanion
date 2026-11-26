@@ -56,8 +56,8 @@
     leoApres();
   }
 
-  const APP = 'le fanion.ai';
-  function curGroup() { return (S.groups || []).find(x => x.id === Store.gid) || { id: Store.gid, name: 'La gang à Pelland' }; }
+  const APP = MARQUE.nom;
+  function curGroup() { return (S.groups || []).find(x => x.id === Store.gid) || { id: Store.gid, name: MARQUE.groupeDefaut }; }
   function groupName() { return curGroup().name; }
   const ownerId = () => curGroup().owner || null;
   // Banques (joueurs, terrains, compétitions) : seul le propriétaire du groupe ajoute ou enlève

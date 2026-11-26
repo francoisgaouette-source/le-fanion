@@ -90,7 +90,7 @@
           <p class="note">${pl.phone ? `Numéro actuel : <b style="font-size:20px">${esc(fmtPhone(pl.phone))}</b>` : pl.authEmail ? `Numéro actuel : se termine par <b>${esc(pl.phoneHint || '')}</b>. Entrez le numéro complet une fois ci-dessous et touchez Enregistrer : il s’affichera ensuite.` : 'Aucun numéro pour l’instant.'}</p>
           <label>${pl.authEmail ? 'Nouveau numéro' : 'Numéro'}<input id="phIn" type="tel" inputmode="tel" placeholder="450 555-1234" value="${esc(pl.phone ? fmtPhone(pl.phone) : '')}"></label>
           <p class="note">Ce numéro sert à se connecter. Il est visible seulement par les joueurs du groupe.</p>
-          ${Store.phonesBlocked ? '<div class="warn">La base a refusé d’enregistrer ce numéro. Réessayez, ou écrivez à bonjour@fanion.ai.</div>' : ''}
+          ${Store.phonesBlocked ? '<div class="warn">La base a refusé d’enregistrer ce numéro. Réessayez, ou écrivez à ' + MARQUE.courriel + '.</div>' : ''}
           <div class="row"><button class="btn small" id="phSave" type="button">Enregistrer</button><button class="btn ghost small" data-close type="button">Annuler</button></div>`, sh => {
           sh.querySelector('[data-close]').onclick = closeSheet;
           sh.querySelector('#phSave').onclick = async () => {

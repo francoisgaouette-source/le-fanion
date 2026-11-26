@@ -124,7 +124,7 @@
       let list = [];
       if (this.mode === 'cloud') { try { list = (ok(await this.sb.from('groupes').select('*')) || []).map(rowGroupe); } catch (e) { } }
       else list = Object.values(ls.get('pelland.groups', {}));
-      if (!list.find(g => g.id === 'pelland') && this.mode !== 'cloud') list.push({ id: 'pelland', name: 'La gang à Pelland' });
+      if (!list.find(g => g.id === 'pelland') && this.mode !== 'cloud') list.push({ id: 'pelland', name: MARQUE.groupeDefaut });
       return list.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'fr'));
     },
     async saveGroup(gr) {

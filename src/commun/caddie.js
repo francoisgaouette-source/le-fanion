@@ -1,6 +1,6 @@
   // ---------------- Le Caddie : l'agent qui répond aux questions (API Claude, par le serveur Fanion) ----------------
-  const CADDIE_API = 'https://fanion.ai/api/caddie';
-  const SCREENS = { home: 'Accueil', players: 'Inviter des joueurs', quatuors: 'Parties à préparer', setup: 'Créer une partie', jeux: 'Banque de jeux', courses: 'Banque de terrains', live: 'Parties en cours', history: 'Parties et compétitions jouées', comps: 'Banque de compétitions', compte: 'Mon compte' };
+  const CADDIE_API = MARQUE.site + '/api/caddie';
+  const SCREENS = SPORT.ecrans;
   let caddieReady = null;
   async function caddieStatus() {
     if (caddieReady !== null) return caddieReady;
@@ -14,15 +14,15 @@
     return `<div class="cad-msg ${m.role === 'assistant' ? 'bot' : 'me'}">${html}${go && m.role === 'assistant' ? `<button class="btn small cad-go" data-cadgo="${go}" type="button">Aller à : ${SCREENS[go]}</button>` : ''}</div>`;
   }
   async function openCaddie() {
-    S.caddie = S.caddie || [{ role: 'assistant', content: `Bonjour${firstName(ls.get('pelland.me', '')) ? ' ' + firstName(ls.get('pelland.me', '')) : ''} ! Moi, c’est Léo, votre caddie. Posez-moi vos questions sur l’app, les règles des jeux ou les forfaits.` }];
+    S.caddie = S.caddie || [{ role: 'assistant', content: `Bonjour${firstName(ls.get('pelland.me', '')) ? ' ' + firstName(ls.get('pelland.me', '')) : ''} ! Moi, c’est ${MARQUE.personnage}, ${MARQUE.role}. ${SPORT.leoAccueil}` }];
     const ready = Store.mode === 'cloud' && await caddieStatus();
     const draw = sh => {
-      sh.innerHTML = `<div class="cad-id"><span class="cad-av" aria-hidden="true">${window.CaddieGuide ? CaddieGuide.avatar() : ''}</span><div><h3>Léo</h3><p class="note">Votre caddie. Posez votre question sur l’app.</p></div></div>
+      sh.innerHTML = `<div class="cad-id"><span class="cad-av" aria-hidden="true">${window.CaddieGuide ? CaddieGuide.avatar() : ''}</span><div><h3>${MARQUE.personnage}</h3><p class="note">${MARQUE.roleMaj}. Posez votre question sur l’app.</p></div></div>
         <div class="cad-log" id="cadLog">${S.caddie.map(caddieMsg).join('')}${S.caddieBusy ? '<div class="cad-msg bot busy">…</div>' : ''}</div>
         ${ready ? `<form class="cad-form" id="cadForm"><input id="cadIn" type="text" placeholder="Votre question" autocomplete="off" ${S.caddieBusy ? 'disabled' : ''}><button class="btn small" type="submit" ${S.caddieBusy ? 'disabled' : ''}>Envoyer</button></form>
-          ${S.caddie.length < 2 ? `<div class="cad-sugg">${['Comment inviter mes joueurs ?', 'Comment marche la press ?', 'Combien coûte le forfait Groupe ?'].map(q => `<button class="chip" data-cadq="${esc(q)}" type="button">${esc(q)}</button>`).join('')}</div>` : ''}`
-        : '<p class="note">Léo arrive bientôt. En attendant, écrivez-nous : nous répondons rapidement.</p>'}
-        ${window.CaddieGuide && !Store.needLogin ? '<p class="note cad-visite"><button class="linkbtn" data-leovisite type="button">Revoir la visite avec Léo</button> · <button class="linkbtn" data-idee type="button">Proposer une idée à l’équipe</button></p>' : ''}
+          ${S.caddie.length < 2 ? `<div class="cad-sugg">${SPORT.questionsLeo.map(q => `<button class="chip" data-cadq="${esc(q)}" type="button">${esc(q)}</button>`).join('')}</div>` : ''}`
+        : '<p class="note">' + MARQUE.personnage + ' arrive bientôt. En attendant, écrivez-nous : nous répondons rapidement.</p>'}
+        ${window.CaddieGuide && !Store.needLogin ? '<p class="note cad-visite"><button class="linkbtn" data-leovisite type="button">Revoir la visite avec ' + MARQUE.personnage + '</button> · <button class="linkbtn" data-idee type="button">Proposer une idée à l’équipe</button></p>' : ''}
         <div class="sheet-actions"><a class="btn ghost" href="${caddieMail()}">Écrire à l’équipe</a><button class="btn ghost" data-close type="button">Fermer</button></div>`;
       sh.querySelector('[data-close]').onclick = closeSheet;
       sh.querySelectorAll('[data-cadgo]').forEach(b => b.onclick = () => { closeSheet(); go(b.dataset.cadgo); });
@@ -45,8 +45,8 @@
     openSheet('', sh => draw(sh));
   }
   function caddieMail() {
-    const conv = (S.caddie || []).slice(1).map(m => (m.role === 'user' ? 'Moi : ' : 'Léo : ') + m.content.replace(/\[\[ecran:[a-z]+\]\]/g, '')).join('\n\n');
-    const body = `Groupe : ${groupName()}\nJoueur : ${ls.get('pelland.me', '') || ''}\n\n${conv ? 'Ma conversation avec Léo, le caddie :\n\n' + conv + '\n\n' : ''}Ma question :\n`;
-    return 'mailto:bonjour@fanion.ai?subject=' + encodeURIComponent('le fanion.ai – question') + '&body=' + encodeURIComponent(body.slice(0, 1800));
+    const conv = (S.caddie || []).slice(1).map(m => (m.role === 'user' ? 'Moi : ' : MARQUE.personnage + ' : ') + m.content.replace(/\[\[ecran:[a-z]+\]\]/g, '')).join('\n\n');
+    const body = `Groupe : ${groupName()}\nJoueur : ${ls.get('pelland.me', '') || ''}\n\n${conv ? 'Ma conversation avec ' + MARQUE.personnage + ', ' + MARQUE.leRole + ' :\n\n' + conv + '\n\n' : ''}Ma question :\n`;
+    return 'mailto:' + MARQUE.courriel + '?subject=' + encodeURIComponent(APP + ' – question') + '&body=' + encodeURIComponent(body.slice(0, 1800));
   }
   document.addEventListener('click', e => { const t = e.target.closest && e.target.closest('[data-caddie]'); if (t) { e.preventDefault(); openCaddie(); } });

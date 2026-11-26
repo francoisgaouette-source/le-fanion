@@ -1,5 +1,5 @@
   // ---------------- Boucle de retour : idées → équipe (console HoldingAI) → réponse et nouveautés dans l'app, sondage éclair ----------------
-  const RETOUR_API = 'https://fanion.ai/api/retour';
+  const RETOUR_API = MARQUE.site + '/api/retour';
   const R = { idees: [], nouveautes: [], sondageDernier: null, charge: false, sondage: null };
   const JOUR = 864e5;
   const STATUT_IDEE = { recue: ['Reçue', ''], etudiee: ['À l’étude', 'etude'], prevue: ['Prévue', 'prevue'], faite: ['Faite ✓', 'faite'], non: ['Pas pour l’instant', 'non'] };
@@ -49,7 +49,7 @@
       return `<section class="card retour-carte"><b>✨ Nouveau : ${esc(n.titre)}</b>${n.texte ? `<p>${esc(n.texte)}</p>` : ''}
         <div class="row"><button class="btn small" type="button" data-retour="vu-nv" data-t="${new Date(n.cree).getTime()}">Super</button><button class="btn ghost small" type="button" data-idee>Proposer une idée</button></div></section>`;
     }
-    if (!R.sondage) return `<section class="card retour-carte"><b>Recommanderiez-vous le fanion.ai à un ami golfeur ?</b>
+    if (!R.sondage) return `<section class="card retour-carte"><b>Recommanderiez-vous ${APP} à ${SPORT.amiJoueur} ?</b>
         <p class="note">0 = pas du tout, 10 = sans hésiter. Une seule question.</p>
         <div class="nps" role="group" aria-label="Note de 0 à 10">${Array.from({ length: 11 }, (_, n) => `<button type="button" class="nps-n" data-note="${n}">${n}</button>`).join('')}</div>
         <div class="row"><button class="linkbtn" type="button" data-retour="sondage-plus-tard">Plus tard</button></div></section>`;
@@ -63,7 +63,7 @@
     retourApi({ action: 'sondage', note: n, raison: raison || null, groupe: groupName() }).catch(() => { });
     if (raison) envoyerIdee({ type: n >= 9 ? 'aime' : n <= 6 ? 'probleme' : 'idee', texte: raison, source: 'sondage' }).catch(() => { });
     render();
-    if (n >= 9) openSheet(`<h3>Merci, ça fait vraiment plaisir !</h3><p>Vous connaissez un autre groupe de golf qui court après ses joueurs ? Envoyez-lui votre lien : c’est gratuit pour un quatuor${meId() === ownerId() ? ', et vous obtenez 5 $ de rabais sur votre prochaine saison s’il passe au forfait Groupe' : ''}.</p>
+    if (n >= 9) openSheet(`<h3>Merci, ça fait vraiment plaisir !</h3><p>Vous connaissez ${SPORT.autreGroupe} qui court après ses joueurs ? Envoyez-lui votre lien : c’est gratuit pour ${SPORT.gratuitPour}${meId() === ownerId() ? ', et vous obtenez 5 $ de rabais sur votre prochaine saison s’il passe au forfait Groupe' : ''}.</p>
       <div class="sheet-actions"><button class="btn" data-refshare type="button">Partager mon lien</button><button class="btn ghost" data-close type="button">Plus tard</button></div>`, sh => { sh.querySelector('[data-close]').onclick = closeSheet; sh.querySelector('[data-refshare]').addEventListener('click', () => setTimeout(closeSheet, 300)); });
     else toast('Merci ! Votre réponse est bien reçue. L’équipe la lit.');
   }
@@ -81,7 +81,7 @@
         <p>${esc(i.texte)}</p>${i.reponse ? `<p class="idee-rep"><b>Réponse de l’équipe :</b> ${esc(i.reponse)}</p>` : ''}</li>`;
     }).join('')}</ul>` : '';
     openSheet(`<h3>Une idée ? Un pépin ?</h3>
-      <p class="note">Ça va directement à l’équipe du fanion.ai. On lit tout, et la réponse s’affiche ici, dans l’app.</p>
+      <p class="note">Ça va directement à l’équipe ${MARQUE.duNom}. On lit tout, et la réponse s’affiche ici, dans l’app.</p>
       <div class="seg idee-types">${Object.entries(TYPE_IDEE).map(([k, [ic, mot]]) => `<button type="button" data-itype="${k}" aria-pressed="${k === type}"><b>${ic}</b><small>${esc(mot)}</small></button>`).join('')}</div>
       <label class="fld"><span class="sr-only">Votre message</span><textarea id="ideeTexte" rows="4" maxlength="2000" placeholder="${esc(PLACE_IDEE[type])}"></textarea></label>
       <label class="av-ok"><input type="checkbox" id="ideeContact"><span>L’équipe peut me texter pour en parler.</span></label>

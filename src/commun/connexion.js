@@ -1,11 +1,11 @@
   // ---------------- Terrains ----------------
   function vLogin() {
-    $('#barTitle').innerHTML = `${APP}<small class="bar-sous">le golf entre amis</small>`;
+    $('#barTitle').innerHTML = `${APP}<small class="bar-sous">${MARQUE.slogan}</small>`;
     $('#back').hidden = true;
     const refQ = new URLSearchParams(location.search).get('ref');
     const groups = S.groups || [];
     const refGroup = refQ && groups.find(g => g.id === refQ);
-    const hero = `<div class="hero"><h1>${APP}</h1><p>Le golf entre amis : pointage, jeux et parties à venir.</p></div>`;
+    const hero = `<div class="hero"><h1>${APP}</h1><p>${MARQUE.accroche}</p></div>`;
     // Pas encore connecté : le compte HoldingAI (le même pour toutes les apps HoldingAI)
     if (!Store.uid) return hero + `<section class="card"><h2>Connexion</h2>
         <p class="note">Un seul compte pour toutes les apps HoldingAI : votre cellulaire et votre mot de passe. Albert s’en occupe.</p>
@@ -14,7 +14,7 @@
         <p class="note" id="loginMsg">${esc(S.loginMsg || Store.error || '')}</p></section>`;
     // Connecté, mais ce cellulaire n'est inscrit dans aucun groupe : invitation à demander, ou nouveau groupe
     const nom = Store.nom || '';
-    return hero + `${refQ ? `<div class="ref-hello">${refGroup ? `Recommandé par <b>${esc(refGroup.name)}</b>. ` : ''}Créez votre groupe : c’est gratuit pour un quatuor, et vos joueurs reçoivent l’invitation par texto.</div>` : ''}
+    return hero + `${refQ ? `<div class="ref-hello">${refGroup ? `Recommandé par <b>${esc(refGroup.name)}</b>. ` : ''}Créez votre groupe : c’est gratuit pour ${SPORT.gratuitPour}, et vos joueurs reçoivent l’invitation par texto.</div>` : ''}
       <section class="card"><h2>${nom ? 'Bienvenue, ' + esc(nom.split(' ')[0]) + ' !' : 'Bienvenue !'}</h2>
         <p class="note">Votre cellulaire${Store.e164 ? ' (' + esc(fmtPhone(Store.e164.slice(2))) + ')' : ''} n’est inscrit dans aucun groupe pour l’instant.</p>
         <p class="note"><b>Invité par un organisateur ?</b> Demandez-lui de vérifier votre cellulaire dans Joueurs, puis rouvrez le lien de son texto.</p>
