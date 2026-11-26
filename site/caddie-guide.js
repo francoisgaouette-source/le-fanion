@@ -1,6 +1,6 @@
 // Léo, le caddie de Fanion, en personne : un jeune caddie dessiné (casquette au fanion, dossard, sac sur l'épaule)
 // qui fait visiter l'app étape par étape, salue à chaque arrivée et reste dans le coin pour répondre aux questions.
-// Partagé par l'app (app.fanion.ai) et le site (fanion.ai).
+// Partagé par l'app (app.lefanion.ai) et le site (fanion.ai).
 //   CaddieGuide.ouvrir({ etapes: [{ titre, texte, puce? }], fin: { titre, texte, bouton, action }, onFermer })
 //   const p = CaddieGuide.presence({ surFace, label });  p.dire({ titre, texte, bouton, action, duree });  p.taire();  p.cacher(oui)
 //   CaddieGuide.avatar() → le SVG du personnage

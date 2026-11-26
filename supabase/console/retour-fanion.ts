@@ -1,5 +1,5 @@
 // Boucle de retour de Fanion : idées et commentaires des joueurs, réponses de l'équipe, nouveautés, sondage éclair.
-// Appelée par le serveur de Fanion (fanion.ai/api/retour) avec le jeton du membre : compte HoldingAI, ou Firebase (anciennes versions de l'app).
+// Appelée par le serveur de Fanion (lefanion.ai/api/retour) avec le jeton du membre : compte HoldingAI, ou Firebase (anciennes versions de l'app).
 // Le jeton est revérifié ici. Chaque joueur ne lit que ses propres envois ; les réponses et états se gèrent dans la console HoldingAI (onglet Idées).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";

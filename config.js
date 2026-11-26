@@ -1,4 +1,4 @@
-// Réglages publics du Fanion (app.fanion.ai).
+// Réglages publics du Fanion (app.lefanion.ai).
 // Projet Supabase « Le Fanion ». La clé publique peut être dans le code : la sécurité vient des règles de la base.
 window.FANION_CONFIG = window.APP_CONFIG = {
   supabaseUrl: "https://iuoaiambosdpsvsymupz.supabase.co",
@@ -7,6 +7,6 @@ window.FANION_CONFIG = window.APP_CONFIG = {
   HOLDINGAI: {
     clientId: "e075c09b-a84c-453b-9ca1-19c3800af8ae",
     app: "fanion",
-    retour: "https://app.fanion.ai/"
+    retour: "https://app.lefanion.ai/"
   }
 };

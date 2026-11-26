@@ -1,5 +1,5 @@
   // ---------------- Terrains trouvés sur le web : région → clubs → carte préparée → révision et approbation ----------------
-  const TERRAINS_API = 'https://fanion.ai/api/terrains';
+  const TERRAINS_API = 'https://lefanion.ai/api/terrains';
   const REGIONS_QC = ['Montréal', 'Laval', 'Laurentides', 'Lanaudière', 'Montérégie', 'Cantons-de-l’Est', 'Centre-du-Québec', 'Mauricie', 'Québec (Capitale-Nationale)', 'Charlevoix', 'Chaudière-Appalaches', 'Outaouais', 'Abitibi-Témiscamingue', 'Saguenay–Lac-Saint-Jean', 'Bas-Saint-Laurent', 'Gaspésie', 'Côte-Nord'];
   const W = { region: null, clubs: [], sources: [], charge: false, err: '', prep: null };
   const normNom = t => String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/club de golf|golf club|club|golf|le |la |les |du |de |des |d’|d'/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
