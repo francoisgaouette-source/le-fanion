@@ -59,6 +59,6 @@ Faite, pas encore en ligne (`main` reste sur Firebase) :
 - Firebase retiré du code : `firebase-config.js` et `firestore.rules` supprimés, `worker.js` n'accepte plus que les jetons HoldingAI et ne lit plus Firestore, messages d'erreur et page de confidentialité corrigés, aide de Léo mise à jour (connexion HoldingAI).
 
 ## Reste à faire
-1. Mettre en ligne `worker.js` (fanion.ai, Cloudflare « pelland ») s'il n'est pas relié à GitHub.
+1. Cloudflare « pelland » (fanion.ai) se déploie tout seul depuis `main` : `worker.js` sans Firebase est en ligne. À corriger là-bas : la clé `ANTHROPIC_API_KEY` est refusée (Léo ne répond pas) et `VAPID_PRIVATE_JWK` manque (pas de notifications).
 2. Dans quelques semaines : supprimer le projet Firebase « pelland » (console Firebase → Paramètres du projet → Supprimer).
 3. `supabase/console/` : retirer l'acceptation des jetons Firebase de `retour-fanion` et `journal-caddie` (projet Notre épicerie).
