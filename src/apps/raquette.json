@@ -1,5 +1,5 @@
 {
-  "_aFaire": "Personnage de l’assistant (Léo pour l’instant), projet Supabase et client L’Établi : à faire avant le lancement (étape 5).",
+  "_aFaire": "Page d’achat du forfait Groupe sur lechange.ai : à faire.",
   "sortie": "dist/raquette/app.js",
   "page": "raquette/page",
   "copier": [
@@ -8,7 +8,9 @@
     "holdingai.js",
     "icon-180.png",
     "icon-192.png",
-    "icon-512.png"
+    "icon-512.png",
+    "caddie-guide.js",
+    "samuel.jpg"
   ],
   "marque": {
     "id": "lechange",
@@ -24,7 +26,7 @@
     "accroche": "Pickleball, tennis, badminton, padel, squash, tennis de table : soirées, rotations et pointage.",
     "description": "l’app des sports de raquette entre amis",
     "groupeDefaut": "Mon groupe",
-    "personnage": "Léo",
+    "personnage": "Samuel",
     "role": "votre assistant",
     "roleMaj": "Votre assistant",
     "leRole": "l’assistant",

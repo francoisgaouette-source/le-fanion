@@ -33,7 +33,7 @@ body.framed { margin: 0; min-height: 100vh; display: flex; align-items: center; 
 .phone-frame { width: 402px; height: min(874px, calc(100vh - 32px)); border-radius: 44px; padding: 12px; background: #000; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
 .phone-frame iframe { width: 100%; height: 100%; border: 0; border-radius: 34px; background: #fff; display: block; }
 </style>
-<link rel="stylesheet" href="styles.css?v=20261123g">
+<link rel="stylesheet" href="styles.css?v=20261126samuel">
 </head>
 <body>
 <header class="bar">
@@ -42,7 +42,7 @@ body.framed { margin: 0; min-height: 100vh; display: flex; align-items: center; 
   <button class="bar-idee" id="ideeBtn" data-idee type="button" hidden aria-label="Une idée ? Un pépin ? Dites-le à l’équipe du fanion.ai">💡 <span>Idée ou pépin ?</span></button>
   <div class="bar-badge" id="dbBadge"></div>
   <button class="bar-acct" id="acctBtn" type="button" hidden aria-label="Mon compte"><span id="acctIni"></span></button>
-  <button type="button" class="hai-porte-btn" data-hai-porte aria-label="Mon compte (Albert, L’Établi)" title="Mon compte"></button>
+  <button type="button" class="hai-porte-btn" data-hai-porte aria-label="Mon compte (Philou, L’Établi)" title="Mon compte"></button>
 </header>
 <main id="view"></main>
 
@@ -69,11 +69,11 @@ body.framed { margin: 0; min-height: 100vh; display: flex; align-items: center; 
 <script src="install-gate.js?v=20261123g"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.2/dist/umd/supabase.js"></script>
 <script src="config.js?v=20261126a"></script>
-<script src="holdingai.js?v=20261126b"></script>
+<script src="holdingai.js?v=20261126philou"></script>
 <script src="https://compte.letabli.ai/porte.js" charset="utf-8" defer></script>
 <script src="logic.js?v=20261126a"></script>
-<script src="caddie-guide.js?v=20261123g"></script>
-<script src="app.js?v=20261126lechange"></script>
+<script src="caddie-guide.js?v=20261126samuel"></script>
+<script src="app.js?v=20261126samuel"></script>
 <script>if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});</script>
 <script>
 /* Mise à jour automatique : l'app installée sur l'écran d'accueil reste ouverte en arrière-plan pendant des jours.
