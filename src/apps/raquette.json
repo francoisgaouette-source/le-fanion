@@ -1,5 +1,5 @@
 {
-  "_aFaire": "Page d’achat du forfait Groupe sur lechange.ai et dessin de Samuel : à faire.",
+  "_aFaire": "Page d’achat du forfait Groupe sur lechange.ai : à faire.",
   "sortie": "dist/raquette/app.js",
   "page": "raquette/page",
   "copier": [
@@ -8,7 +8,9 @@
     "holdingai.js",
     "icon-180.png",
     "icon-192.png",
-    "icon-512.png"
+    "icon-512.png",
+    "caddie-guide.js",
+    "samuel.jpg"
   ],
   "marque": {
     "id": "lechange",
