@@ -207,9 +207,9 @@ const APPS = {
 };
 const appDe = origin => origin === 'https://app.lechange.ai' ? APPS.lechange : APPS.fanion;
 const RATE = new Map();
-function tooMany(uid) {
+function tooMany(uid, max = 40) {
   const now = Date.now(), r = (RATE.get(uid) || []).filter(t => now - t < 3600e3);
-  r.push(now); RATE.set(uid, r); return r.length > 40;
+  r.push(now); RATE.set(uid, r); return r.length > max;
 }
 async function caddie(env, messages, app = APPS.fanion) {
   const msgs = (messages || []).slice(-12).map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 1500) })).filter(m => m.content);
@@ -441,6 +441,8 @@ export default {
     if (!ready) return json({ error: 'Service de textos pas encore configuré.' }, 503, origin);
     const tok = (req.headers.get('Authorization') || '').replace(/^Bearer /, '');
     let who; try { who = await verifyToken(tok); } catch (e) { return json({ error: 'Connexion requise : ' + e.message }, 401, origin); }
+    // Chaque texto coûte (Twilio) : au plus 10 envois par heure et par personne.
+    if (tooMany('sms:' + (who.user_id || who.sub), 10)) return json({ error: 'Beaucoup de textos d’un coup : réessayez dans une heure.' }, 429, origin);
     let data; try { data = await req.json(); } catch (e) { return json({ error: 'requête invalide' }, 400, origin); }
     const body = String(data.text || '').slice(0, MAX_LEN).trim();
     const to = [...new Set((data.to || []).map(n => String(n).replace(/\D/g, '').slice(-10)).filter(n => n.length === 10))];
