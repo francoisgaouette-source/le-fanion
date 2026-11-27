@@ -21,8 +21,8 @@
         try {
           this.sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, { accessToken: async () => (await HoldingAI.jeton()) || null });
           this.mode = 'cloud';
-          // Le compte suit : sans session, on passe chez Albert (compte.letabli.ai), qui ramène la personne connectée
-          // Installation obligatoire sur téléphone : on ne passe chez Albert qu'une fois l'app installée (iPhone : l'app installée ne garde pas la connexion faite dans Safari)
+          // Le compte suit : sans session, on passe chez Philippe (compte.letabli.ai), qui ramène la personne connectée
+          // Installation obligatoire sur téléphone : on ne passe chez Philippe qu'une fois l'app installée (iPhone : l'app installée ne garde pas la connexion faite dans Safari)
           const dep = await HoldingAI.demarrer({ obligatoire: !window.FANION_INSTALL_REQUISE });
           if (dep.redirection) { this.redirecting = true; return; }
           if (dep.erreur) toast(dep.erreur.message);
@@ -166,7 +166,7 @@
       const gr = { id: slug(groupName) + '-' + Math.random().toString(36).slice(2, 6), name: groupName.trim(), owner: pid, createdAt: Date.now(), nPlayers: 1 };
       const rc = String(ref || this.refCode() || '').replace(/[^a-z0-9_-]/gi, '').slice(0, 60); if (rc) gr.ref = rc;
       if (this.mode === 'cloud') {
-        if (!this.uid || !this.e164) throw new Error('Votre compte L’Établi doit avoir un cellulaire confirmé. Ouvrez « Mon compte » chez Albert.');
+        if (!this.uid || !this.e164) throw new Error('Votre compte L’Établi doit avoir un cellulaire confirmé. Ouvrez « Mon compte » chez Philippe.');
         // Forfait Gratuit : un seul groupe gratuit par compte (vérifié par la base)
         const gratuit = await this.groupeGratuit();
         if (gratuit) throw Object.assign(new Error(`Avec le forfait Gratuit, vous avez droit à un groupe de 4 joueurs : vous avez déjà « ${gratuit.name} ». Passez ce groupe au forfait Groupe pour en créer un autre.`), { code: 'local/gratuit' });
