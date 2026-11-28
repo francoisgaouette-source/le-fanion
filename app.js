@@ -107,8 +107,8 @@
         try {
           this.sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, { accessToken: async () => (await HoldingAI.jeton()) || null });
           this.mode = 'cloud';
-          // Le compte suit : sans session, on passe chez Albert (compte.letabli.ai), qui ramène la personne connectée
-          // Installation obligatoire sur téléphone : on ne passe chez Albert qu'une fois l'app installée (iPhone : l'app installée ne garde pas la connexion faite dans Safari)
+          // Le compte suit : sans session, on passe chez Philippe (compte.letabli.ai), qui ramène la personne connectée
+          // Installation obligatoire sur téléphone : on ne passe chez Philippe qu'une fois l'app installée (iPhone : l'app installée ne garde pas la connexion faite dans Safari)
           const dep = await HoldingAI.demarrer({ obligatoire: !window.FANION_INSTALL_REQUISE });
           if (dep.redirection) { this.redirecting = true; return; }
           if (dep.erreur) toast(dep.erreur.message);
@@ -252,7 +252,7 @@
       const gr = { id: slug(groupName) + '-' + Math.random().toString(36).slice(2, 6), name: groupName.trim(), owner: pid, createdAt: Date.now(), nPlayers: 1 };
       const rc = String(ref || this.refCode() || '').replace(/[^a-z0-9_-]/gi, '').slice(0, 60); if (rc) gr.ref = rc;
       if (this.mode === 'cloud') {
-        if (!this.uid || !this.e164) throw new Error('Votre compte L’Établi doit avoir un cellulaire confirmé. Ouvrez « Mon compte » chez Albert.');
+        if (!this.uid || !this.e164) throw new Error('Votre compte L’Établi doit avoir un cellulaire confirmé. Ouvrez « Mon compte » chez Philippe.');
         // Forfait Gratuit : un seul groupe gratuit par compte (vérifié par la base)
         const gratuit = await this.groupeGratuit();
         if (gratuit) throw Object.assign(new Error(`Avec le forfait Gratuit, vous avez droit à un groupe de 4 joueurs : vous avez déjà « ${gratuit.name} ». Passez ce groupe au forfait Groupe pour en créer un autre.`), { code: 'local/gratuit' });
@@ -729,9 +729,9 @@
     $('#back').hidden = S.view === 'home' || S.view === 'login';
     document.body.classList.toggle('tv-mode', S.view === 'compTv');   // écran télé : sans barre ni bouton de Léo
     $('#dbBadge').textContent = !navigator.onLine ? 'Hors ligne' : Store.mode === 'cloud' ? '' : 'Local';
-    // Mon compte : l'ancien bouton aux initiales reste caché ; le visage d'Albert (porte.js) le remplace
+    // Mon compte : l'ancien bouton aux initiales reste caché ; le visage de Philippe (porte.js) le remplace
     const ab = $('#acctBtn'), acctOk = Store.mode === 'cloud' && !!Store.email && !Store.needLogin && S.view !== 'login';
-    ab.hidden = true; $('#ideeBtn').hidden = !acctOk;  // Mon compte : par le menu d'Albert (HoldingAI)
+    ab.hidden = true; $('#ideeBtn').hidden = !acctOk;  // Mon compte : par le menu de Philippe (HoldingAI)
     $('#ideeBtn').classList.toggle('compact', S.view !== 'home'); ab.classList.toggle('on', S.view === 'compte');
     if (acctOk) { const nm = (S.players.find(p => p.id === meId()) || {}).name || ls.get('pelland.me', '') || ''; $('#acctIni').textContent = nm.split(/[\s-]+/).filter(Boolean).slice(0, 2).map(x => x[0].toUpperCase()).join('') || '👤'; ab.title = 'Mon compte' + (nm ? ' · ' + nm : ''); }
     $('#dbBadge').classList.toggle('offline', !navigator.onLine);
@@ -1005,7 +1005,7 @@ ${SPORT.bienvenueVous}</ul></section>
         ${u.uid ? `<p class="note uid-ligne">Identifiant du compte : <code>${esc(u.uid)}</code> <button class="linkbtn" data-copyuid="${esc(u.uid)}" type="button">Copier</button>${P.admin ? ' · <b>approbateur des terrains ✓</b>' : ''}</p>` : ''}</section>
       ${S.fromLogin ? '' : forfaitHtml()}
       <h3 class="acct-h">Compte L’Établi</h3>
-      <div class="acct-box acct-g"><div><b>Cellulaire et mot de passe</b><small>Votre compte L’Établi sert dans toutes les apps de L’Établi. Albert s’en occupe.</small></div><a class="btn ghost small" href="${esc(HoldingAI.compteUrl)}">Gérer</a></div>
+      <div class="acct-box acct-g"><div><b>Cellulaire et mot de passe</b><small>Votre compte L’Établi sert dans toutes les apps de L’Établi. Philippe s’en occupe.</small></div><a class="btn ghost small" href="${esc(HoldingAI.compteUrl)}">Gérer</a></div>
       <h3 class="acct-h acct-h-act"><span>Mes groupes (${S.acctGroups.filter(x => !x.archived).length})</span><button class="btn ghost small" data-viral type="button">+ Ajouter un groupe</button></h3>
       ${groupRows(S.acctGroups.filter(x => !x.archived), S.fromLogin ? null : Store.gid, S.acctGroups).replace(S.fromLogin ? /Ouvrir/g : /^$/, 'Entrer')}
       ${S.acctGroups.some(x => x.archived) ? `<h3 class="acct-h">Groupes archivés (${S.acctGroups.filter(x => x.archived).length})</h3>
@@ -2014,7 +2014,7 @@ ${SPORT.bienvenueVous}</ul></section>
     const hero = `<div class="hero"><h1>${APP}</h1><p>${MARQUE.accroche}</p></div>`;
     // Pas encore connecté : le compte HoldingAI (le même pour toutes les apps HoldingAI)
     if (!Store.uid) return hero + `<section class="card"><h2>Connexion</h2>
-        <p class="note">Un seul compte pour toutes les apps de L’Établi : votre cellulaire et votre mot de passe. Albert s’en occupe.</p>
+        <p class="note">Un seul compte pour toutes les apps de L’Établi : votre cellulaire et votre mot de passe. Philippe s’en occupe.</p>
         <p class="note"><b>Invité par texto ?</b> Utilisez le cellulaire où vous avez reçu l’invitation : vous retrouverez votre groupe.</p>
         <button class="btn" id="haiGo" type="button">Continuer avec L’Établi</button>
         <p class="note" id="loginMsg">${esc(S.loginMsg || Store.error || '')}</p></section>`;
@@ -4671,8 +4671,8 @@ ${SPORT.bienvenueVous}</ul></section>
   (async function start() {
     $('#view').innerHTML = '<p class="note">Démarrage…</p>';
     await Store.init();
-    if (Store.redirecting) { $('#view').innerHTML = '<p class="note">Albert vous reconnaît…</p>'; return; }
-    // Menu d'Albert (compte HoldingAI), en haut à droite, comme dans toutes les apps HoldingAI
+    if (Store.redirecting) { $('#view').innerHTML = '<p class="note">Philippe vous reconnaît…</p>'; return; }
+    // Menu de Philippe (compte HoldingAI), en haut à droite, comme dans toutes les apps HoldingAI
     if (Store.mode === 'cloud') {
       window.HOLDINGAI_PORTE = Store.uid
         ? { app: MARQUE.id, nomApp: MARQUE.nomApp, personnage: MARQUE.personnage, prenom: Store.nom || '', connecte: true,

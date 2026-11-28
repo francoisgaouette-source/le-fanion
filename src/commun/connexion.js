@@ -8,7 +8,7 @@
     const hero = `<div class="hero"><h1>${APP}</h1><p>${MARQUE.accroche}</p></div>`;
     // Pas encore connecté : le compte HoldingAI (le même pour toutes les apps HoldingAI)
     if (!Store.uid) return hero + `<section class="card"><h2>Connexion</h2>
-        <p class="note">Un seul compte pour toutes les apps de L’Établi : votre cellulaire et votre mot de passe. Albert s’en occupe.</p>
+        <p class="note">Un seul compte pour toutes les apps de L’Établi : votre cellulaire et votre mot de passe. Philippe s’en occupe.</p>
         <p class="note"><b>Invité par texto ?</b> Utilisez le cellulaire où vous avez reçu l’invitation : vous retrouverez votre groupe.</p>
         <button class="btn" id="haiGo" type="button">Continuer avec L’Établi</button>
         <p class="note" id="loginMsg">${esc(S.loginMsg || Store.error || '')}</p></section>`;
