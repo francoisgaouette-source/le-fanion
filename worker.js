@@ -9,7 +9,7 @@
 const ORIGINS = ['https://francoisgaouette-source.github.io', 'https://lefanion.ai', 'https://www.lefanion.ai', 'https://app.lefanion.ai',
   // Anciennes adresses : encore acceptées pendant la transition vers lefanion.ai
   'https://fanion.ai', 'https://www.fanion.ai', 'https://app.fanion.ai',
-  // L'échange.ai (sports de raquette) : servie par ce même serveur, avec sa propre base
+  // L'Échange (sports de raquette) : servie par ce même serveur, avec sa propre base
   'https://app.lechange.ai'];
 const MAX_TO = 30, MAX_LEN = 1200;
 
@@ -186,7 +186,7 @@ const JOURNAL_CADDIE = 'https://gandliltstmtfsmsjaew.supabase.co/functions/v1/jo
 // Boucle de retour (idées, réponses de l'équipe, nouveautés, sondage) : notée dans la console HoldingAI, jeton HoldingAI revérifié là-bas
 const RETOUR_FANION = 'https://gandliltstmtfsmsjaew.supabase.co/functions/v1/retour-fanion';
 // Les apps servies par ce serveur, reconnues par l'adresse de l'app qui appelle (en-tête Origin) : le Fanion par défaut
-const LECHANGE_SYSTEM = `Tu es Léo, l'assistant de l'app l'échange.ai, une app québécoise pour organiser des soirées de sports de raquette entre amis : pickleball, tennis, badminton, padel, squash et tennis de table. Tu es souriant, efficace et encourageant.
+const LECHANGE_SYSTEM = `Tu es Léo, l'assistant de l'app L'Échange, une app québécoise pour organiser des soirées de sports de raquette entre amis : pickleball, tennis, badminton, padel, squash et tennis de table. Tu es souriant, efficace et encourageant.
 Tu parles français québécois simple et chaleureux, tu vouvoies, tu réponds court (3 à 6 phrases, ou une petite liste d'étapes). Tu ne parles que de l'app, des six sports et de leurs règles de pointage.
 Si tu ne sais pas, ou si la personne veut parler à quelqu'un, un remboursement, un problème de paiement ou de compte : dis-lui d'écrire à bonjour@lechange.ai (le bouton « Écrire à l'équipe » sous la conversation).
 Pour amener la personne au bon écran, ajoute à la fin une ligne [[ecran:CLE]] (une seule), avec CLE parmi : home (accueil), players (Inviter des joueurs), soirees (Soirées), lieux (Lieux et terrains), compte (Mon compte).
@@ -203,7 +203,7 @@ Ce que fait l'app :
 - Forfaits : un groupe gratuit jusqu'à 4 joueurs, puis le forfait Groupe ; 5 $ de rabais par groupe parrainé.`;
 const APPS = {
   fanion: { id: 'fanion', nom: 'le fanion.ai', courriel: 'bonjour@fanion.ai', sb: SB, sbKey: SB_KEY, caddie: CADDIE_SYSTEM },
-  lechange: { id: 'lechange', nom: 'l’échange.ai', courriel: 'bonjour@lechange.ai', sb: 'https://vdhlidlgwutlgihrypgo.supabase.co', sbKey: 'sb_publishable_RXZGbjuF6U5Fgu5Kdo1LBQ_Jv6xKnZ6', caddie: LECHANGE_SYSTEM },
+  lechange: { id: 'lechange', nom: 'L’Échange', courriel: 'bonjour@lechange.ai', sb: 'https://vdhlidlgwutlgihrypgo.supabase.co', sbKey: 'sb_publishable_RXZGbjuF6U5Fgu5Kdo1LBQ_Jv6xKnZ6', caddie: LECHANGE_SYSTEM },
 };
 const appDe = origin => origin === 'https://app.lechange.ai' ? APPS.lechange : APPS.fanion;
 const RATE = new Map();

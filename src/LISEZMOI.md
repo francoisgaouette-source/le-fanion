@@ -9,7 +9,7 @@ node outils/assembler.js raquette            # construit l'app raquette dans dis
 node outils/tests-raquette.js                # teste les règles des six sports et les rotations
 ```
 
-Pour essayer l’échange.ai (l'app raquette) sur l'ordinateur : `node outils/assembler.js raquette`, puis servir `dist/raquette/`
+Pour essayer L’Échange (l'app raquette) sur l'ordinateur : `node outils/assembler.js raquette`, puis servir `dist/raquette/`
 (ex. `python3 -m http.server -d dist/raquette 8000` et ouvrir http://localhost:8000/?plein=1). Sans projet
 Supabase, elle fonctionne en mode local.
 
@@ -41,7 +41,7 @@ Le tronc commun ne doit appeler aucune fonction d'un module directement : seulem
 ## Ce qui reste à faire
 
 - `logic.js` (calculs du golf) est encore chargé par l'app raquette, pour `L.norm`.
-- Mise en ligne de l'échange.ai : `wrangler.lechange.jsonc` (Cloudflare, domaine lechange.ai). Il reste le projet
+- Mise en ligne de L'Échange : `wrangler.lechange.jsonc` (Cloudflare, domaine lechange.ai). Il reste le projet
   Supabase et le client HoldingAI (à mettre dans `raquette/page/config.js`), puis les services du serveur (textos,
   notifications, assistant), qui demandent de rendre `worker.js` multi-app.
-- Le dessin de Léo (caddie-guide.js) n'est pas branché pour l'échange.ai.
+- Le dessin de Léo (caddie-guide.js) n'est pas branché pour L'Échange.

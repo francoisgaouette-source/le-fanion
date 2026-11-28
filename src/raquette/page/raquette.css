@@ -1,4 +1,4 @@
-/* l’échange.ai : couleurs (les variables de styles.css) et quelques éléments propres aux soirées. */
+/* L’Échange : couleurs (les variables de styles.css) et quelques éléments propres aux soirées. */
 :root { --green: #1f5fbf; --bar: #13203a; --flag: #e3a90c; --bg: #eef1f6; --line: #d3d9e4; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) { --green: #6aa4ff; --green-ink: #06101f; --bar: #0a101c; --bg: #0d121b; --surface: #161d2a; --line: #2a3446; }
